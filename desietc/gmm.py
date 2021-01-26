@@ -439,15 +439,15 @@ class GMMFit(object):
                         try:
                             final_params, result = self.minimize(params, data, ivar, kwargs=method)
                         except FloatingPointError as e:
-                            logging.info('minimize giving up after: {0}'.format(e))
+                            logging.debug('minimize giving up after: {0}'.format(e))
                             continue
-                    logging.info(f'fit {ngauss}/{i} {method["method"]} {result.success} {result.fun:.4f} {best_nll:.4f}')
+                    logging.debug(f'fit {ngauss}/{i} {method["method"]} {result.success} {result.fun:.4f} {best_nll:.4f}')
                     if result.success:
                         if result.fun < best_nll:
                             best_nll = result.fun
                             best_params, best_result = final_params, result
                             if best_nll < threshold:
-                                logging.info(f'reached threshold {best_nll:.3f} < {threshold} with ngauss={ngauss}')
+                                logging.debug(f'reached threshold {best_nll:.3f} < {threshold} with ngauss={ngauss}')
                                 return best_params
                         break
             if best_nll != np.inf and ngauss == 1 and max_ndrop > 0:
@@ -458,14 +458,14 @@ class GMMFit(object):
                 rank = chisq.size - np.argsort(np.argsort(chisq))
                 drop = (rank <= max_ndrop) & (chisq > drop_cut)
                 ndrop = np.count_nonzero(drop)
-                logging.info(f'Dropping {ndrop} pixels with chisq > {drop_cut}')
+                logging.debug(f'Dropping {ndrop} pixels with chisq > {drop_cut}')
                 ivar[drop.reshape(data.shape)] = 0
                 # Recalcuate the nll
                 nll = np.sum((ivar * (data - model) ** 2)) / data.size
                 if nll < threshold:
-                    logging.info(f'Reached threshold {nll:.3f} < {threshold} with ngauss={ngauss} after drops.')
+                    logging.debug(f'Reached threshold {nll:.3f} < {threshold} with ngauss={ngauss} after drops.')
                     return best_params
-        logging.info(f'best nll={best_nll:.3f} but never reached threshold')
+        logging.debug(f'best nll={best_nll:.3f} but never reached threshold')
         return None if best_nll == np.inf else best_params
 
     def dither(self, params, xdither, ydither):
