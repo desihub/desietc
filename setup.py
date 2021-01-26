@@ -15,7 +15,7 @@ setup(
     entry_points = {
         'console_scripts': [
             'etcoffline=desietc.scripts.offline:main',
-            #'etcdepth=desietc.scripts.etcdepth:main',
+            'etcdepth=desietc.scripts.depth:main',
         ],
     }
 )
