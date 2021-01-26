@@ -1,4 +1,7 @@
 """Run ETC analysis offline from exposure FITS files.
+
+Requires that matplotlib is installed, in addition to the desietc
+dependencies.  PIL is also required for compressed jpeg ouput.
 """
 import os
 import sys
@@ -700,6 +703,7 @@ def main():
         level = logging.WARNING
     logging.basicConfig(filename=args.logpath, level=level,
         format='%(asctime)s %(levelname)s %(message)s', datefmt='%Y%m%d %H:%M:%S')
+    logging.getLogger('matplotlib.font_manager').disabled = True
 
     try:
         retval = etcoffline(args)

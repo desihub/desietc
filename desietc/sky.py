@@ -143,7 +143,7 @@ class SkyCamera(object):
             # Mask known hot pixels.
             self.ivar[k][self.masks[name][k]] = 0
         # Fit for the spot flux and background level.
-        self.flux[:N], self.bgfit[:N], cov = desietcimg.util.fit_spots(
+        self.flux[:N], self.bgfit[:N], cov = desietc.util.fit_spots(
             self.data[:N], self.ivar[:N], self.spots[name])
         self.fluxerr[:N] = np.sqrt(cov[:, 0, 0])
         self.bgerr[:N] = np.sqrt(cov[:, 1, 1])
@@ -162,7 +162,7 @@ class SkyCamera(object):
             # Apply the original + new masking.
             self.ivar[:N] *= self.valid[:N]
             # Refit
-            self.flux[:N], self.bgfit[:N], cov = desietcimg.util.fit_spots(
+            self.flux[:N], self.bgfit[:N], cov = desietc.util.fit_spots(
                 self.data[:N], self.ivar[:N], self.spots[name])
             #assert np.all(cov[:, 0, 0] > 0)
             self.fluxerr[:N] = np.sqrt(cov[:, 0, 0])
