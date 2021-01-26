@@ -1,5 +1,13 @@
 """Run ETC analysis offline from exposure FITS files.
 
+Expects files to be organized in directories YYYYMMDD/EXPID/
+under --inpath.  Reads the following files, when available:
+
+ - sky-EXPID.fits : SKYCAM raw data
+ - guide-EXPID.fits.fz : In-focus GFA raw acq & guider frames, PlateMaker guide stars
+ - centroids-EXPID.json : Results of online guider analysis
+ - gfa-EXPID.fits.fz : Raw data for all GFA cameras
+
 Requires that matplotlib is installed, in addition to the desietc
 dependencies.  PIL is also required for compressed jpeg ouput.
 """
@@ -13,7 +21,6 @@ import warnings
 import glob
 import logging
 import multiprocessing
-
 from pathlib import Path
 
 import numpy as np
@@ -30,11 +37,12 @@ import matplotlib.pyplot as plt
 
 import fitsio
 
-#from desietcimg.gmm import *
-#from desietc.util import *
-from desietc.gfa import GFACamera
+from desietc.gfa import GFACamera, load_guider_centroids
 from desietc.sky import SkyCamera
-from desietc.plot import plot_image_quality
+from desietc.gmm import GMMFit
+from desietc.util import diskgrid, make_template
+from desietc.plot import plot_data, plot_guide_stars, plot_image_quality
+
 
 # Globals shared by process_one below.
 GFA = None
@@ -455,8 +463,8 @@ def process(inpath, args, pool=None, pool_timeout=300):
         plt.close(fig)
         logging.info('Wrote {0}'.format(figpath))
     except Exception as e:
-        logging.warning('Failed to create image quality plot.')
-        raise e
+        logging.warning(f'Failed to create image quality plot: {e}.')
+
 
 def get_gfa_exposures(inpath, checkpath, night, expstart=None, expstop=None, sky=False, gfa=True):
     """Return a list of existing paths to completed GFA exposures for night.
@@ -704,7 +712,9 @@ def main():
         level = logging.WARNING
     logging.basicConfig(filename=args.logpath, level=level,
         format='%(asctime)s %(levelname)s %(message)s', datefmt='%Y%m%d %H:%M:%S')
-    logging.getLogger('matplotlib.font_manager').disabled = True
+    # Silence matplotlib debug logging.
+    logging.getLogger('matplotlib.font_manager').level = max(level, logging.INFO)
+    logging.getLogger('matplotlib.ticker').disabled = max(level, logging.INFO)
 
     try:
         retval = etcoffline(args)

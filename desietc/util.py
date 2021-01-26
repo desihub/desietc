@@ -444,6 +444,99 @@ def normalize_stamp(D, W, smoothing=2.5):
         return D / np.abs(norm), W * norm ** 2
 
 
+def diskgrid(n, radius=1, alpha=2):
+    """Distribute points over a disk with increasing density towards the center.
+
+    Points are locally uniformly distributed according to the sunflower pattern
+    https://demonstrations.wolfram.com/SunflowerSeedArrangements/
+
+    A non-linear transformation of the radial coordinate controlled by alpha
+    increases the density of points towards the center. Use alpha=0 for
+    uniform density.
+
+    Parameters
+    ----------
+    n : int
+        Total number of points to use in the grid.
+    radius : float
+        Radius of the disk to fill.
+    alpha : float
+        Parameter controlling the increase of density towards the center of
+        the disk, with alpha=0 corresponding to no increase.
+
+    Returns
+    -------
+    tuple
+        Tuple (x, y) of 2D points covering the disk.
+    """
+    # Golden ratio.
+    phi = 0.5 * (np.sqrt(5) + 1)
+    # Calculate coordinates of each point to uniformly fill the unit disk.
+    k = np.arange(1, n + 1)
+    theta = 2 * np.pi * k / phi ** 2
+    r = np.sqrt((k - 0.5) / (n - 0.5))
+    # Transform r to increase the density towards the center.
+    if alpha > 0:
+        r = (np.exp(alpha * r) - 1) / (np.exp(alpha) - 1)
+    r *= radius
+    return r * np.cos(theta), r * np.sin(theta)
+
+
+def make_template(size, profile, dx=0, dy=0, oversampling=10, normalized=True):
+    """Build a square template for an arbitrary profile.
+
+    Parameters
+    ----------
+    size : int
+        Output 2D array will have shape (size, size).
+    profile : callable
+        Function of (x,y) that evaluates the profile to use, where x and y are arrays
+        of pixel coordinates relative to the template center. This function is called
+        once, instead of iterating over pixels, so should broadcast over x and y.
+    dx : float
+        Offset values of x passed to the profile by this amount (in pixels).
+    dy : float
+        Offset values of y passed to the profile by this amount (in pixels).
+    oversampling : int
+        Integrate over the template pixels by working on a finer grid with this
+        oversampling factor, then downsample to the output pixels.
+    normalized : bool
+        When True, the sum of output pixels is normalized to one.
+
+    Returns
+    -------
+    array
+        2D numpy array of template pixel values with shape (size, size).
+    """
+    xy = (np.arange(size * oversampling) - 0.5 * (size * oversampling - 1)) / oversampling
+    z = profile(xy - dx, (xy - dy).reshape(-1, 1))
+    T = downsample(z, oversampling, np.mean)
+    if normalized:
+        T /= T.sum()
+    return T
+
+
+def preprocess(D, W, nsig_lo=10, nsig_hi=30, vmin=None, vmax=None):
+    """Preprocess weighted 2D array data for display.
+    """
+    masked = W == 0
+    # Calculate the median unmasked pixel value.
+    median_value = np.median(D[~masked])
+    # Calculate the median non-zero inverse variance.
+    median_ivar = np.median(W[~masked])
+    # Calculate the corresponding pixel sigma.
+    sigma = 1 / np.sqrt(median_ivar)
+    if vmin is None:
+        vmin = median_value - nsig_lo * sigma
+    if vmax is None:
+        vmax = median_value + nsig_hi * sigma
+    # Clip values to [vmin, vmax].
+    D = np.clip(D, vmin, vmax)
+    # Set masked pixel values to nan so they are not plotted.
+    D[masked] = np.nan
+    return D
+
+
 def ADCangles(EL, HA, DEC, LAT=31.963972222):
     """Calculate the parallactic angle in degrees W of N. Inputs in degrees."""
     Z, HA, coDEC, coLAT = np.deg2rad([90 - EL, HA, 90 - DEC, 90 - LAT])
