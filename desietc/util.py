@@ -444,6 +444,96 @@ def normalize_stamp(D, W, smoothing=2.5):
         return D / np.abs(norm), W * norm ** 2
 
 
+def ADCangles(EL, HA, DEC, LAT=31.963972222):
+    """Calculate the parallactic angle in degrees W of N. Inputs in degrees."""
+    Z, HA, coDEC, coLAT = np.deg2rad([90 - EL, HA, 90 - DEC, 90 - LAT])
+    if Z == 0:
+        return np.zeros(3)
+    sinZ = np.sin(Z)
+    sinP = np.sin(HA) * np.sin(coLAT) / sinZ
+    cosP = (np.cos(coLAT) - np.cos(coDEC) * np.cos(Z)) / (np.sin(coDEC) * sinZ)
+    P = np.arctan2(sinP, cosP)
+    # Formulas from DESI-4957
+    tanZ = np.tan(Z)
+    HORIZON = P + 0.5 * np.pi
+    ADC1 = HORIZON + (0.0353 + tanZ * (0.2620 + tanZ * 0.3563))
+    ADC2 = HORIZON - (0.0404 + tanZ * (0.2565 + tanZ * 0.3576))
+    return np.rad2deg([P, ADC1, ADC2])
+
+
+class PSFMeasure(object):
+
+    def __init__(self, stamp_size, fiber_diam_um=107, pixel_size_um=15, plate_scales=(70., 76.),
+                 max_offset_pix=3.5, noffset=15, nangbins=20):
+        self.stamp_size = stamp_size
+        self.pixel_size_um = pixel_size_um
+        self.plate_scales = plate_scales
+        # Tabulate fiber templates for each (x,y) offset in the x >= 0 and y >= 0 quadrant.
+        self.offset_template = np.empty((noffset, noffset, stamp_size, stamp_size), np.float32)
+        max_rsq = (0.5 * fiber_diam_um / pixel_size_um) ** 2
+        profile = lambda x, y: 1.0 * (x ** 2 + y ** 2 < max_rsq)
+        delta = np.linspace(0, max_offset_pix, noffset)
+        for iy in range(noffset):
+            for ix in range(noffset):
+                self.offset_template[iy, ix] = make_template(
+                    stamp_size, profile, dx=delta[ix], dy=delta[iy], normalized=False)
+        self.xyoffset = np.linspace(-max_offset_pix, +max_offset_pix, 2 * noffset - 1)
+        dxy = np.arange(self.stamp_size) - 0.5 * (self.stamp_size - 1)
+        self.xgrid, self.ygrid = np.meshgrid(dxy, dxy, sparse=False)
+        rmax = dxy[-1] * self.pixel_size_um / max(self.plate_scales)
+        self.angbins = np.linspace(0., rmax, nangbins + 1)
+        self.rang = 0.5 * (self.angbins[1:] + self.angbins[:-1])
+
+    def measure(self, P, W):
+        assert P.shape == W.shape == (self.stamp_size, self.stamp_size)
+        Psum = np.sum(P)
+        # Prepare the array of fiber fractions for offsets in all 4 quadrants.
+        nquad = len(self.offset_template)
+        nfull = 2 * nquad - 1
+        fiberfrac = np.zeros((nfull, nfull), np.float32)
+        # Loop over offsets in the x >= 0 and y >= 0 quadrant.
+        origin = nquad - 1
+        reverse = slice(None, None, -1)
+        for iy in range(nquad):
+            for ix in range(nquad):
+                T = self.offset_template[iy, ix]
+                fiberfrac[origin + iy, origin + ix] = np.sum(P * T) / Psum
+                if iy > 0:
+                    # Calculate in the x >= 0 and y < 0 quadrant.
+                    fiberfrac[origin - iy, origin + ix] = np.sum(P * T[reverse, :]) / Psum
+                if ix > 0:
+                    # Calculate in the x < 0 and y >= 0 quadrant.
+                    fiberfrac[origin + iy, origin - ix] = np.sum(P * T[:, reverse]) / Psum
+                if iy > 0 and ix > 0:
+                    # Calculate in the x < 0 and y < 0 quadrant.
+                    fiberfrac[origin - iy, origin - ix] = np.sum(P * T[reverse, reverse]) / Psum
+        # Locate the best centered offset.
+        iy, ix = np.unravel_index(np.argmax(fiberfrac), fiberfrac.shape)
+        xc = self.xyoffset[ix]
+        yc = self.xyoffset[iy]
+        # Calculate the radius of each pixel in arcsecs relative to this center.
+        radius = np.hypot((self.xgrid - xc) * self.pixel_size_um / self.plate_scales[0],
+                          (self.ygrid - yc) * self.pixel_size_um / self.plate_scales[1]).reshape(-1)
+        # Fill ivar-weighted histograms of flux versus angular radius.
+        WZ, _ = np.histogram(radius, bins=self.angbins, weights=(P * W).reshape(-1))
+        W, _ = np.histogram(radius, bins=self.angbins, weights=W.reshape(-1))
+        # Calculate the circularized profile, normalized to 1 at (xc, yc).
+        Z = np.divide(WZ, W, out=np.zeros_like(W), where=W > 0)
+        fwhm = -1
+        if Z[0] > 0:
+            Z /= Z[0]
+            # Find the first bin where Z <= 0.5.
+            k = np.argmax(Z <= 0.5)
+            if k > 0:
+                # Use linear interpolation over this bin to estimate FWHM.
+                s = (Z[k] - 0.5) / (Z[k] - Z[k - 1])
+                fwhm = 2 * ((1 - s) * self.rang[k] + s * self.rang[k - 1])
+        self.Z = Z
+        self.xcbest = xc
+        self.ycbest = yc
+        return fwhm, np.max(fiberfrac)
+
+
 class CenteredStamp(object):
 
     def __init__(self, stamp_size, inset, method='fiber'):

@@ -31,10 +31,10 @@ import matplotlib.pyplot as plt
 import fitsio
 
 #from desietcimg.gmm import *
-#from desietcimg.plot import *
 #from desietc.util import *
 from desietc.gfa import GFACamera
 from desietc.sky import SkyCamera
+from desietc.plot import plot_image_quality
 
 # Globals shared by process_one below.
 GFA = None
@@ -456,6 +456,7 @@ def process(inpath, args, pool=None, pool_timeout=300):
         logging.info('Wrote {0}'.format(figpath))
     except Exception as e:
         logging.warning('Failed to create image quality plot.')
+        raise e
 
 def get_gfa_exposures(inpath, checkpath, night, expstart=None, expstop=None, sky=False, gfa=True):
     """Return a list of existing paths to completed GFA exposures for night.
