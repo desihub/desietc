@@ -30,10 +30,10 @@ import matplotlib.pyplot as plt
 
 import fitsio
 
-from desietcimg.gfa import *
-from desietcimg.gmm import *
-from desietcimg.plot import *
-from desietcimg.util import *
+#from desietcimg.gmm import *
+#from desietcimg.plot import *
+#from desietc.util import *
+from desietc.gfa import GFACamera
 from desietc.sky import SkyCamera
 
 # Globals shared by process_one below.

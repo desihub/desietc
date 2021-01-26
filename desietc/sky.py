@@ -1,3 +1,5 @@
+"""Analyze images captured by the DESI Sky Cameras for the online ETC.
+"""
 import collections
 import logging
 
