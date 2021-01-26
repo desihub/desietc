@@ -3,6 +3,8 @@
 import os
 import sys
 import time
+import pdb
+import traceback
 import argparse
 import warnings
 import glob
@@ -29,7 +31,7 @@ from desietcimg.gfa import *
 from desietcimg.gmm import *
 from desietcimg.plot import *
 from desietcimg.util import *
-from desietcimg.sky import SkyCamera
+from desietc.sky import SkyCamera
 
 # Globals shared by process_one below.
 GFA = None
@@ -535,40 +537,40 @@ def etcoffline(args):
     logging.info('Output path is {0}'.format(args.outpath))
 
     # Locate the GFA calibration data.
-    if args.calibpath is None:
+    if args.gfa_calib is None:
         if host == 'NERSC':
-            args.calibpath = '/global/cfs/cdirs/desi/cmx/gfa/calib/GFA_calib.fits'
+            args.gfa_calib = '/global/cfs/cdirs/desi/cmx/gfa/calib/GFA_calib.fits'
         elif host == 'DOS':
             # Should use a more permanent path than this which is synched via svn.
-            args.calibpath = '/data/desiobserver/gfadiq/GFA_calib.fits'
+            args.gfa_calib = '/data/desiobserver/gfadiq/GFA_calib.fits'
         else:
-            print('No GFA calibration data path specified with --calibpath.')
+            print('No GFA calibration data path specified with --gfa-calib.')
             sys.exit(-1)
-    args.calibpath = Path(args.calibpath)
-    if not args.calibpath.exists():
-        print('Non-existant GFA calibration path: {0}'.format(args.calibpath))
+    args.gfa_calib = Path(args.gfa_calib)
+    if not args.gfa_calib.exists():
+        print('Non-existant GFA calibration path: {0}'.format(args.gfa_calib))
         sys.exit(-2)
 
     args.sky = args.sky or args.sky_only
     if args.sky:
         # Locate the SKY calibration data.
-        if args.skycalibpath is None:
+        if args.sky_calib is None:
             if host == 'NERSC':
-                args.skycalibpath = '/global/cfs/cdirs/desi/cmx/sky/calib/SKY_calib.fits'
+                args.sky_calib = '/global/cfs/cdirs/desi/cmx/sky/calib/SKY_calib.fits'
             elif host == 'DOS':
                 # Should use a more permanent path than this which is synched via svn.
-                args.skycalibpath = '/data/desiobserver/gfadiq/SKY_calib.fits'
+                args.sky_calib = '/data/desiobserver/gfadiq/SKY_calib.fits'
             else:
-                print('No SKY calibration data path specified with --skycalibpath.')
+                print('No SKY calibration data path specified with --sky-calib.')
                 sys.exit(-1)
-        args.skycalibpath = Path(args.skycalibpath)
-        if not args.skycalibpath.exists():
-            print('Non-existant SKY calibration path: {0}'.format(args.skycalibpath))
+        args.sky_calib = Path(args.sky_calib)
+        if not args.sky_calib.exists():
+            print('Non-existant SKY calibration path: {0}'.format(args.sky_calib))
             sys.exit(-2)
 
     # Initialize the GFA analysis object.
     global GFA
-    GFA = GFACamera(calib_name=args.calibpath)
+    GFA = GFACamera(calib_name=args.gfa_calib)
 
     if args.guide_stars:
         # Initialize the global guide star Gaussian mixture model.
@@ -578,7 +580,7 @@ def etcoffline(args):
 
     if args.sky:
         global SKY
-        SKY = SkyCamera(calib_name=args.skycalibpath)
+        SKY = SkyCamera(calib_name=args.sky_calib)
 
     if args.npool > 0:
         # Initialize multiprocessing.
@@ -681,9 +683,9 @@ def main():
         help='Path where outputs willl be organized under YYYYMMDD directories')
     parser.add_argument('--checkpath', type=str, metavar='PATH',
         help='Optional path where links are created to indicate a complete exposure')
-    parser.add_argument('--calibpath', type=str, metavar='PATH',
+    parser.add_argument('--gfa-calib', type=str, metavar='PATH',
         help='Path to GFA calibration FITS file to use')
-    parser.add_argument('--skycalibpath', type=str, metavar='PATH',
+    parser.add_argument('--sky-calib', type=str, metavar='PATH',
         help='Path to SKYCAM calibration FITS file to use')
     parser.add_argument('--npool', type=int, default=0, metavar='N',
         help='Number of workers in multiprocessing pool')
@@ -700,7 +702,7 @@ def main():
         format='%(asctime)s %(levelname)s %(message)s', datefmt='%Y%m%d %H:%M:%S')
 
     try:
-        retval = etcdepth(args)
+        retval = etcoffline(args)
         sys.exit(retval)
     except Exception as e:
         if args.debug:
