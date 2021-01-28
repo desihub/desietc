@@ -9,7 +9,7 @@ setup(
     author_email='dkirkby@uci.edu',
     license='MIT',
     packages=find_packages(exclude=["tests",]),
-    install_requires=['numpy', 'scipy'],
+    install_requires=['numpy', 'scipy', 'fitsio'],
     include_package_data=False,
     zip_safe=False,
     entry_points = {
