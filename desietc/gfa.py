@@ -94,6 +94,7 @@ class GFACamera(object):
     gfa_names = [
         'GUIDE0', 'FOCUS1', 'GUIDE2', 'GUIDE3', 'FOCUS4',
         'GUIDE5', 'FOCUS6', 'GUIDE7', 'GUIDE8', 'FOCUS9']
+    guide_names = ['GUIDE0', 'GUIDE2', 'GUIDE3', 'GUIDE5', 'GUIDE7', 'GUIDE8']
     amp_names = ['E', 'F', 'G', 'H']
     lab_data = None
     calib_data = None

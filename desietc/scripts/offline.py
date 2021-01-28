@@ -3,7 +3,7 @@
 Expects files to be organized in directories YYYYMMDD/EXPID/
 under --inpath.  Reads the following files, when available:
 
- - sky-EXPID.fits : SKYCAM raw data
+ - sky-EXPID.fits.fz : SKYCAM raw data
  - guide-EXPID.fits.fz : In-focus GFA raw acq & guider frames, PlateMaker guide stars
  - centroids-EXPID.json : Results of online guider analysis
  - gfa-EXPID.fits.fz : Raw data for all GFA cameras
@@ -40,7 +40,7 @@ import fitsio
 from desietc.gfa import GFACamera, load_guider_centroids
 from desietc.sky import SkyCamera
 from desietc.gmm import GMMFit
-from desietc.util import diskgrid, make_template
+from desietc.util import diskgrid, make_template, fits_to_online
 from desietc.plot import plot_data, plot_guide_stars, plot_image_quality
 
 import desietc.etc
@@ -315,9 +315,10 @@ def process_sky(inpath, outpath, overwrite=False):
 
 
 def process(inpath, args, pool=None, pool_timeout=300):
-    """Process a single GFA exposure.
+    """Process a single SKY or GFA exposure.
     """
     global GFA
+    global ETC
     if not inpath.exists():
         logging.error('Non-existant path: {0}'.format(inpath))
         return
@@ -326,8 +327,13 @@ def process(inpath, args, pool=None, pool_timeout=300):
         return
     # Is this a skycam exposure?
     if inpath.name.startswith('sky'):
+        online = fits_to_online(inpath, SKY.sky_names, 0)
         process_sky(inpath, args.outpath, args.overwrite)
         return
+
+    online = fits_to_online(inpath, GFA.guide_names, 0)
+    ETC.process_acquisition(online)
+
     # Is this a guiding exposure?
     guiding = inpath.name.startswith('guide')
     # Lookup the NIGHT, EXPID, EXPTIME from the primary header.
@@ -588,6 +594,7 @@ def etcoffline(args):
             sys.exit(-2)
 
     # Initialize the global ETC algorithm.
+    global ETC
     ETC = desietc.etc.ETC(args.sky_calib, args.gfa_calib, args.psf_pixels)
 
     # Initialize the GFA analysis object.
