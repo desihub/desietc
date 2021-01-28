@@ -43,8 +43,11 @@ from desietc.gmm import GMMFit
 from desietc.util import diskgrid, make_template
 from desietc.plot import plot_data, plot_guide_stars, plot_image_quality
 
+import desietc.etc
+
 
 # Globals shared by process_one below.
+ETC = None
 GFA = None
 GMM = None
 SKY = None
@@ -239,7 +242,7 @@ def process_one(inpath, night, expid, guiding, camera, mjdobs, exptime, ccdtemp,
         return result
 
 
-def process_sky(inpath, outpath):
+def process_sky(inpath, outpath, overwrite=False):
     try:
         with fitsio.FITS(str(inpath)) as hdus:
             hdr = hdus[0].read_header()
@@ -265,8 +268,12 @@ def process_sky(inpath, outpath):
             nframes = hdr['FRAMES']
             logging.info('Processing {0} x {1:.1f}s SKYCAM frames from {2}'.format(nframes, exptime, inpath))
             outpath = outpath / night / expid
+            outcsv = outpath / 'sky_{0}.csv'.format(expid)
+            if outcsv.exists() and not overwrite:
+                logging.info(f'Will not overwrite existing {outcsv}.')
+                return
             outpath.mkdir(parents=True, exist_ok=True)
-            fout = open(outpath / 'sky_{0}.csv'.format(expid), 'w')
+            fout = open(outcsv, 'w')
             f, df = np.zeros((2, nframes)), np.zeros((2, nframes))
             for j, camera in enumerate(('SKYCAM0', 'SKYCAM1')):
                 if not camera in hdus:
@@ -319,7 +326,7 @@ def process(inpath, args, pool=None, pool_timeout=300):
         return
     # Is this a skycam exposure?
     if inpath.name.startswith('sky'):
-        process_sky(inpath, args.outpath)
+        process_sky(inpath, args.outpath, args.overwrite)
         return
     # Is this a guiding exposure?
     guiding = inpath.name.startswith('guide')
@@ -579,6 +586,9 @@ def etcoffline(args):
         if not args.sky_calib.exists():
             print('Non-existant SKY calibration path: {0}'.format(args.sky_calib))
             sys.exit(-2)
+
+    # Initialize the global ETC algorithm.
+    ETC = desietc.etc.ETC(args.sky_calib, args.gfa_calib, args.psf_pixels)
 
     # Initialize the GFA analysis object.
     global GFA
