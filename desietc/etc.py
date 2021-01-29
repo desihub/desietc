@@ -17,6 +17,10 @@ import desietc.gfa
 import desietc.gmm
 import desietc.util
 
+# TODO:
+#  - apply exptime to guide_star nelec
+#  - implement setter/getter for current FWHM,FFRAC0,FFRAC,TRANSP
+
 
 class ETC(object):
 
@@ -91,6 +95,29 @@ class ETC(object):
             # Precompute dithered renderings of the model for fast guide frame fits.
             dithered = self.GMM.dither(gmm_params, self.xdither, self.ydither)
             camera_result['dithered'] = dithered
+        # Update the current FWHM, FFRAC0 now.
+        # ...
+
+    def set_guide_stars(self, gfa_loc, col, row, mag, zeropoint=27.06):
+        """
+        """
+        self.guide_stars = {}
+        for camera in self.GFA.guide_names:
+            sel = (gfa_loc == camera) & (mag > 0)
+            if not np.any(sel):
+                logging.warning(f'No guide stars available for {camera}.')
+                continue
+            self.guide_stars[camera] = dict(
+                # Convert from PlateMaker indexing convention to (0,0) centered in bottom-left pixel.
+                col=np.array(col[sel]) - 0.5,
+                row=np.array(row[sel]) - 0.5,
+                mag=np.array(mag[sel]),
+                # Convert flux to predicted detected electrons per second in the
+                # GFA filter with nominal zenith atmospheric transmission.
+                nelec = 10 ** (-(mag[sel] - zeropoint) / 2.5)
+            )
+        # Update the current FFRAC,TRANSP now.
+        # ...
 
     def preprocess_gfa(self, camera, data, default_ccdtemp=10):
         hdr = data['header']
