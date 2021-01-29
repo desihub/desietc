@@ -332,7 +332,9 @@ def process(inpath, args, pool=None, pool_timeout=300):
         return
 
     online = fits_to_online(inpath, GFA.guide_names, 0)
+    print(online.keys())
     ETC.process_acquisition(online)
+    print(ETC.acquisition_results['GUIDE0'].keys())
 
     # Is this a guiding exposure?
     guiding = inpath.name.startswith('guide')
