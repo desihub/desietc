@@ -40,7 +40,8 @@ import fitsio
 from desietc.gfa import GFACamera, load_guider_centroids
 from desietc.sky import SkyCamera
 from desietc.gmm import GMMFit
-from desietc.util import diskgrid, make_template, fits_to_online
+from desietc.util import diskgrid, make_template
+from desietc.offline import replay_exposure
 from desietc.plot import plot_data, plot_guide_stars, plot_image_quality
 
 import desietc.etc
@@ -332,9 +333,7 @@ def process(inpath, args, pool=None, pool_timeout=300):
         return
 
     online = fits_to_online(inpath, GFA.guide_names, 0)
-    print(online.keys())
     ETC.process_acquisition(online)
-    print(ETC.acquisition_results['GUIDE0'].keys())
 
     # Is this a guiding exposure?
     guiding = inpath.name.startswith('guide')
@@ -374,6 +373,8 @@ def process(inpath, args, pool=None, pool_timeout=300):
             logging.warning('Guider centroids json file not readable.')
         try:
             PlateMaker = fitsio.read(str(inpath), ext='PMGSTARS')
+            ETC.set_guide_stars(
+                PlateMaker['GFA_LOC'], PlateMaker['COL'], PlateMaker['ROW'], PlateMaker['MAG'])
         except IOError as e:
             logging.warning('PMGSTARS extension not found.')
         if PlateMaker is not None:
@@ -598,21 +599,7 @@ def etcoffline(args):
     # Initialize the global ETC algorithm.
     global ETC
     ETC = desietc.etc.ETC(args.sky_calib, args.gfa_calib, args.psf_pixels)
-
-    # Initialize the GFA analysis object.
-    global GFA
-    GFA = GFACamera(calib_name=args.gfa_calib)
-
-    if args.guide_stars:
-        # Initialize the global guide star Gaussian mixture model.
-        global GMM
-        psf_grid = np.arange(args.psf_pixels + 1) - args.psf_pixels / 2
-        GMM = GMMFit(psf_grid, psf_grid)
-
-    if args.sky:
-        global SKY
-        SKY = SkyCamera(calib_name=args.sky_calib)
-
+    '''
     if args.npool > 0:
         # Initialize multiprocessing.
         context = multiprocessing.get_context(method='fork')
@@ -623,7 +610,7 @@ def etcoffline(args):
         logging.info('Initialized multiprocessing pool with {0} workers'.format(args.npool))
     else:
         pool = None
-
+    '''
     if args.expid is not None:
         exposures = set()
         # Loop over comma-separated tokens.
@@ -637,11 +624,8 @@ def etcoffline(args):
             else:
                 print('Invalid --expid (should be N or N1-N2): "{0}"'.format(args.expid))
                 sys.exit(-1)
-            exposures |= get_gfa_exposures(
-                args.inpath, args.checkpath, args.night, start, stop,
-                sky=args.sky, gfa=not args.sky_only)
-        for path in sorted(exposures):
-            process(path, args, pool)
+            for expid in range(start, stop):
+                desietc.offline.replay_exposure(night, expid)
         return
 
     if args.batch or args.watch:

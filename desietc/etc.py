@@ -1,5 +1,6 @@
 """The top-level ETC algorithm.
 """
+import time
 import pathlib
 
 try:
@@ -18,7 +19,6 @@ import desietc.gmm
 import desietc.util
 
 # TODO:
-#  - apply exptime to guide_star nelec
 #  - implement setter/getter for current FWHM,FFRAC0,FFRAC,TRANSP
 
 
@@ -51,10 +51,14 @@ class ETC(object):
         self.GMM = desietc.gmm.GMMFit(psf_grid, psf_grid)
         self.psf_pixels = psf_pixels
         self.xdither, self.ydither = desietc.util.diskgrid(num_dither, max_dither, alpha=2)
+        # Initialize analysis results.
+        self.acquisition_results = None
+        self.guide_stars = None
 
     def process_acquisition(self, data):
-        """Process the initial GFA acuquisition images.
+        """Process the initial GFA acquisition images.
         """
+        start = time.time()
         hdr = data['header']
         self.night = hdr['NIGHT']
         self.expid = hdr['EXPID']
@@ -97,37 +101,142 @@ class ETC(object):
             camera_result['dithered'] = dithered
         # Update the current FWHM, FFRAC0 now.
         # ...
+        # Reset the guide frame counter and guide star data.
+        self.num_guide_frames = 0
+        self.guide_stars = None
+        # Report timing.
+        elapsed = time.time() - start
+        logging.info(f'Acquisition processing took {elapsed:.2f}s for {len(self.acquisition_results)} GFAs.')
 
-    def set_guide_stars(self, gfa_loc, col, row, mag, zeropoint=27.06):
+    def set_guide_stars(self, gfa_loc, col, row, mag,
+                        zeropoint=27.06, fiber_diam_um=107, pixel_size_um=15):
+        """Specify the guide star locations and magnitudes to use when analyzing
+        each guide frame.  These are normally calculated by PlateMaker.
         """
-        """
+        if self.acquisition_results is None:
+            logging.error(f'Received guide stars with no acquisition image.')
+            return False
+        if self.guide_stars is not None:
+            logging.warning(f'Overwriting previous guide stars for {self.night}/{self.expid}.')
+        max_rsq = (0.5 * fiber_diam_um / pixel_size_um) ** 2
+        profile = lambda x, y: 1.0 * (x ** 2 + y ** 2 < max_rsq)
+        halfsize = self.psf_pixels // 2
         self.guide_stars = {}
+        nstars = []
         for camera in self.GFA.guide_names:
             sel = (gfa_loc == camera) & (mag > 0)
             if not np.any(sel):
                 logging.warning(f'No guide stars available for {camera}.')
+                nstars.append(0)
                 continue
-            self.guide_stars[camera] = dict(
+            # Loop over guide stars for this GFA.
+            stars = []
+            for i in np.where(sel)[0]:
                 # Convert from PlateMaker indexing convention to (0,0) centered in bottom-left pixel.
-                col=np.array(col[sel]) - 0.5,
-                row=np.array(row[sel]) - 0.5,
-                mag=np.array(mag[sel]),
+                x0 = col[i] - 0.5
+                y0 = row[i] - 0.5
+                rmag = mag[i]
                 # Convert flux to predicted detected electrons per second in the
                 # GFA filter with nominal zenith atmospheric transmission.
-                nelec = 10 ** (-(mag[sel] - zeropoint) / 2.5)
-            )
+                nelec_rate = 10 ** (-(mag[sel] - zeropoint) / 2.5)
+                # Prepare slices to extract this star in each guide frame.
+                iy, ix = np.round(y0).astype(int), np.round(x0).astype(int)
+                ylo, yhi = iy - halfsize, iy + halfsize + 1
+                xlo, xhi = ix - halfsize, ix + halfsize + 1
+                if ylo < 0 or yhi > 2 * self.GFA.nampy or xlo < 0 or xhi > 2 * self.GFA.nampx:
+                    logging.info('Skipping stamp too close to border at ({0},{1})'.format(x0, y0))
+                    continue
+                yslice, xslice = slice(ylo, yhi), slice(xlo, xhi)
+                # Calculate an antialiased fiber template for FFRAC calculations.
+                fiber_dx, fiber_dy = x0 - ix, y0 - iy
+                fiber = desietc.util.make_template(
+                    self.psf_pixels, profile, dx=fiber_dx, dy=fiber_dy, normalized=False)
+                stars.append(dict(
+                    x0=x0, y0=y0, rmag=rmag, nelec_rate=nelec_rate,
+                    fiber_dx=fiber_dx, fiber_dy=fiber_dy,
+                    yslice=yslice, xslice=xslice, fiber=fiber))
+            nstars.append(len(stars))
+            if len(stars):
+                self.guide_stars[camera] = stars
+        if len(self.guide_stars) == 0:
+            logging.error(f'No usable guide stars for {self.night}/{self.expid}.')
+            return False
+        nstars_msg = '+'.join([str(n) for n in nstars]) + '=' + str(np.sum(nstars))
+        logging.info(f'Using {nstars_msg} guide stars for {self.night}/{self.expid}.')
         # Update the current FFRAC,TRANSP now.
         # ...
+        return True
+
+    def process_guide_frame(self, data):
+        """Process a guide frame.
+        """
+        start = time.time()
+        fnum = self.num_guide_frames
+        if self.acquisition_results is None:
+            logging.error('Received guide frame before acquisition image.')
+            return False
+        if self.guide_stars is None:
+            logging.error('Recieved guide frame before guide stars.')
+            return False
+        hdr = data['header']
+        if self.night != hdr['NIGHT']:
+            logging.error('Got unexpected NIGHT {hdr["NIGHT"]} for guide frame {fnum}.')
+        if self.expid != hdr['EXPID']:
+            logging.error('Got unexpected EXPID {hdr["EXPID"]} for guide frame {fnum}.')
+        logging.info(f'Processing guide frame {fnum} for {self.night}/{self.expid}.')
+        # Loop over cameras with acquisition results.
+        for camera, acquisition in self.acquisition_results.items():
+            if camera not in self.guide_stars:
+                loggining.info(f'Skipping {camera} guide frame {fnum} with no guide stars.')
+                continue
+            if camera not in data:
+                logging.warning(f'Missing {camera} guide frame {fnum}.')
+                continue
+            if not self.preprocess_gfa(camera, data[camera]):
+                logging.error(f'Skipping {camera} guide frame {fnum} with bad data.')
+                continue
+            # Lookup this camera's PSF model.
+            psf = self.acquisition_results[camera]
+            # Loop over guide stars for this camera.
+            for star in self.guide_stars[camera]:
+                # Extract the postage stamp for this star.
+                D = GFA.data[0, star['yslice'], star['xslice']]
+                DW = GFA.ivar[0, star['yslice'], star['xslice']]
+                # Estimate the actual centroid in pixels, flux in electrons and
+                # constant background level in electrons / pixel.
+                dx, dy, flux, bg, nll, best_fit = self.GMM.fit_dithered(
+                    self.xdither, self.ydither, psf['dithered'], D, WD)
+                # Calculate centroid offset relative to the target fiber center.
+                dx -= star['fiber_dx']
+                dy -= star['fiber_dy']
+                # Calculate the corresponding fiber fraction for this star.
+                ffrac = np.sum(star['fiber'] * best_fit)
+                # Calculate the transparency as the ratio of measured / predicted electrons.
+                transp = flux / (star['nelec_rate'] * self.gfa_exptime)
+
+        # Update FWHM, FFRAC0,FFRAC,TRANSP
+        # ...
+        self.num_guide_frames += 1
+        # Report timing.
+        elapsed = time.time() - start
+        logging.info(f'Guide processing took {elapsed:.2f}s')
+        return True
 
     def preprocess_gfa(self, camera, data, default_ccdtemp=10):
+        """Preprocess raw data for the specified GFA.
+        Returns False with a log message in case of any problems.
+        Otherwise, gfa_mjd_obs and gfa_exptime attributes are
+        set and GFA.data contains the bias and temperature
+        corrected image data.
+        """
         hdr = data['header']
-        mjd_obs = hdr.get('MJD-OBS', None)
-        if mjd_obs is None or mjd_obs < 58484: # 1-1-2019
-            logging.error(f'Invalid {camera} MJD_OBS: {mjd_obs}.')
+        self.gfa_mjd_obs = hdr.get('MJD-OBS', None)
+        if self.gfa_mjd_obs is None or mjd_obs < 58484: # 1-1-2019
+            logging.error(f'Invalid {camera} MJD_OBS: {self.gfa_mjd_obs}.')
             return False
-        exptime = hdr.get('EXPTIME', None)
-        if exptime is None or exptime <= 0:
-            logging.error(f'Invalid {camera} EXPTIME: {exptime}.')
+        self.gfa_exptime = hdr.get('EXPTIME', None)
+        if self.gfa_exptime is None or exptime <= 0:
+            logging.error(f'Invalid {camera} EXPTIME: {self.gfa_exptime}.')
             return False
         ccdtemp = hdr.get('GCCDTEMP', None)
         if ccdtemp is None:

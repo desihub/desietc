@@ -1,10 +1,8 @@
-"""Utilities for the online exposure-time calculator.
+"""Numerical utilities for the online exposure-time calculator.
 """
 import numpy as np
 
 import scipy.ndimage
-
-import fitsio
 
 
 def fit_spots(data, ivar, profile, area=1):
@@ -554,23 +552,6 @@ def ADCangles(EL, HA, DEC, LAT=31.963972222):
     ADC1 = HORIZON + (0.0353 + tanZ * (0.2620 + tanZ * 0.3563))
     ADC2 = HORIZON - (0.0404 + tanZ * (0.2565 + tanZ * 0.3576))
     return np.rad2deg([P, ADC1, ADC2])
-
-
-def fits_to_online(path, names, frame):
-    """Read a FITS file and prepare a dictionary containing its headers and arrays
-    in the same format used by the DESI online software.
-    """
-    online = {}
-    with fitsio.FITS(str(path)) as hdus:
-        online['header']= dict(hdus[0].read_header())
-        for ext in names:
-            if ext not in hdus or ext + 'T' not in hdus:
-                continue
-            data = hdus[ext][frame,:,:][0]
-            table = hdus[ext + 'T'][frame]
-            hdr = {key: table[key] for key in table.dtype.names}
-            online[ext] = dict(header=hdr, data=data)
-    return online
 
 
 class PSFMeasure(object):
