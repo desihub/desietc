@@ -201,12 +201,12 @@ class ETC(object):
             # Loop over guide stars for this camera.
             for star in self.guide_stars[camera]:
                 # Extract the postage stamp for this star.
-                D = GFA.data[0, star['yslice'], star['xslice']]
-                DW = GFA.ivar[0, star['yslice'], star['xslice']]
+                D = self.GFA.data[star['yslice'], star['xslice']]
+                DW = self.GFA.ivar[star['yslice'], star['xslice']]
                 # Estimate the actual centroid in pixels, flux in electrons and
                 # constant background level in electrons / pixel.
                 dx, dy, flux, bg, nll, best_fit = self.GMM.fit_dithered(
-                    self.xdither, self.ydither, psf['dithered'], D, WD)
+                    self.xdither, self.ydither, psf['dithered'], D, DW)
                 # Calculate centroid offset relative to the target fiber center.
                 dx -= star['fiber_dx']
                 dy -= star['fiber_dy']
@@ -221,6 +221,20 @@ class ETC(object):
         # Report timing.
         elapsed = time.time() - start
         logging.info(f'Guide processing took {elapsed:.2f}s')
+        return True
+
+    def process_sky(self, data):
+        """Process a SKY frame.
+        """
+        start = time.time()
+        fnum = self.num_sky_frames
+        logging.info(f'Processing sky frame {fnum} for {self.night}/{self.expid}.')
+
+        # Update SKY
+        # ...
+        self.num_sky_frames += 1
+        elapsed = time.time() - start
+        logging.info(f'Sky processing took {elapsed:.2f}s')
         return True
 
     def preprocess_gfa(self, camera, data, default_ccdtemp=10):

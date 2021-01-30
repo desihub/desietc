@@ -73,14 +73,18 @@ def replay_exposure(ETC, path, expid):
     for frame in frames:
         logging.debug(f'Replaying frame: {frame}')
         if frame['typ'] == 'gfa':
+            data = fits_to_online(gfa_path, ETC.GFA.guide_names, frame['num'])
             if frame['num'] == 0:
                 # Process the acquisition image.
-                data = fits_to_online(gfa_path, ETC.GFA.guide_names, 0)
-                print(data.keys())
                 ETC.process_acquisition(data)
                 # Specify the guide stars.
                 ETC.set_guide_stars(*guide_stars)
-                return
+            else:
+                # Process the next guide frame.
+                ETC.process_guide_frame(data)
+        else: # SKY
+            data = fits_to_online(sky_path, ETC.SKY.sky_names, frame['num'])
+            ETC.process_sky(data)
     return True
 
 
