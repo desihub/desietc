@@ -14,7 +14,7 @@ setup(
     zip_safe=False,
     entry_points = {
         'console_scripts': [
-            'etcoffline=desietc.scripts.offline:main',
+            'etcreplay=desietc.scripts.replay:main',
             'etcdepth=desietc.scripts.depth:main',
         ],
     }

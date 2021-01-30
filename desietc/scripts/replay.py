@@ -625,7 +625,7 @@ def etcoffline(args):
                 print('Invalid --expid (should be N or N1-N2): "{0}"'.format(args.expid))
                 sys.exit(-1)
             for expid in range(start, stop):
-                desietc.offline.replay_exposure(night, expid)
+                desietc.offline.replay_exposure(ETC, nightpath, expid)
         return
 
     if args.batch or args.watch:

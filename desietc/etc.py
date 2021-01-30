@@ -123,6 +123,7 @@ class ETC(object):
         halfsize = self.psf_pixels // 2
         self.guide_stars = {}
         nstars = []
+        ny, nx = 2 * self.GFA.nampx, 2 * self.GFA.nampy  # xy swap is intentional!
         for camera in self.GFA.guide_names:
             sel = (gfa_loc == camera) & (mag > 0)
             if not np.any(sel):
@@ -143,8 +144,8 @@ class ETC(object):
                 iy, ix = np.round(y0).astype(int), np.round(x0).astype(int)
                 ylo, yhi = iy - halfsize, iy + halfsize + 1
                 xlo, xhi = ix - halfsize, ix + halfsize + 1
-                if ylo < 0 or yhi > 2 * self.GFA.nampy or xlo < 0 or xhi > 2 * self.GFA.nampx:
-                    logging.info('Skipping stamp too close to border at ({0},{1})'.format(x0, y0))
+                if ylo < 0 or yhi > ny or xlo < 0 or xhi > nx:
+                    logging.info(f'Skipping stamp too close to border at ({x0},{y0})')
                     continue
                 yslice, xslice = slice(ylo, yhi), slice(xlo, xhi)
                 # Calculate an antialiased fiber template for FFRAC calculations.
@@ -231,11 +232,11 @@ class ETC(object):
         """
         hdr = data['header']
         self.gfa_mjd_obs = hdr.get('MJD-OBS', None)
-        if self.gfa_mjd_obs is None or mjd_obs < 58484: # 1-1-2019
+        if self.gfa_mjd_obs is None or self.gfa_mjd_obs < 58484: # 1-1-2019
             logging.error(f'Invalid {camera} MJD_OBS: {self.gfa_mjd_obs}.')
             return False
         self.gfa_exptime = hdr.get('EXPTIME', None)
-        if self.gfa_exptime is None or exptime <= 0:
+        if self.gfa_exptime is None or self.gfa_exptime <= 0:
             logging.error(f'Invalid {camera} EXPTIME: {self.gfa_exptime}.')
             return False
         ccdtemp = hdr.get('GCCDTEMP', None)
@@ -247,5 +248,5 @@ class ETC(object):
         except ValueError as e:
             logging.error(f'Failed to process {camera} raw data: {e}')
             return False
-        self.GFA.data -= self.GFA.get_dark_current(ccdtemp, exptime)
+        self.GFA.data -= self.GFA.get_dark_current(ccdtemp, self.gfa_exptime)
         return True
