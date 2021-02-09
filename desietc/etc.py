@@ -115,9 +115,10 @@ class ETC(object):
     def process_acquisition(self, data):
         """Process the initial GFA acquisition images.
         """
+        ncamera = 0
         start = time.time()
-        hdr = data['header']
-        self.set_exp_info(hdr['NIGHT'], hdr['EXPID'], 'acquisition image')
+        if not self.process_top_header(data['header'], 'acquisition image', update_ok=True):
+            return False
         logging.info(f'Processing acquisition image for {self.night}/{self.expid}.')
         # Loop over cameras.
         self.acquisition_results = {}
@@ -126,7 +127,9 @@ class ETC(object):
             if camera not in data:
                 logging.warn(f'No acquisition image for {camera}.')
                 continue
-            if not self.preprocess_gfa(camera, data[camera]):
+            if not self.process_camera_header(data[camera]['header'], f'{camera} acquisition image'):
+                continue
+            if not self.preprocess_gfa(camera, data[camera], f'{camera} acquisition image'):
                 continue
             # Find PSF-like objects
             self.GFA.get_psfs()
@@ -155,6 +158,7 @@ class ETC(object):
             # Precompute dithered renderings of the model for fast guide frame fits.
             dithered = self.GMM.dither(gmm_params, self.xdither, self.ydither)
             camera_result['dithered'] = dithered
+            ncamera += 1
         # Update the current FWHM, FFRAC0 now.
         # ...
         # Reset the guide frame counter and guide star data.
@@ -162,7 +166,8 @@ class ETC(object):
         self.guide_stars = None
         # Report timing.
         elapsed = time.time() - start
-        logging.info(f'Acquisition processing took {elapsed:.2f}s for {len(self.acquisition_results)} GFAs.')
+        logging.info(f'Acquisition processing took {elapsed:.2f}s for {ncamera} cameras.')
+        return True
 
     def set_guide_stars(self, gfa_loc, col, row, mag,
                         zeropoint=27.06, fiber_diam_um=107, pixel_size_um=15):
@@ -227,21 +232,19 @@ class ETC(object):
     def process_guide_frame(self, data):
         """Process a guide frame.
         """
+        ncamera = nstar = 0
         start = time.time()
         fnum = self.num_guide_frames
         self.num_guide_frames += 1
+        if not self.process_top_header(data['header'], f'guide[{fnum}]'):
+            return False
+        logging.info(f'Processing guide frame {fnum} for {self.night}/{self.expid}.')
         if self.acquisition_results is None:
-            logging.error('Received guide frame before acquisition image.')
+            logging.error('Ignoring guide frame before acquisition image.')
             return False
         if self.guide_stars is None:
-            logging.error('Recieved guide frame before guide stars.')
+            logging.error('Ignoring guide frame before guide stars.')
             return False
-        hdr = data['header']
-        if self.night != hdr['NIGHT']:
-            logging.error('Got unexpected NIGHT {hdr["NIGHT"]} for guide frame {fnum}.')
-        if self.expid != hdr['EXPID']:
-            logging.error('Got unexpected EXPID {hdr["EXPID"]} for guide frame {fnum}.')
-        logging.info(f'Processing guide frame {fnum} for {self.night}/{self.expid}.')
         # Loop over cameras with acquisition results.
         for camera, acquisition in self.acquisition_results.items():
             if camera not in self.guide_stars:
@@ -250,8 +253,9 @@ class ETC(object):
             if camera not in data:
                 logging.warning(f'Missing {camera} guide frame {fnum}.')
                 continue
-            if not self.preprocess_gfa(camera, data[camera]):
-                logging.error(f'Skipping {camera} guide frame {fnum} with bad data.')
+            if not self.process_camera_header(data[camera]['header'], f'{camera}[{fnum}]'):
+                continue
+            if not self.preprocess_gfa(camera, data[camera], f'{camera}[{fnum}]'):
                 continue
             # Lookup this camera's PSF model.
             psf = self.acquisition_results[camera]
@@ -270,67 +274,59 @@ class ETC(object):
                 # Calculate the corresponding fiber fraction for this star.
                 ffrac = np.sum(star['fiber'] * best_fit)
                 # Calculate the transparency as the ratio of measured / predicted electrons.
-                transp = flux / (star['nelec_rate'] * self.gfa_exptime)
-
-                logging.info(f'{camera}[{fnum},{istar}] dx={dx:.1f} dy={dy:.1f} ffrac={ffrac:.3f} transp={transp:.3f}')
-
+                transp = flux / (star['nelec_rate'] * self.exptime)
+                logging.debug(f'{camera}[{fnum},{istar}] dx={dx:.1f} dy={dy:.1f} ffrac={ffrac:.3f} transp={transp:.3f}')
+                nstar += 1
+            ncamera += 1
         # Update FWHM, FFRAC0,FFRAC,TRANSP
         # ...
         # Report timing.
         elapsed = time.time() - start
-        logging.info(f'Guide processing took {elapsed:.2f}s')
+        logging.info(f'Guide frame processing took {elapsed:.2f}s for {nstar} stars in {ncamera} cameras.')
         return True
 
     def process_sky(self, data):
         """Process a SKY frame.
         """
+        ncamera = 0
         start = time.time()
         fnum = self.num_sky_frames
         self.num_sky_frames += 1
-        if not self.process_top_header(data['header'], f'SKY[{fnum}]', update_ok=True):
+        if not self.process_top_header(data['header'], f'sky[{fnum}]'):
             return False
         logging.info(f'Processing sky frame {fnum} for {self.night}/{self.expid}.')
         for camera in self.SKY.sky_names:
             if camera not in data:
                 logging.warn(f'No {camera} image for frame {fnum}.')
                 continue
-            hdr = data[camera]['header']
-            if not self.process_camera_header(hdr, f'{camera}[{fnum}]'):
+            if not self.process_camera_header(data[camera]['header'], f'{camera}[{fnum}]'):
                 continue
             flux, dflux = self.SKY.setraw(data[camera]['data'], name=camera)
             flux /= self.exptime
             dflux /= self.exptime
-            logging.info(f'{camera}[{fnum}] flux = {flux:.2f} +/- {dflux:.2f}')
+            logging.debug(f'{camera}[{fnum}] flux = {flux:.2f} +/- {dflux:.2f}')
+            ncamera += 1
         # Update SKY
         # ...
         elapsed = time.time() - start
-        logging.info(f'Sky processing took {elapsed:.2f}s')
+        logging.info(f'Sky frame processing took {elapsed:.2f}s for {ncamera} cameras.')
         return True
 
-    def preprocess_gfa(self, camera, data, default_ccdtemp=10):
+    def preprocess_gfa(self, camera, data, source, default_ccdtemp=10):
         """Preprocess raw data for the specified GFA.
         Returns False with a log message in case of any problems.
-        Otherwise, gfa_mjd_obs and gfa_exptime attributes are
-        set and GFA.data contains the bias and temperature
-        corrected image data.
+        Otherwise, GFA.data and GFA.ivar are corrected for bias,
+        dark-current and and bad pixels.
         """
         hdr = data['header']
-        self.gfa_mjd_obs = hdr.get('MJD-OBS', None)
-        if self.gfa_mjd_obs is None or self.gfa_mjd_obs < 58484: # 1-1-2019
-            logging.error(f'Invalid {camera} MJD_OBS: {self.gfa_mjd_obs}.')
-            return False
-        self.gfa_exptime = hdr.get('EXPTIME', None)
-        if self.gfa_exptime is None or self.gfa_exptime <= 0:
-            logging.error(f'Invalid {camera} EXPTIME: {self.gfa_exptime}.')
-            return False
         ccdtemp = hdr.get('GCCDTEMP', None)
         if ccdtemp is None:
             ccdtemp = default_ccdtemp
-            logging.warning(f'Using default {camera} GCCDTEMP: {ccdtemp}C.')
+            logging.warning(f'Using default GCCDTEMP {ccdtemp}C for {source}')
         try:
             self.GFA.setraw(data['data'], name=camera)
         except ValueError as e:
-            logging.error(f'Failed to process {camera} raw data: {e}')
+            logging.error(f'Failed to process {source} raw data: {e}')
             return False
-        self.GFA.data -= self.GFA.get_dark_current(ccdtemp, self.gfa_exptime)
+        self.GFA.data -= self.GFA.get_dark_current(ccdtemp, self.exptime)
         return True
