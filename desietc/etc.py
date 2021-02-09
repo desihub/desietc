@@ -52,18 +52,72 @@ class ETC(object):
         self.psf_pixels = psf_pixels
         self.xdither, self.ydither = desietc.util.diskgrid(num_dither, max_dither, alpha=2)
         # Initialize analysis results.
+        self.night = None
+        self.expid = None
         self.num_guide_frames = 0
         self.num_sky_frames = 0
         self.acquisition_results = None
         self.guide_stars = None
+
+    def process_top_header(self, header, source, update_ok=False):
+        """Process the top-level header of an exposure.
+        The expected keywords are: NIGHT, EXPID.
+        Return True if it is possible to keep going, i.e. unless we get a
+        new value of NIGHT or EXPID and update_ok is False.
+        """
+        if 'NIGHT' not in header:
+            logging.error(f'Missing NIGHT keyword in {source}')
+        else:
+            night = header['NIGHT']
+            if night != self.night:
+                if update_ok:
+                    logging.info(f'Setting NIGHT {night} from {source}.')
+                    self.night = night
+                else:
+                    logging.error(f'Got NIGHT {night} from {source} but expected {self.night}.')
+                    return False
+        if 'EXPID' not in header:
+            logging.error(f'Missing EXPID keyword in {source}')
+        else:
+            expid = header['EXPID']
+            if expid != self.expid:
+                if update_ok:
+                    logging.info(f'Setting EXPID {expid} from {source}.')
+                    self.expid = expid
+                else:
+                    logging.error(f'Got EXPID {expid} from {source} but expected {self.expid}.')
+                    return False
+        return True
+
+    def process_camera_header(self, header, source):
+        """Check the header for a single camera.
+        The expected keywords are: MJD-OBS, EXPTIME.
+        Return True if it is possible to keep going, i.e. MJD-OBS and EXPTIME are both
+        present with reasonable values.
+        """
+        if 'MJD-OBS' not in header:
+            logging.error(f'Missing MJD-OBS keyword in {source}.')
+            return False
+        mjd_obs = header['MJD-OBS']
+        if mjd_obs is None or mjd_obs < 58484: # 1-1-2019
+            logging.error(f'Invalid MJD-OBS {mjd_obs} from {source}.')
+            return False
+        if 'EXPTIME' not in header:
+            logging.error(f'Missing EXPTIME keyword in {source}.')
+        exptime = header['EXPTIME']
+        if exptime is None or exptime <= 0:
+            logging.error(f'Invalid EXPTIME {exptime} from {source}.')
+            return False
+        self.mjd_obs = mjd_obs
+        self.exptime = exptime
+        return True
 
     def process_acquisition(self, data):
         """Process the initial GFA acquisition images.
         """
         start = time.time()
         hdr = data['header']
-        self.night = hdr['NIGHT']
-        self.expid = hdr['EXPID']
+        self.set_exp_info(hdr['NIGHT'], hdr['EXPID'], 'acquisition image')
         logging.info(f'Processing acquisition image for {self.night}/{self.expid}.')
         # Loop over cameras.
         self.acquisition_results = {}
@@ -175,6 +229,7 @@ class ETC(object):
         """
         start = time.time()
         fnum = self.num_guide_frames
+        self.num_guide_frames += 1
         if self.acquisition_results is None:
             logging.error('Received guide frame before acquisition image.')
             return False
@@ -221,7 +276,6 @@ class ETC(object):
 
         # Update FWHM, FFRAC0,FFRAC,TRANSP
         # ...
-        self.num_guide_frames += 1
         # Report timing.
         elapsed = time.time() - start
         logging.info(f'Guide processing took {elapsed:.2f}s')
@@ -232,11 +286,23 @@ class ETC(object):
         """
         start = time.time()
         fnum = self.num_sky_frames
+        self.num_sky_frames += 1
+        if not self.process_top_header(data['header'], f'SKY[{fnum}]', update_ok=True):
+            return False
         logging.info(f'Processing sky frame {fnum} for {self.night}/{self.expid}.')
-
+        for camera in self.SKY.sky_names:
+            if camera not in data:
+                logging.warn(f'No {camera} image for frame {fnum}.')
+                continue
+            hdr = data[camera]['header']
+            if not self.process_camera_header(hdr, f'{camera}[{fnum}]'):
+                continue
+            flux, dflux = self.SKY.setraw(data[camera]['data'], name=camera)
+            flux /= self.exptime
+            dflux /= self.exptime
+            logging.info(f'{camera}[{fnum}] flux = {flux:.2f} +/- {dflux:.2f}')
         # Update SKY
         # ...
-        self.num_sky_frames += 1
         elapsed = time.time() - start
         logging.info(f'Sky processing took {elapsed:.2f}s')
         return True
