@@ -14,7 +14,7 @@ import desietc.gfa
 import desietc.sky
 
 
-def replay_exposure(ETC, path, expid):
+def replay_exposure(ETC, path, expid, teff=1000, cutoff=10000, cosmic=500):
     """Recreate the online ETC processing of an exposure by replaying the
     FITS files stored to disk.
     """
@@ -27,12 +27,45 @@ def replay_exposure(ETC, path, expid):
     # What data is available for this exposure?
     gfa_path = exppath / f'guide-{exptag}.fits.fz'
     sky_path = exppath / f'sky-{exptag}.fits.fz'
+    desi_path = exppath / f'desi-{exptag}.fits.fz'
+    missing = 0
     if not gfa_path.exists():
         logging.error(f'Missing GFA data cube: {gfa_path}.')
-        return False
+        missing += 1
     if not sky_path.exists():
         logging.error(f'Missing SKY data cube: {sky_path}.')
+        missing += 1
+    if not desi_path.exists():
+        logging.error(f'Missing DESI exposure: {desi_path}.')
+        missing += 1
+    if missing > 0:
         return False
+    # Get the spectrograph info for this exposure.
+    desi_hdr = fitsio.read_header(str(desi_path), ext='SPEC')
+    missing = 0
+    for key in 'NIGHT', 'MJD-OBS', 'TILEID':
+        if key not in desi_hdr:
+            logging.error('DESI exposure missing {key}.')
+            missing += 1
+    if missing > 0:
+        return False
+    night = desi_hdr['NIGHT']
+    desi_mjd_obs = desi_hdr['MJD-OBS']
+    desi_tileid = desi_hdr['TILEID']
+    # Locate the fiberassign file for this tile.
+    fassign_path = exppath / f'fiberassign-{desi_tileid:06d}.fits'
+    if not fassign_path.exists():
+        logging.error(f'Missing fiberassign file: {fassign_path}.')
+        return False
+    # Read the fiberassign file.
+    fassign = fitsio.read(str(fassign_path), ext='FIBERASSIGN')
+    sel = (fassign['OBJTYPE'] == 'TGT')
+    ntarget = np.count_nonzero(sel)
+    median_Ebv = np.nanmedian(fassign[sel]['EBV'])
+    logging.info(f'Tile {desi_tileid} has {ntarget} targets with median(Ebv)={median_Ebv:.5f}.')
+    # Start the ETC tracking of this exposure.
+    ETC.start_exposure(night, expid, desi_mjd_obs, median_Ebv, teff, cutoff, cosmic)
+    return False
     # Get the SKY exposure info for the first available camera.
     sky_info = None
     with fitsio.FITS(str(sky_path)) as hdus:

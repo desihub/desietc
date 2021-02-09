@@ -330,3 +330,9 @@ class ETC(object):
             return False
         self.GFA.data -= self.GFA.get_dark_current(ccdtemp, self.exptime)
         return True
+
+    def start_exposure(self, night, expid, mjd_obs, Ebv, teff, cutoff, cosmic):
+        """
+        """
+        logging.info(f'Starting {night}/{expid} at {mjd_obs} with teff={teff:.0f}s, cutoff={cutoff:.0f}s, ' +
+            f'cosmic={cosmic:.0f}s, Ebv={Ebv:.2f}')
