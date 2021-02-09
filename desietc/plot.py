@@ -5,6 +5,12 @@ Requires that matplotlib is installed.
 import datetime
 import copy # for shallow copies of matplotlib colormaps
 
+try:
+    import DOSlib.logger as logging
+except ImportError:
+    # Fallback when we are not running as a DOS application.
+    import logging
+
 import numpy as np
 
 import matplotlib.pyplot as plt

@@ -1,4 +1,7 @@
 """Numerical utilities for the online exposure-time calculator.
+
+The general guideline for things implemented here is that they only use
+numpy/scipy and do not read/write any files or produce any logging output.
 """
 import numpy as np
 

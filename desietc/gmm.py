@@ -2,7 +2,11 @@
 
 Used to model the PSF from sources detected in GFA images.
 """
-import logging
+try:
+    import DOSlib.logger as logging
+except ImportError:
+    # Fallback when we are not running as a DOS application.
+    import logging
 
 import numpy as np
 

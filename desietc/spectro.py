@@ -1,7 +1,12 @@
 """Utility functions for accessing DESI spectra for ETC calculations.
 """
 import contextlib
-import logging
+
+try:
+    import DOSlib.logger as logging
+except ImportError:
+    # Fallback when we are not running as a DOS application.
+    import logging
 
 import numpy as np
 

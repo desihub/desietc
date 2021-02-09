@@ -1,6 +1,10 @@
 """Utilities to support offline reprocessing of exposures using the ETC online algorithms.
 """
-import logging
+try:
+    import DOSlib.logger as logging
+except ImportError:
+    # Fallback when we are not running as a DOS application.
+    import logging
 
 import numpy as np
 

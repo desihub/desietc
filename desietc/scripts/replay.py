@@ -19,9 +19,14 @@ import traceback
 import argparse
 import warnings
 import glob
-import logging
 import multiprocessing
 from pathlib import Path
+
+try:
+    import DOSlib.logger as logging
+except ImportError:
+    # Fallback when we are not running as a DOS application.
+    import logging
 
 import numpy as np
 

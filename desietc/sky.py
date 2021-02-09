@@ -1,7 +1,12 @@
 """Analyze images captured by the DESI Sky Cameras for the online ETC.
 """
 import collections
-import logging
+
+try:
+    import DOSlib.logger as logging
+except ImportError:
+    # Fallback when we are not running as a DOS application.
+    import logging
 
 import numpy as np
 

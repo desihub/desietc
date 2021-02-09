@@ -1,7 +1,12 @@
 """Analyze images captured by the DESI GFA cameras for the online ETC.
 """
-import logging
 import json
+
+try:
+    import DOSlib.logger as logging
+except ImportError:
+    # Fallback when we are not running as a DOS application.
+    import logging
 
 import numpy as np
 

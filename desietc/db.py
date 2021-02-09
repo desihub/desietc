@@ -8,8 +8,13 @@ are installed (for a direct connection), or else that requests is installed
 import collections
 import datetime
 import os.path
-import logging
 import io
+
+try:
+    import DOSlib.logger as logging
+except ImportError:
+    # Fallback when we are not running as a DOS application.
+    import logging
 
 import numpy as np
 
