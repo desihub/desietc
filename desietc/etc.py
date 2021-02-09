@@ -52,6 +52,8 @@ class ETC(object):
         self.psf_pixels = psf_pixels
         self.xdither, self.ydither = desietc.util.diskgrid(num_dither, max_dither, alpha=2)
         # Initialize analysis results.
+        self.num_guide_frames = 0
+        self.num_sky_frames = 0
         self.acquisition_results = None
         self.guide_stars = None
 
@@ -139,7 +141,7 @@ class ETC(object):
                 rmag = mag[i]
                 # Convert flux to predicted detected electrons per second in the
                 # GFA filter with nominal zenith atmospheric transmission.
-                nelec_rate = 10 ** (-(mag[sel] - zeropoint) / 2.5)
+                nelec_rate = 10 ** (-(mag[i] - zeropoint) / 2.5)
                 # Prepare slices to extract this star in each guide frame.
                 iy, ix = np.round(y0).astype(int), np.round(x0).astype(int)
                 ylo, yhi = iy - halfsize, iy + halfsize + 1
@@ -199,10 +201,10 @@ class ETC(object):
             # Lookup this camera's PSF model.
             psf = self.acquisition_results[camera]
             # Loop over guide stars for this camera.
-            for star in self.guide_stars[camera]:
+            for istar, star in enumerate(self.guide_stars[camera]):
                 # Extract the postage stamp for this star.
-                D = self.GFA.data[star['yslice'], star['xslice']]
-                DW = self.GFA.ivar[star['yslice'], star['xslice']]
+                D = self.GFA.data[0, star['xslice'], star['yslice']]
+                DW = self.GFA.ivar[0, star['xslice'], star['yslice']]
                 # Estimate the actual centroid in pixels, flux in electrons and
                 # constant background level in electrons / pixel.
                 dx, dy, flux, bg, nll, best_fit = self.GMM.fit_dithered(
@@ -214,6 +216,8 @@ class ETC(object):
                 ffrac = np.sum(star['fiber'] * best_fit)
                 # Calculate the transparency as the ratio of measured / predicted electrons.
                 transp = flux / (star['nelec_rate'] * self.gfa_exptime)
+
+                logging.info(f'{camera}[{fnum},{istar}] dx={dx:.1f} dy={dy:.1f} ffrac={ffrac:.3f} transp={transp:.3f}')
 
         # Update FWHM, FFRAC0,FFRAC,TRANSP
         # ...
