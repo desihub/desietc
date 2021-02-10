@@ -364,6 +364,66 @@ class ETC(object):
         self.GFA.data -= self.GFA.get_dark_current(ccdtemp, self.exptime)
         return True
 
+    def get_accumulated_teff(self, mjd_start, mjd_stop,
+                             MW_transparency=1, sky_default=1, gfa_default=1, max_ngrid=10000):
+        """
+        """
+        if mjd_stop <= mjd_start:
+            logging.warn('get_accumulated_teff called with mjd_stop <= mjd_start.')
+            return 0
+        # Build a grid with ~1 sec resolution covering (mjd_start, mjd_stop).
+        ngrid = min(max_ngrid, int(np.ceil((mjd_stop - mjd_start) * 86400)))
+        if ngrid == max_ngrid:
+            logging.warn('get_accumulated_teff reached max_ngrid.')
+        mjd_grid = np.linspace(mjd_start, mjd_stop, ngrid + 1)
+        # Lookup rate measurements covering this MJD window, extending one measurement
+        # above and below the window if possible.
+        first = last = len(self.rate_history)
+        while first > 0:
+            first -= 1
+            if self.rate_history[first].mjd_start > mjd_stop:
+                last -= 1
+            if self.rate_history[first].mjd_stop <= mjd_start:
+                break
+        # Extract the sky (background) rates to use.
+        sky_mjd = np.array([
+            0.5 * (self.rate_history[i].mjd_start + self.rate_history[i].mjd_stop)
+            for i in range(first, last + 1)
+            if self.rate_history[i].type == 'sky'])
+        sky_rate = np.array([
+            self.rate_history[i].value
+            for i in range(first, last + 1)
+            if self.rate_history[i].type == 'sky'])
+        # Extract the gfa (signal) rates to use.
+        gfa_mjd = np.array([
+            0.5 * (self.rate_history[i].mjd_start + self.rate_history[i].mjd_stop)
+            for i in range(first, last + 1)
+            if self.rate_history[i].type == 'gfa'])
+        gfa_rate = np.array([
+            self.rate_history[i].value
+            for i in range(first, last + 1)
+            if self.rate_history[i].type == 'gfa'])
+        # Interpolate the sky and gfa rates linearly to the grid and calculate the mean.
+        # Use constant extrapolation if necessary.
+        if len(sky_rate) > 0:
+            sky_rate_grid = np.interp(mjd_grid, sky_mjd, sky_rate, left=sky_rate[0], right=sky_rate[-1])
+            mean_sky_rate = np.mean(sky_rate_grid)
+        else:
+            logging.warn(f'Using default SKY rate = {sky_default}.')
+            mean_sky_rate = sky_default
+        if len(gfa_rate) > 0:
+            gfa_rate_grid = np.interp(mjd_grid, sky_mjd, sky_rate, left=sky_rate[0], right=sky_rate[-1])
+            mean_gfa_rate = np.mean(gfa_rate_grid)
+        else:
+            logging.warn(f'Using default GFA rate = {gfa_default}.')
+            mean_gfa_rate = gfa_default
+        # Calculate the accumulated effective exposure time in seconds.
+        treal = (mjd_stop - mjd_start) * 86400
+        teff = treal / mean_sky_rate * (MW_transparency * mean_gfa_rate) ** 2
+        logging.info(f'Calculated treal={treal:.1f}s, teff={teff:.1f}s using ' +
+            f'sky={mean_sky_rate:.3f}, gfa={mean_gfa_rate:.3f}, MW={MW_transparency:.3f}.')
+        return teff
+
     def start_exposure(self, night, expid, mjd, Ebv, teff, cutoff, cosmic):
         """
         """
@@ -379,4 +439,4 @@ class ETC(object):
     def save_exposure(self):
         """
         """
-        print(self.rate_history)
+        self.get_accumulated_teff(self.mjd_start + 100 / 86400, self.mjd_start + 300 / 86400)
