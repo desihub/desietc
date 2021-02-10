@@ -1,7 +1,7 @@
 """The top-level ETC algorithm.
 """
 import time
-import pathlib
+import collections
 
 try:
     import DOSlib.logger as logging
@@ -18,13 +18,14 @@ import desietc.gfa
 import desietc.gmm
 import desietc.util
 
-# TODO:
-#  - implement setter/getter for current FWHM,FFRAC0,FFRAC,TRANSP
+
+Rate = collections.namedtuple('Rate', ['type', 'mjd_start', 'mjd_stop', 'value', 'error'])
 
 
 class ETC(object):
 
-    def __init__(self, sky_calib, gfa_calib, psf_pixels=25, max_dither=7, num_dither=1200):
+    def __init__(self, sky_calib, gfa_calib, psf_pixels=25, max_dither=7, num_dither=1200,
+                 Ebv_coef=1.0):
         """Initialize once per session.
 
         Parameters
@@ -40,7 +41,11 @@ class ETC(object):
         num_dither : int
             Number of (x,y) dithers to use, extending out to max_dither with
             decreasing density.
+        Ebv_coef : float
+            Coefficient to use for converting Ebv into an equivalent MW
+            transparency via 10 ** (-coef * Ebv / 2.5)
         """
+        self.Ebv_coef = Ebv_coef
         # Initialize SKY and GFA camera processors.
         self.SKY = desietc.sky.SkyCamera(calib_name=sky_calib)
         self.GFA = desietc.gfa.GFACamera(calib_name=gfa_calib)
@@ -58,6 +63,8 @@ class ETC(object):
         self.num_sky_frames = 0
         self.acquisition_results = None
         self.guide_stars = None
+        # Initialize a fixed-length deque of signal- and sky-rate measurements.
+        self.rate_history = collections.deque(maxlen=1024)
 
     def process_top_header(self, header, source, update_ok=False):
         """Process the top-level header of an exposure.
@@ -292,25 +299,51 @@ class ETC(object):
         start = time.time()
         fnum = self.num_sky_frames
         self.num_sky_frames += 1
-        if not self.process_top_header(data['header'], f'sky[{fnum}]'):
+        if not self.process_top_header(data['header'], f'sky[{fnum}]', update_ok=True):
             return False
         logging.info(f'Processing sky frame {fnum} for {self.night}/{self.expid}.')
+        flux, ivar = 0, 0
+        mjd_obs, exptime = [], []
         for camera in self.SKY.sky_names:
             if camera not in data:
                 logging.warn(f'No {camera} image for frame {fnum}.')
                 continue
             if not self.process_camera_header(data[camera]['header'], f'{camera}[{fnum}]'):
                 continue
-            flux, dflux = self.SKY.setraw(data[camera]['data'], name=camera)
-            flux /= self.exptime
-            dflux /= self.exptime
-            logging.debug(f'{camera}[{fnum}] flux = {flux:.2f} +/- {dflux:.2f}')
+            camera_flux, camera_dflux = self.SKY.setraw(data[camera]['data'], name=camera)
+            camera_flux /= self.exptime
+            camera_dflux /= self.exptime
+            logging.debug(f'{camera}[{fnum}] flux = {camera_flux:.2f} +/- {camera_dflux:.2f}')
+            camera_ivar = 1 / camera_dflux ** 2
+            flux += camera_ivar * camera_flux
+            ivar += camera_ivar
+            mjd_obs.append(self.mjd_obs)
+            exptime.append(self.exptime)
             ncamera += 1
-        # Update SKY
-        # ...
+        # Calculate the weighted average sky flux over all cameras.
+        flux /= ivar
+        dflux = ivar ** -0.5
+        logging.info(f'Sky flux = {flux:.2f} +/- {dflux:.2f}.')
+        # Record this measurement.
+        mjd_start, mjd_stop = self.get_mjd_range(mjd_obs, exptime, f'sky[{fnum}]')
+        self.rate_history.append(Rate('sky', mjd_start, mjd_stop, flux, dflux))
+        # Profile timing.
         elapsed = time.time() - start
         logging.info(f'Sky frame processing took {elapsed:.2f}s for {ncamera} cameras.')
         return True
+
+    def get_mjd_range(self, mjd_obs, exptime, source, max_jitter=5):
+        mjd_obs = np.asarray(mjd_obs)
+        mjd_obs_all = np.nanmean(mjd_obs)
+        if np.any(np.abs(mjd_obs - mjd_obs_all) * 86400 > max_jitter):
+            logging.warn(f'MJD_OBS jitter exceeds {max_jitter}s for {source}.')
+            mjd_obs_all = np.nanmedian(mjd_obs)
+        exptime = np.asarray(exptime)
+        exptime_all = np.nanmean(exptime)
+        if np.any(np.abs(exptime - exptime_all) * 86400 > max_jitter):
+            logging.warn(f'EXPTIME jitter exceeds {max_jitter}s for {source}.')
+            exptime_all = np.nanmedian(exptime)
+        return (mjd_obs_all, mjd_obs_all + exptime_all / 86400)
 
     def preprocess_gfa(self, camera, data, source, default_ccdtemp=10):
         """Preprocess raw data for the specified GFA.
@@ -331,8 +364,19 @@ class ETC(object):
         self.GFA.data -= self.GFA.get_dark_current(ccdtemp, self.exptime)
         return True
 
-    def start_exposure(self, night, expid, mjd_obs, Ebv, teff, cutoff, cosmic):
+    def start_exposure(self, night, expid, mjd, Ebv, teff, cutoff, cosmic):
         """
         """
-        logging.info(f'Starting {night}/{expid} at {mjd_obs} with teff={teff:.0f}s, cutoff={cutoff:.0f}s, ' +
+        logging.info(f'Starting {night}/{expid} at {mjd} with teff={teff:.0f}s, cutoff={cutoff:.0f}s, ' +
             f'cosmic={cosmic:.0f}s, Ebv={Ebv:.2f}')
+        self.mjd_start = mjd
+        self.teff_target = teff
+        self.cutoff = cutoff
+        self.cosmic = cosmic
+        self.Ebv = Ebv
+        self.MW_transparency = 10 ** (-self.Ebv_coef * self.Ebv / 2.5)
+
+    def save_exposure(self):
+        """
+        """
+        print(self.rate_history)

@@ -65,7 +65,6 @@ def replay_exposure(ETC, path, expid, teff=1000, cutoff=10000, cosmic=500):
     logging.info(f'Tile {desi_tileid} has {ntarget} targets with median(Ebv)={median_Ebv:.5f}.')
     # Start the ETC tracking of this exposure.
     ETC.start_exposure(night, expid, desi_mjd_obs, median_Ebv, teff, cutoff, cosmic)
-    return False
     # Get the SKY exposure info for the first available camera.
     sky_info = None
     with fitsio.FITS(str(sky_path)) as hdus:
@@ -110,6 +109,9 @@ def replay_exposure(ETC, path, expid, teff=1000, cutoff=10000, cosmic=500):
     for frame in frames:
         logging.debug(f'Replaying frame: {frame}')
         if frame['typ'] == 'gfa':
+
+            continue
+
             data = fits_to_online(gfa_path, ETC.GFA.guide_names, frame['num'])
             if frame['num'] == 0:
                 # Process the acquisition image.
@@ -122,6 +124,8 @@ def replay_exposure(ETC, path, expid, teff=1000, cutoff=10000, cosmic=500):
         else: # SKY
             data = fits_to_online(sky_path, ETC.SKY.sky_names, frame['num'])
             ETC.process_sky(data)
+
+    ETC.save_exposure()
     return True
 
 
