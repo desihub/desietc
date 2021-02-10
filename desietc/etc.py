@@ -18,6 +18,14 @@ import desietc.gfa
 import desietc.gmm
 import desietc.util
 
+# TODO:
+# - calculate transp, ffrac from acquisition image
+# - update teff after each GFA/SKY update
+# - estimate GFA thru errors?
+# - implement save_exposure()
+# - implement cutoff time logic
+# - implement cosmic split logic
+# - using multiprocessing for acquisition image analysis
 
 Rate = collections.namedtuple('Rate', ['type', 'mjd_start', 'mjd_stop', 'value', 'error'])
 
