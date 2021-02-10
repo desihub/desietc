@@ -253,6 +253,7 @@ class ETC(object):
             logging.error('Ignoring guide frame before guide stars.')
             return False
         # Loop over cameras with acquisition results.
+        mjd_obs, exptime, camera_transp, camera_ffrac = [], [], [], []
         for camera, acquisition in self.acquisition_results.items():
             if camera not in self.guide_stars:
                 loggining.info(f'Skipping {camera} guide frame {fnum} with no guide stars.')
@@ -267,6 +268,7 @@ class ETC(object):
             # Lookup this camera's PSF model.
             psf = self.acquisition_results[camera]
             # Loop over guide stars for this camera.
+            star_ffrac, star_transp = [], []
             for istar, star in enumerate(self.guide_stars[camera]):
                 # Extract the postage stamp for this star.
                 D = self.GFA.data[0, star['xslice'], star['yslice']]
@@ -283,13 +285,25 @@ class ETC(object):
                 # Calculate the transparency as the ratio of measured / predicted electrons.
                 transp = flux / (star['nelec_rate'] * self.exptime)
                 logging.debug(f'{camera}[{fnum},{istar}] dx={dx:.1f} dy={dy:.1f} ffrac={ffrac:.3f} transp={transp:.3f}')
+                star_transp.append(transp)
+                star_ffrac.append(ffrac)
                 nstar += 1
+            camera_transp.append(np.nanmedian(star_transp))
+            camera_ffrac.append(np.nanmedian(star_ffrac))
+            mjd_obs.append(self.mjd_obs)
+            exptime.append(self.exptime)
             ncamera += 1
-        # Update FWHM, FFRAC0,FFRAC,TRANSP
-        # ...
+        # Combine all cameras.
+        transp = np.nanmedian(camera_transp)
+        ffrac = np.nanmedian(camera_ffrac)
+        thru = transp * ffrac
+        logging.info(f'Guide transp={transp:.3f}, ffrac={ffrac:.3f}, thru={thru:.3f}.')
+        # Record this measurement.
+        mjd_start, mjd_stop = self.get_mjd_range(mjd_obs, exptime, f'guide[{fnum}]')
+        self.rate_history.append(Rate('gfa', mjd_start, mjd_stop, thru, 0))
         # Report timing.
         elapsed = time.time() - start
-        logging.info(f'Guide frame processing took {elapsed:.2f}s for {nstar} stars in {ncamera} cameras.')
+        logging.debug(f'Guide frame processing took {elapsed:.2f}s for {nstar} stars in {ncamera} cameras.')
         return True
 
     def process_sky(self, data):
@@ -323,13 +337,13 @@ class ETC(object):
         # Calculate the weighted average sky flux over all cameras.
         flux /= ivar
         dflux = ivar ** -0.5
-        logging.info(f'Sky flux = {flux:.2f} +/- {dflux:.2f}.')
+        logging.info(f'SKY flux = {flux:.2f} +/- {dflux:.2f}.')
         # Record this measurement.
         mjd_start, mjd_stop = self.get_mjd_range(mjd_obs, exptime, f'sky[{fnum}]')
         self.rate_history.append(Rate('sky', mjd_start, mjd_stop, flux, dflux))
         # Profile timing.
         elapsed = time.time() - start
-        logging.info(f'Sky frame processing took {elapsed:.2f}s for {ncamera} cameras.')
+        logging.debug(f'Sky frame processing took {elapsed:.2f}s for {ncamera} cameras.')
         return True
 
     def get_mjd_range(self, mjd_obs, exptime, source, max_jitter=5):
@@ -412,7 +426,7 @@ class ETC(object):
             logging.warn(f'Using default SKY rate = {sky_default}.')
             mean_sky_rate = sky_default
         if len(gfa_rate) > 0:
-            gfa_rate_grid = np.interp(mjd_grid, sky_mjd, sky_rate, left=sky_rate[0], right=sky_rate[-1])
+            gfa_rate_grid = np.interp(mjd_grid, gfa_mjd, gfa_rate, left=gfa_rate[0], right=gfa_rate[-1])
             mean_gfa_rate = np.mean(gfa_rate_grid)
         else:
             logging.warn(f'Using default GFA rate = {gfa_default}.')
@@ -439,4 +453,4 @@ class ETC(object):
     def save_exposure(self):
         """
         """
-        self.get_accumulated_teff(self.mjd_start + 100 / 86400, self.mjd_start + 300 / 86400)
+        pass

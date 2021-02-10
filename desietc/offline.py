@@ -43,7 +43,7 @@ def replay_exposure(ETC, path, expid, teff=1000, cutoff=10000, cosmic=500):
     # Get the spectrograph info for this exposure.
     desi_hdr = fitsio.read_header(str(desi_path), ext='SPEC')
     missing = 0
-    for key in 'NIGHT', 'MJD-OBS', 'TILEID':
+    for key in 'NIGHT', 'MJD-OBS', 'TILEID', 'EXPTIME':
         if key not in desi_hdr:
             logging.error('DESI exposure missing {key}.')
             missing += 1
@@ -51,6 +51,7 @@ def replay_exposure(ETC, path, expid, teff=1000, cutoff=10000, cosmic=500):
         return False
     night = desi_hdr['NIGHT']
     desi_mjd_obs = desi_hdr['MJD-OBS']
+    desi_exptime = desi_hdr['EXPTIME']
     desi_tileid = desi_hdr['TILEID']
     # Locate the fiberassign file for this tile.
     fassign_path = exppath / f'fiberassign-{desi_tileid:06d}.fits'
@@ -109,9 +110,6 @@ def replay_exposure(ETC, path, expid, teff=1000, cutoff=10000, cosmic=500):
     for frame in frames:
         logging.debug(f'Replaying frame: {frame}')
         if frame['typ'] == 'gfa':
-
-            continue
-
             data = fits_to_online(gfa_path, ETC.GFA.guide_names, frame['num'])
             if frame['num'] == 0:
                 # Process the acquisition image.
@@ -124,6 +122,9 @@ def replay_exposure(ETC, path, expid, teff=1000, cutoff=10000, cosmic=500):
         else: # SKY
             data = fits_to_online(sky_path, ETC.SKY.sky_names, frame['num'])
             ETC.process_sky(data)
+
+    teff = ETC.get_accumulated_teff(
+        ETC.mjd_start, ETC.mjd_start + desi_exptime / 86400, ETC.MW_transparency)
 
     ETC.save_exposure()
     return True
