@@ -670,3 +670,83 @@ class CenteredStamp(object):
         yslice = slice(iy, iy + self.inset_size)
         xslice = slice(ix, ix + self.inset_size)
         return yslice, xslice
+
+
+class MeasurementBuffer(object):
+    """Manage a circular buffer of measurements consisting of a time interval, value and error.
+    """
+    SECS_PER_DAY = 86400
+
+    def __init__(self, maxlen):
+        self.oldest = None
+        self.len = 0
+        self.full = False
+        self._entries = np.empty(shape=maxlen, dtype=[
+            ('mjd1', np.float64), ('mjd2', np.float64), ('value', np.float32), ('error', np.float32)])
+
+    @property
+    def entries(self):
+        return self._entries[:self.len]
+
+    def __str__(self):
+        return f'{self.__class__.__name__}(len={self.len}, full={self.full}, oldest={self.oldest})'
+
+    def add(self, mjd, exptime, value, error):
+        """Add a single measurement.
+
+        We make no assumption that measurements are non-overlapping or added in time order.
+        """
+        assert exptime > 0 and error > 0
+        is_oldest = (self.oldest is None) or (mjd < self._entries[self.oldest]['mjd1'])
+        if self.full:
+            assert self.oldest is not None
+            if is_oldest:
+                # Ignore this since it is older than all existing entries.
+                return
+            self._entries[self.oldest] = (mjd, mjd + exptime / self.SECS_PER_DAY, value, error)
+            # Update the index of the oldest entry, which might be us.
+            self.oldest = np.argmin(self.entries['mjd1'])
+        else:
+            idx = self.len
+            if is_oldest:
+                # This is now the oldest entry.
+                self.oldest = idx
+            self.len += 1
+            self.full = (self.len == self._entries.size)
+            self._entries[idx] = (mjd, mjd + exptime / 86400, value, error)
+
+    def inside(self, mjd1, mjd2):
+        """Return a mask for entries whose intervals overlap [mjd1, mjd2].
+        """
+        assert mjd1 <= mjd2
+        return (self.entries['mjd2'] > mjd1) & (self.entries['mjd1'] < mjd2)
+
+    def sample(self, mjd_grid, default_value, padding=300):
+        """Sample measurements to mjd_grid using linear interpolation.
+
+        Use measurements that lie outside the grid up to padding seconds.
+        Return default_value when no measurements are available.
+        Use constant extrapolation of the first/last measurement if necessary.
+        """
+        # Select measurements that span the padded input grid.
+        lo = mjd_grid[0] - padding / self.SECS_PER_DAY
+        hi = mjd_grid[-1] + padding / self.SECS_PER_DAY
+        sel = self.inside(lo, hi)
+        if not np.any(sel):
+            return np.full_like(mjd_grid, default_value)
+        # Use linear interpolation with constant extrapolation beyond the endpoints.
+        mjd_sel = 0.5 * (self.entries[sel]['mjd1'] + self.entries[sel]['mjd2'])
+        value_sel = self.entries[sel]['value']
+        iorder = np.argsort(mjd_sel)
+        return np.interp(mjd_grid, mjd_sel[iorder], value_sel[iorder])
+
+    def trend(self, mjd1, mjd2, default_trend):
+        """Return the linear trend in values over (mjd1, mjd2).
+        For now, this returns a weighted average with zero slope.
+        """
+        sel = self.inside(mjd1, mjd2)
+        if not np.any(sel):
+            return default_trend
+        wgt = self.entries[sel]['error'] ** -0.5
+        val = self.entries[sel]['value']
+        return np.sum(wgt * val) / np.sum(wgt), 0
