@@ -308,7 +308,8 @@ class ETC(object):
         logging.info(f'Guide transp={transp:.3f}, ffrac={ffrac:.3f}, thru={thru:.3f}.')
         # Record this measurement.
         mjd_start, mjd_stop = self.get_mjd_range(mjd_obs, exptime, f'guide[{fnum}]')
-        self.thru_measurements.add(mjd_start, mjd_stop, thru, 0.1)
+        # Use constant error until we have a proper estimate.
+        self.thru_measurements.add(mjd_start, mjd_stop, thru, 0.01)
         # Report timing.
         elapsed = time.time() - start
         logging.debug(f'Guide frame processing took {elapsed:.2f}s for {nstar} stars in {ncamera} cameras.')

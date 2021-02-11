@@ -121,9 +121,6 @@ def replay_exposure(ETC, path, expid, outpath, teff=1000, cutoff=10000, cosmic=5
     for frame in frames:
         logging.debug(f'Replaying frame: {frame}')
         if frame['typ'] == 'gfa':
-
-            continue
-
             data = fits_to_online(gfa_path, ETC.GFA.guide_names, frame['num'])
             if frame['num'] == 0:
                 # Process the acquisition image.

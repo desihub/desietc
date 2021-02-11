@@ -433,7 +433,7 @@ def plot_measurements(buffer, mjd1, mjd2, ymin=0, label=None, ax=None):
         dx = 0.5 * (buffer.entries['mjd2'][sel] - buffer.entries['mjd1'][sel])
         y = buffer.entries['value'][sel]
         dy = buffer.entries['error'][sel]
-        ax.errorbar(minutes(x), y, xerr=dx * 720, yerr=dy, fmt='.', color=color, ms=5)
+        ax.errorbar(minutes(x), y, xerr=dx * 720, yerr=dy, fmt='.', color=color, ms=2, lw=1)
     # Draw the linear interpolation through the selected points.
     x_grid, y_grid = buffer.sample(mjd1, mjd2)
     ax.fill_between(minutes(x_grid), ymin, y_grid, color='b', lw=0, alpha=0.2)
@@ -441,7 +441,7 @@ def plot_measurements(buffer, mjd1, mjd2, ymin=0, label=None, ax=None):
     sel = buffer.inside(mjd2 - buffer.recent, mjd2)
     x = 0.5 * (buffer.entries['mjd1'][sel] + buffer.entries['mjd2'][sel])
     y = buffer.entries['value'][sel]
-    ax.plot(minutes(x), y, 'r.', ms=10, zorder=10)
+    ax.plot(minutes(x), y, 'r.', ms=4, zorder=10)
     # Extrapolate the trend.
     offset, slope = buffer.trend(mjd2)
     trend = lambda mjd: offset + slope * np.asarray(mjd)
