@@ -14,7 +14,8 @@ import desietc.gfa
 import desietc.sky
 
 
-def replay_exposure(ETC, path, expid, teff=1000, cutoff=10000, cosmic=500, dry_run=False):
+def replay_exposure(ETC, path, expid, outpath, teff=1000, cutoff=10000, cosmic=500,
+                    overwrite=False, dry_run=False):
     """Recreate the online ETC processing of an exposure by replaying the
     FITS files stored to disk.
     """
@@ -67,6 +68,10 @@ def replay_exposure(ETC, path, expid, teff=1000, cutoff=10000, cosmic=500, dry_r
     # If this is a dry run, stop now.
     if dry_run:
         return True
+    # If the output directory exists, can we overwrite its contents?
+    exppath_out = outpath / exptag
+    if not overwrite and exppath_out.exists():
+        return False
     # Start the ETC tracking of this exposure.
     ETC.start_exposure(night, expid, desi_mjd_obs, median_Ebv, teff, cutoff, cosmic)
     # Get the SKY exposure info for the first available camera.
@@ -132,7 +137,7 @@ def replay_exposure(ETC, path, expid, teff=1000, cutoff=10000, cosmic=500, dry_r
     teff = ETC.get_accumulated_teff(
         ETC.mjd_start, ETC.mjd_start + desi_exptime / 86400, ETC.MW_transparency)
 
-    ETC.save_exposure()
+    ETC.save_exposure(exppath_out)
     return True
 
 

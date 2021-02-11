@@ -145,6 +145,15 @@ def etcoffline(args):
         args.sky_calib, args.gfa_calib, args.psf_pixels,
         args.max_dither, args.num_dither, args.Ebv_coef)
 
+    nprocessed = 0
+    def process(expid):
+        nonlocal nprocessed
+        success = desietc.offline.replay_exposure(
+            ETC, nightpath, expid,
+            outpath=args.outpath, dry_run=args.dry_run, overwrite=args.overwrite)
+        if success:
+            nprocessed += 1
+
     if args.expid is not None:
         exposures = set()
         # Loop over comma-separated tokens.
@@ -159,7 +168,7 @@ def etcoffline(args):
                 print('Invalid --expid (should be N or N1-N2): "{0}"'.format(args.expid))
                 sys.exit(-1)
             for expid in range(start, stop):
-                desietc.offline.replay_exposure(ETC, nightpath, expid, dry_run=args.dry_run)
+                process(expid)
 
     expid_pattern = re.compile('^[0-9]{8}$')
     get_exposures = lambda: set([
@@ -170,7 +179,7 @@ def etcoffline(args):
         existing = get_exposures()
         if args.batch:
             for expid in sorted(existing):
-                desietc.offline.replay_exposure(ETC, nightpath, expid, dry_run=args.dry_run)
+                process(expid)
         if args.watch:
             logging.info('Watching for new exposures...hit ^C to exit')
             try:
@@ -178,11 +187,13 @@ def etcoffline(args):
                     time.sleep(args.watch_interval)
                     newexp = get_exposures() - existing
                     for expid in sorted(newexp):
-                        desietc.offline.replay_exposure(ETC, nightpath, expid, dry_run=args.dry_run)
+                        process(expid)
                     existing |= newexp
             except KeyboardInterrupt:
                 logging.info('Bye.')
                 pass
+
+    logging.info(f'Processed {nprocessed} exposures.')
 
 
 def main():
@@ -216,14 +227,14 @@ def main():
         help='Coefficient to use for MW extinction')
     parser.add_argument('--dry-run', action='store_true',
         help='Check FITS file names and headers with no ETC processing')
-    parser.add_argument('--overwrite', action='store_true',
-        help='Overwrite existing outputs')
     parser.add_argument('--inpath', type=str, metavar='PATH',
         help='Path where raw data is organized under YYYYMMDD directories')
-    parser.add_argument('--outpath', type=str, metavar='PATH',
-        help='Path where outputs willl be organized under YYYYMMDD directories')
     parser.add_argument('--checkpath', type=str, metavar='PATH',
         help='Optional path where links are created to indicate a complete exposure')
+    parser.add_argument('--outpath', type=str, metavar='PATH',
+        help='Path where outputs willl be organized under YYYYMMDD directories')
+    parser.add_argument('--overwrite', action='store_true',
+        help='Overwrite existing outputs')
     parser.add_argument('--gfa-calib', type=str, metavar='PATH',
         help='Path to GFA calibration FITS file to use')
     parser.add_argument('--sky-calib', type=str, metavar='PATH',

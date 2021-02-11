@@ -414,7 +414,7 @@ class ETC(object):
         self.Ebv = Ebv
         self.MW_transparency = 10 ** (-self.Ebv_coef * self.Ebv / 2.5)
 
-    def save_exposure(self):
+    def save_exposure(self, path):
         """
         """
-        pass
+        logging.info(f'Saving ETC outputs for {self.night}/{self.expid} to {path}')
