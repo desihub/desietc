@@ -294,8 +294,8 @@ class ETC(object):
             star_ffrac, star_transp = [], []
             for istar, star in enumerate(self.guide_stars[camera]):
                 # Extract the postage stamp for this star.
-                D = thisGFA.data[0, star['xslice'], star['yslice']]
-                DW = thisGFA.ivar[0, star['xslice'], star['yslice']]
+                D = thisGFA.data[star['xslice'], star['yslice']]
+                DW = thisGFA.ivar[star['xslice'], star['yslice']]
                 # Estimate the actual centroid in pixels, flux in electrons and
                 # constant background level in electrons / pixel.
                 dx, dy, flux, bg, nll, best_fit = self.GMM.fit_dithered(

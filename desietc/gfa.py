@@ -107,10 +107,10 @@ class GFACamera(object):
     nscan=50
     nxby2 = nampx + 2 * nscan
     quad = {
-        'E': (slice(None), slice(None, nampy), slice(None, nampx)), # bottom left
-        'H': (slice(None), slice(nampy, None), slice(None, nampx)), # top left
-        'F': (slice(None), slice(None, nampy), slice(nampx, None)), # bottom left
-        'G': (slice(None), slice(nampy, None), slice(nampx, None)), # top left
+        'E': (slice(None, nampy), slice(None, nampx)), # bottom left
+        'H': (slice(nampy, None), slice(None, nampx)), # top left
+        'F': (slice(None, nampy), slice(nampx, None)), # bottom left
+        'G': (slice(nampy, None), slice(nampx, None)), # top left
     }
 
     lab_data = None
@@ -124,13 +124,13 @@ class GFACamera(object):
         """
         self.nrowtrim = nrowtrim
         self.maxdelta = maxdelta
-        self.data = None
+        # Allocate memory to use internally.
+        self.data = np.zeros((2 * self.nampy, 2 * self.nampx), np.float32)
+        self.ivar = np.zeros((2 * self.nampy, 2 * self.nampx), np.float32)
         # Load the class-level calib data if necessary.
         if GFACamera.calib_data is None:
             (GFACamera.calib_data, GFACamera.master_zero,
              GFACamera.master_dark, GFACamera.pixel_mask) = load_calib_data(calib_name)
-        # We have no exposures loaded yet.
-        self.nexp = 0
         # We have no centering algorithms initialized yet.
         self.psf_centering = None
         self.donut_centering = None
@@ -177,61 +177,54 @@ class GFACamera(object):
             apply_gain : bool
                 Convert from ADU to electrons using the gain specified for this camera.
         """
-        if raw.ndim not in (2, 3):
-            raise ValueError('raw data must be 2D or 3D.')
+        if raw.ndim != 2:
+            raise ValueError('raw data must be 2D.')
         raw_shape = (2 * self.nampy, 2 * self.nampx + 4 * self.nscan)
-        if raw.shape[-2:] != raw_shape:
-            raise ValueError('raw data has dimensions {0} but expected {1}.'.format(raw.shape[-2:], raw_shape))
-        if raw.ndim == 2:
-            raw = raw.reshape((1,) + raw_shape)
-        self.nexp, ny, nx = raw.shape
+        if raw.shape != raw_shape:
+            raise ValueError('raw data has dimensions {0} but expected {1}.'.format(raw.shape, raw_shape))
+        ny, nx = raw.shape
         name = name or self.default_name
         if name not in self.gfa_names:
             logging.warning('Not a valid GFA name: {0}.'.format(name))
         self.name = name
         # Create views (with no data copied) for each amplifier with rows and column in readout order.
         self.amps = {
-            'E': raw[:, :self.nampy, :self.nxby2], # bottom left (using convention that raw[0,0] is bottom left)
-            'H': raw[:, -1:-(self.nampy + 1):-1, :self.nxby2], # top left
-            'F': raw[:, :self.nampy, -1:-(self.nxby2+1):-1], # bottom right
-            'G': raw[:, -1:-(self.nampy + 1):-1, -1:-(self.nxby2+1):-1], # top right
+            'E': raw[:self.nampy, :self.nxby2], # bottom left (using convention that raw[0,0] is bottom left)
+            'H': raw[-1:-(self.nampy + 1):-1, :self.nxby2], # top left
+            'F': raw[:self.nampy, -1:-(self.nxby2+1):-1], # bottom right
+            'G': raw[-1:-(self.nampy + 1):-1, -1:-(self.nxby2+1):-1], # top right
         }
         # Verify that no data was copied.
         raw_base = raw if raw.base is None else raw.base
         assert all((self.amps[ampname].base is raw_base for ampname in self.amp_names))
-        # Calculate bias as mean overscan in each exposure, ignoring the first nrowtrim rows
+        # Calculate bias as mean overscan, ignoring the first nrowtrim rows
         # (in readout order) and any values > maxdelta from the per-exposure median overscan.
         # Since we use a mean rather than median, subtracting this bias changes the dtype from
         # uint32 to float32 and means that digitization noise averages out over exposures.
         self.bias = {}
         for amp in self.amp_names:
-            overscan = self.amps[amp][:, self.nrowtrim:, -self.nscan:]
-            delta = overscan - np.median(overscan, axis=(1, 2), keepdims=True)
+            overscan = self.amps[amp][self.nrowtrim:, -self.nscan:]
+            delta = overscan - np.median(overscan)
             bad = np.abs(delta) > self.maxdelta
-            ngood = np.full(self.nexp, (self.nampy - self.nrowtrim) * self.nscan)
+            ngood = (self.nampy - self.nrowtrim) * self.nscan
             if np.any(bad):
-                nbad = np.count_nonzero(bad, axis=(1, 2))
-                logging.warning('Ignoring {0} bad overscan pixels for {1}-{2}.'
-                    .format(nbad.sum(), name, amp))
+                nbad = np.count_nonzero(bad)
+                logging.warning(f'Ignoring {nbad} bad overscan pixels for {name}-{amp}.')
                 overscan = np.copy(overscan)
                 overscan[bad] = 0.
                 ngood -= nbad
-            self.bias[amp] = np.sum(overscan, axis=(1, 2)) / ngood
-        # Only allocate new memory if necessary.
-        if self.data is None or len(self.data) != self.nexp:
-            self.data = np.empty((self.nexp, 2 * self.nampy, 2 * self.nampx), np.float32)
-            self.ivar = np.empty((self.nexp, 2 * self.nampy, 2 * self.nampx), np.float32)
+            self.bias[amp] = np.sum(overscan) / ngood
         # Assemble the real pixel data with the pre and post overscans removed.
-        self.data[:, :self.nampy, :self.nampx] = raw[:, :self.nampy, self.nscan:self.nampx + self.nscan]
-        self.data[:, :self.nampy, self.nampx:] = raw[:, :self.nampy, self.nxby2 + self.nscan:-self.nscan]
-        self.data[:, self.nampy:, :self.nampx] = raw[:, self.nampy:, self.nscan:self.nampx + self.nscan]
-        self.data[:, self.nampy:, self.nampx:] = raw[:, self.nampy:, self.nxby2 + self.nscan:-self.nscan]
+        self.data[:self.nampy, :self.nampx] = raw[:self.nampy, self.nscan:self.nampx + self.nscan]
+        self.data[:self.nampy, self.nampx:] = raw[:self.nampy, self.nxby2 + self.nscan:-self.nscan]
+        self.data[self.nampy:, :self.nampx] = raw[self.nampy:, self.nscan:self.nampx + self.nscan]
+        self.data[self.nampy:, self.nampx:] = raw[self.nampy:, self.nxby2 + self.nscan:-self.nscan]
         if overscan_correction:
             # Apply the overscan bias corrections.
-            self.data[:, :self.nampy, :self.nampx] -= self.bias['E'].reshape(-1, 1, 1)
-            self.data[:, :self.nampy, self.nampx:] -= self.bias['F'].reshape(-1, 1, 1)
-            self.data[:, self.nampy:, :self.nampx] -= self.bias['H'].reshape(-1, 1, 1)
-            self.data[:, self.nampy:, self.nampx:] -= self.bias['G'].reshape(-1, 1, 1)
+            self.data[:self.nampy, :self.nampx] -= self.bias['E']
+            self.data[:self.nampy, self.nampx:] -= self.bias['F']
+            self.data[self.nampy:, :self.nampx] -= self.bias['H']
+            self.data[self.nampy:, self.nampx:] -= self.bias['G']
         # Subtract the master zero if requested.
         if subtract_master_zero:
             self.data -= GFACamera.master_zero[name]
@@ -249,7 +242,7 @@ class GFACamera(object):
             # Convert var to ivar in-place, avoiding divide by zero.
             self.ivar = np.divide(1, self.ivar, out=self.ivar, where=self.ivar > 0)
             # Zero ivar for any masked pixels.
-            self.ivar[:, self.pixel_mask[name]] = 0
+            self.ivar[self.pixel_mask[name]] = 0
             self.unit = 'elec'
         else:
             self.unit = 'ADU'
@@ -289,12 +282,6 @@ class GFACamera(object):
         array
             3D array of predicted dark current in electrons with shape (nexp, ny, nx).
         """
-        if method == 'decorrelate':
-            if self.nexp == 0 or self.unit != 'elec':
-                raise RuntimeError('The decorrelate method needs raw data converted to electrons.')
-        else:
-            ccdtemp = np.atleast_1d(ccdtemp)
-            exptime = np.atleast_1d(exptime)
         # Look up the temperature model coefficients for this camera.
         name = name or self.name
         if name not in self.gfa_names:
@@ -322,13 +309,13 @@ class GFACamera(object):
         else:
             raise ValueError('Invalid method "{0}".'.format(method))
         if retval == 'image':
-            return master * frac.reshape(-1, 1, 1)
+            return master * frac
         elif retval == 'frac':
             return frac
         else:
             raise ValueError('Invalid retval "{0}".'.format(retval))
 
-    def get_psfs(self, iexp=0, downsampling=2, margin=16, stampsize=45, inset=4, minsnr=2.0, min_snr_ratio=0.1,
+    def get_psfs(self, downsampling=2, margin=16, stampsize=45, inset=4, minsnr=2.0, min_snr_ratio=0.1,
                  maxsrc=29, stack=True):
         """Find PSF candidates in a specified exposure.
 
@@ -337,7 +324,7 @@ class GFACamera(object):
         if self.psf_centering is None or (
             self.psf_centering.stamp_size != stampsize or self.psf_centering.inset != inset):
             self.psf_centering = desietc.util.CenteredStamp(stampsize, inset, method='fiber')
-        D, W = self.data[iexp], self.ivar[iexp]
+        D, W = self.data, self.ivar
         ny, nx = D.shape
         SNR = desietc.util.get_significance(D, W, downsampling=downsampling)
         M = GFASourceMeasure(
@@ -352,7 +339,7 @@ class GFACamera(object):
             self.psf_stack = None
         return len(self.psfs)
 
-    def get_donuts(self, iexp=0, downsampling=2, margin=16, stampsize=65, inset=8, minsnr=1.5,
+    def get_donuts(self, downsampling=2, margin=16, stampsize=65, inset=8, minsnr=1.5,
                    min_snr_ratio=0.1, maxsrc=19, column_cut=920, stack=True):
         """Find donut candidates in each half of a specified exposure.
 
@@ -361,7 +348,7 @@ class GFACamera(object):
         if self.donut_centering is None or (
             self.donut_centering.stamp_size != stampsize or self.donut_centering.inset != inset):
             self.donut_centering = desietc.util.CenteredStamp(stampsize, inset, method='donut')
-        D, W = self.data[iexp], self.ivar[iexp]
+        D, W = self.data, self.ivar
         ny, nx = D.shape
         # Compute a single SNR image to use for both halves.
         SNR = desietc.util.get_significance(D, W, downsampling=downsampling)
@@ -400,13 +387,6 @@ class GFASourceMeasure(object):
         self.y1, self.y2 = y1, y2 or ny
         self.x1, self.x2 = x1, x2 or nx
         self.centering = centering
-        '''
-        # Initialize primary fitter.
-        self.fitter = desietc.fit.GaussFitter(stampsize)
-        # Initialize a slower secondary fitter for when the primary fitter fails to converge.
-        self.fitter2 = desietc.fit.GaussFitter(stampsize, optimize_args=dict(
-            method='Nelder-Mead', options=dict(maxiter=10000, xatol=1e-3, fatol=1e-3, disp=False)))
-        '''
 
     def __call__(self, snrtot, xc, yc, yslice, xslice):
         # Calculate the center of the input slice.
@@ -433,14 +413,6 @@ class GFASourceMeasure(object):
             w[saturated] = 0
         # Estimate and subtract the background.
         d -= desietc.util.estimate_bg(d, w)
-        '''
-        # Fit a single Gaussian + constant background to this stamp.
-        result = self.fitter.fit(d, w)
-        if not result['success']:
-            result = self.fitter2.fit(d, w)
-            if not result['success']:
-                return None
-        '''
         # Find the best centered inset stamp.
         yinset, xinset = self.centering.center(d, w)
         d, w = d[yinset, xinset], w[yinset, xinset]
