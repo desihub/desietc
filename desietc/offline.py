@@ -14,7 +14,7 @@ import desietc.gfa
 import desietc.sky
 
 
-def replay_exposure(ETC, path, expid, teff=1000, cutoff=10000, cosmic=500):
+def replay_exposure(ETC, path, expid, teff=1000, cutoff=10000, cosmic=500, dry_run=False):
     """Recreate the online ETC processing of an exposure by replaying the
     FITS files stored to disk.
     """
@@ -30,13 +30,13 @@ def replay_exposure(ETC, path, expid, teff=1000, cutoff=10000, cosmic=500):
     desi_path = exppath / f'desi-{exptag}.fits.fz'
     missing = 0
     if not gfa_path.exists():
-        logging.error(f'Missing GFA data cube: {gfa_path}.')
+        logging.warn(f'Missing GFA data cube: {gfa_path}.')
         missing += 1
     if not sky_path.exists():
-        logging.error(f'Missing SKY data cube: {sky_path}.')
+        logging.warn(f'Missing SKY data cube: {sky_path}.')
         missing += 1
     if not desi_path.exists():
-        logging.error(f'Missing DESI exposure: {desi_path}.')
+        logging.warn(f'Missing DESI exposure: {desi_path}.')
         missing += 1
     if missing > 0:
         return False
@@ -64,6 +64,9 @@ def replay_exposure(ETC, path, expid, teff=1000, cutoff=10000, cosmic=500):
     ntarget = np.count_nonzero(sel)
     median_Ebv = np.nanmedian(fassign[sel]['EBV'])
     logging.info(f'Tile {desi_tileid} has {ntarget} targets with median(Ebv)={median_Ebv:.5f}.')
+    # If this is a dry run, stop now.
+    if dry_run:
+        return True
     # Start the ETC tracking of this exposure.
     ETC.start_exposure(night, expid, desi_mjd_obs, median_Ebv, teff, cutoff, cosmic)
     # Get the SKY exposure info for the first available camera.
@@ -110,6 +113,9 @@ def replay_exposure(ETC, path, expid, teff=1000, cutoff=10000, cosmic=500):
     for frame in frames:
         logging.debug(f'Replaying frame: {frame}')
         if frame['typ'] == 'gfa':
+
+            continue
+
             data = fits_to_online(gfa_path, ETC.GFA.guide_names, frame['num'])
             if frame['num'] == 0:
                 # Process the acquisition image.
