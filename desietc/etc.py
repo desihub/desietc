@@ -1,6 +1,7 @@
 """The top-level ETC algorithm.
 """
 import time
+import multiprocessing
 
 try:
     import DOSlib.logger as logging
@@ -25,13 +26,14 @@ import desietc.util
 # - implement cutoff time logic
 # - implement cosmic split logic
 # - using multiprocessing for acquisition image analysis
+# - flag issues detected in acq img
 
 class ETC(object):
 
     SECS_PER_DAY = 86400
 
     def __init__(self, sky_calib, gfa_calib, psf_pixels=25, max_dither=7, num_dither=1200,
-                 Ebv_coef=1.0):
+                 Ebv_coef=1.0, parallel=True):
         """Initialize once per session.
 
         Parameters
@@ -50,11 +52,10 @@ class ETC(object):
         Ebv_coef : float
             Coefficient to use for converting Ebv into an equivalent MW
             transparency via 10 ** (-coef * Ebv / 2.5)
+        parallel : bool
+            Process GFA images in parallel when True.
         """
         self.Ebv_coef = Ebv_coef
-        # Initialize SKY and GFA camera processors.
-        self.SKY = desietc.sky.SkyCamera(calib_name=sky_calib)
-        self.GFA = desietc.gfa.GFACamera(calib_name=gfa_calib)
         # Initialize PSF fitting.
         if psf_pixels % 2 == 0:
             raise ValueError('psf_pixels must be odd.')
@@ -72,6 +73,17 @@ class ETC(object):
         # Initialize buffers to record our signal- and sky-rate measurements.
         self.thru_measurements = desietc.util.MeasurementBuffer(maxlen=1000, default_value=1)
         self.sky_measurements = desietc.util.MeasurementBuffer(maxlen=200, default_value=1)
+        # Initialize parallel processing if requested.
+        if parallel:
+            context = multiprocessing.get_context(method='spawn')
+            npool = len(desietc.gfa.GFACamera.guide_names)
+            self.pool = context.Pool(processes=npool)
+            logging.info(f'Initialized pool of {npool} parallel GFA processors.')
+        # Initialize SKY and GFA camera processors.
+        self.SKY = desietc.sky.SkyCamera(calib_name=sky_calib)
+        self.GFAs = {
+            camera: desietc.gfa.GFACamera(calib_name=gfa_calib, default_name=camera)
+            for camera in desietc.gfa.GFACamera.guide_names}
 
     def process_top_header(self, header, source, update_ok=False):
         """Process the top-level header of an exposure.
@@ -137,7 +149,7 @@ class ETC(object):
         logging.info(f'Processing acquisition image for {self.night}/{self.exptag}.')
         # Loop over cameras.
         self.acquisition_results = {}
-        for camera in self.GFA.guide_names:
+        for camera in desietc.gfa.GFACamera.guide_names:
             camera_result = {}
             if camera not in data:
                 logging.warn(f'No acquisition image for {camera}.')
@@ -146,9 +158,10 @@ class ETC(object):
                 continue
             if not self.preprocess_gfa(camera, data[camera], f'{camera} acquisition image'):
                 continue
+            thisGFA = self.GFAs[camera]
             # Find PSF-like objects
-            self.GFA.get_psfs()
-            T, WT =  self.GFA.psf_stack
+            thisGFA.get_psfs()
+            T, WT =  thisGFA.psf_stack
             if T is None:
                 logging.error(f'Unable to find PSFs in {camera} acquisition image.')
                 continue
@@ -199,8 +212,9 @@ class ETC(object):
         halfsize = self.psf_pixels // 2
         self.guide_stars = {}
         nstars = []
-        ny, nx = 2 * self.GFA.nampx, 2 * self.GFA.nampy  # xy swap is intentional!
-        for camera in self.GFA.guide_names:
+        # The xy swap here is intentional
+        ny, nx = 2 * desietc.gfa.GFACamera.nampx, 2 * desietc.gfa.GFACamera.nampy
+        for camera in desietc.gfa.GFACamera.guide_names:
             sel = (gfa_loc == camera) & (mag > 0)
             if not np.any(sel):
                 logging.warning(f'No guide stars available for {camera}.')
@@ -273,14 +287,15 @@ class ETC(object):
                 continue
             if not self.preprocess_gfa(camera, data[camera], f'{camera}[{fnum}]'):
                 continue
+            thisGFA = self.GFAs[camera]
             # Lookup this camera's PSF model.
             psf = self.acquisition_results[camera]
             # Loop over guide stars for this camera.
             star_ffrac, star_transp = [], []
             for istar, star in enumerate(self.guide_stars[camera]):
                 # Extract the postage stamp for this star.
-                D = self.GFA.data[0, star['xslice'], star['yslice']]
-                DW = self.GFA.ivar[0, star['xslice'], star['yslice']]
+                D = thisGFA.data[0, star['xslice'], star['yslice']]
+                DW = thisGFA.ivar[0, star['xslice'], star['yslice']]
                 # Estimate the actual centroid in pixels, flux in electrons and
                 # constant background level in electrons / pixel.
                 dx, dy, flux, bg, nll, best_fit = self.GMM.fit_dithered(
@@ -380,11 +395,12 @@ class ETC(object):
             ccdtemp = default_ccdtemp
             logging.warning(f'Using default GCCDTEMP {ccdtemp}C for {source}')
         try:
-            self.GFA.setraw(data['data'], name=camera)
+            thisGFA = self.GFAs[camera]
+            thisGFA.setraw(data['data'])
         except ValueError as e:
             logging.error(f'Failed to process {source} raw data: {e}')
             return False
-        self.GFA.data -= self.GFA.get_dark_current(ccdtemp, self.exptime)
+        thisGFA.data -= thisGFA.get_dark_current(ccdtemp, self.exptime)
         return True
 
     def get_accumulated_teff(self, mjd_start, mjd_stop, MW_transparency=1):

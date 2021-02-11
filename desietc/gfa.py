@@ -99,30 +99,33 @@ class GFACamera(object):
     gfa_names = [
         'GUIDE0', 'FOCUS1', 'GUIDE2', 'GUIDE3', 'FOCUS4',
         'GUIDE5', 'FOCUS6', 'GUIDE7', 'GUIDE8', 'FOCUS9']
-    guide_names = ['GUIDE0', 'GUIDE2', 'GUIDE3', 'GUIDE5', 'GUIDE7', 'GUIDE8']
+    guide_names = [name for name in gfa_names if name.startswith('GUIDE')]
     amp_names = ['E', 'F', 'G', 'H']
+
+    nampy=516
+    nampx=1024
+    nscan=50
+    nxby2 = nampx + 2 * nscan
+    quad = {
+        'E': (slice(None), slice(None, nampy), slice(None, nampx)), # bottom left
+        'H': (slice(None), slice(nampy, None), slice(None, nampx)), # top left
+        'F': (slice(None), slice(None, nampy), slice(nampx, None)), # bottom left
+        'G': (slice(None), slice(nampy, None), slice(nampx, None)), # top left
+    }
+
     lab_data = None
     calib_data = None
     master_zero = None
     master_dark = None
     pixel_mask = None
 
-    def __init__(self, nampy=516, nampx=1024, nscan=50, nrowtrim=4, maxdelta=50,
-                 calib_name='GFA_calib.fits'):
-        self.nampy = nampy
-        self.nampx = nampx
-        self.nscan = nscan
-        self.nxby2 = nampx + 2 * nscan
+    def __init__(self, nrowtrim=4, maxdelta=50, calib_name='GFA_calib.fits', default_name=None):
+        """
+        """
         self.nrowtrim = nrowtrim
         self.maxdelta = maxdelta
         self.data = None
-        self.quad = {
-            'E': (slice(None), slice(None, self.nampy), slice(None, self.nampx)), # bottom left
-            'H': (slice(None), slice(self.nampy, None), slice(None, self.nampx)), # top left
-            'F': (slice(None), slice(None, self.nampy), slice(self.nampx, None)), # bottom left
-            'G': (slice(None), slice(self.nampy, None), slice(self.nampx, None)), # top left
-        }
-        # Load the class-level lab and calib data if necessary.
+        # Load the class-level calib data if necessary.
         if GFACamera.calib_data is None:
             (GFACamera.calib_data, GFACamera.master_zero,
              GFACamera.master_dark, GFACamera.pixel_mask) = load_calib_data(calib_name)
@@ -131,6 +134,8 @@ class GFACamera(object):
         # We have no centering algorithms initialized yet.
         self.psf_centering = None
         self.donut_centering = None
+        # Remember the default name to use in setraw.
+        self.default_name = default_name
 
     def setraw(self, raw, name=None, overscan_correction=True, subtract_master_zero=True, apply_gain=True):
         """Initialize using the raw GFA data provided, which can either be a single or multiple exposures.
@@ -180,6 +185,7 @@ class GFACamera(object):
         if raw.ndim == 2:
             raw = raw.reshape((1,) + raw_shape)
         self.nexp, ny, nx = raw.shape
+        name = name or self.default_name
         if name not in self.gfa_names:
             logging.warning('Not a valid GFA name: {0}.'.format(name))
         self.name = name
