@@ -147,9 +147,14 @@ def replay_exposure(ETC, path, expid, outpath, teff=1000, cutoff=10000, cosmic=5
     mjd2 = mjd1 + desi_exptime / ETC.SECS_PER_DAY
     teff = ETC.get_accumulated_teff(mjd1, mjd2, ETC.MW_transparency)
 
+    fig, ax = plt.subplots(2, 1, figsize=(9, 9))
+    fig.suptitle(f'ETC Analysis for {ETC.night}/{ETC.exptag}')
     desietc.plot.plot_measurements(
-        ETC.sky_measurements, mjd1, mjd2, label='Sky Level')
-    plt.savefig(exppath_out / f'sky-{ETC.expid}.png')
+        ETC.sky_measurements, mjd1, mjd2, label='SKYCAM Level', ax=ax[0])
+    desietc.plot.plot_measurements(
+        ETC.thru_measurements, mjd1, mjd2, label='GFA Throughput', ax=ax[1])
+    plt.savefig(exppath_out / f'ETC-{ETC.exptag}.png')
+    plt.close(fig)
 
     return True
 

@@ -98,6 +98,7 @@ class ETC(object):
                 if update_ok:
                     logging.info(f'Setting EXPID {expid} from {source}.')
                     self.expid = expid
+                    self.exptag = str(self.expid).zfill(8)
                 else:
                     logging.error(f'Got EXPID {expid} from {source} but expected {self.expid}.')
                     return False
@@ -133,7 +134,7 @@ class ETC(object):
         start = time.time()
         if not self.process_top_header(data['header'], 'acquisition image', update_ok=True):
             return False
-        logging.info(f'Processing acquisition image for {self.night}/{self.expid}.')
+        logging.info(f'Processing acquisition image for {self.night}/{self.exptag}.')
         # Loop over cameras.
         self.acquisition_results = {}
         for camera in self.GFA.guide_names:
@@ -192,7 +193,7 @@ class ETC(object):
             logging.error(f'Received guide stars with no acquisition image.')
             return False
         if self.guide_stars is not None:
-            logging.warning(f'Overwriting previous guide stars for {self.night}/{self.expid}.')
+            logging.warning(f'Overwriting previous guide stars for {self.night}/{self.exptag}.')
         max_rsq = (0.5 * fiber_diam_um / pixel_size_um) ** 2
         profile = lambda x, y: 1.0 * (x ** 2 + y ** 2 < max_rsq)
         halfsize = self.psf_pixels // 2
@@ -235,10 +236,10 @@ class ETC(object):
             if len(stars):
                 self.guide_stars[camera] = stars
         if len(self.guide_stars) == 0:
-            logging.error(f'No usable guide stars for {self.night}/{self.expid}.')
+            logging.error(f'No usable guide stars for {self.night}/{self.exptag}.')
             return False
         nstars_msg = '+'.join([str(n) for n in nstars]) + '=' + str(np.sum(nstars))
-        logging.info(f'Using {nstars_msg} guide stars for {self.night}/{self.expid}.')
+        logging.info(f'Using {nstars_msg} guide stars for {self.night}/{self.exptag}.')
         # Update the current FFRAC,TRANSP now.
         # ...
         return True
@@ -252,7 +253,7 @@ class ETC(object):
         self.num_guide_frames += 1
         if not self.process_top_header(data['header'], f'guide[{fnum}]'):
             return False
-        logging.info(f'Processing guide frame {fnum} for {self.night}/{self.expid}.')
+        logging.info(f'Processing guide frame {fnum} for {self.night}/{self.exptag}.')
         if self.acquisition_results is None:
             logging.error('Ignoring guide frame before acquisition image.')
             return False
@@ -322,7 +323,7 @@ class ETC(object):
         self.num_sky_frames += 1
         if not self.process_top_header(data['header'], f'sky[{fnum}]', update_ok=True):
             return False
-        logging.info(f'Processing sky frame {fnum} for {self.night}/{self.expid}.')
+        logging.info(f'Processing sky frame {fnum} for {self.night}/{self.exptag}.')
         flux, ivar = 0, 0
         mjd_obs, exptime = [], []
         for camera in self.SKY.sky_names:
@@ -419,7 +420,7 @@ class ETC(object):
     def save_exposure(self, path):
         """
         """
-        logging.info(f'Saving ETC outputs for {self.night}/{self.expid} to {path}')
+        logging.info(f'Saving ETC outputs for {self.night}/{self.exptag} to {path}')
         if not path.exists():
             logging.error(f'Non-existent path: {path}.')
             return
