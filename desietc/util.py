@@ -740,7 +740,7 @@ class MeasurementBuffer(object):
         # Select measurements that span the padded input grid.
         sel = self.inside(mjd1 - self.padding, mjd2 + self.padding)
         if not np.any(sel):
-            return np.full_like(mjd_grid, self.default_value)
+            return mjd_grid, np.full_like(mjd_grid, self.default_value)
         mjd_sel = 0.5 * (self.entries[sel]['mjd1'] + self.entries[sel]['mjd2'])
         value_sel = self.entries[sel]['value']
         iorder = np.argsort(mjd_sel)
