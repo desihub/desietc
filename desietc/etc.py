@@ -28,6 +28,8 @@ import desietc.util
 
 class ETC(object):
 
+    SECS_PER_DAY = 86400
+
     def __init__(self, sky_calib, gfa_calib, psf_pixels=25, max_dither=7, num_dither=1200,
                  Ebv_coef=1.0):
         """Initialize once per session.
@@ -354,15 +356,15 @@ class ETC(object):
     def get_mjd_range(self, mjd_obs, exptime, source, max_jitter=5):
         mjd_obs = np.asarray(mjd_obs)
         mjd_obs_all = np.nanmean(mjd_obs)
-        if np.any(np.abs(mjd_obs - mjd_obs_all) * 86400 > max_jitter):
+        if np.any(np.abs(mjd_obs - mjd_obs_all) * self.SECS_PER_DAY > max_jitter):
             logging.warn(f'MJD_OBS jitter exceeds {max_jitter}s for {source}.')
             mjd_obs_all = np.nanmedian(mjd_obs)
         exptime = np.asarray(exptime)
         exptime_all = np.nanmean(exptime)
-        if np.any(np.abs(exptime - exptime_all) * 86400 > max_jitter):
+        if np.any(np.abs(exptime - exptime_all) * self.SECS_PER_DAY > max_jitter):
             logging.warn(f'EXPTIME jitter exceeds {max_jitter}s for {source}.')
             exptime_all = np.nanmedian(exptime)
-        return (mjd_obs_all, mjd_obs_all + exptime_all / 86400)
+        return (mjd_obs_all, mjd_obs_all + exptime_all / self.SECS_PER_DAY)
 
     def preprocess_gfa(self, camera, data, source, default_ccdtemp=10):
         """Preprocess raw data for the specified GFA.
@@ -396,7 +398,7 @@ class ETC(object):
         _, sky_grid = self.sky_measurements.sample(mjd_start, mjd_stop)
         sky = np.mean(sky_grid)
         # Calculate the accumulated effective exposure time in seconds.
-        treal = (mjd_stop - mjd_start) * 86400
+        treal = (mjd_stop - mjd_start) * self.SECS_PER_DAY
         teff = treal / sky * (MW_transparency * thru) ** 2
         logging.info(f'Calculated treal={treal:.1f}s, teff={teff:.1f}s using ' +
             f'sky={sky:.3f}, thru={thru:.3f}, MW={MW_transparency:.3f}.')
@@ -418,3 +420,6 @@ class ETC(object):
         """
         """
         logging.info(f'Saving ETC outputs for {self.night}/{self.expid} to {path}')
+        if not path.exists():
+            logging.error(f'Non-existent path: {path}.')
+            return

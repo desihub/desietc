@@ -695,19 +695,19 @@ class MeasurementBuffer(object):
     def __str__(self):
         return f'{self.__class__.__name__}(len={self.len}, full={self.full}, oldest={self.oldest})'
 
-    def add(self, mjd, exptime, value, error):
+    def add(self, mjd1, mjd2, value, error):
         """Add a single measurement.
 
         We make no assumption that measurements are non-overlapping or added in time order.
         """
-        assert exptime > 0 and error > 0
-        is_oldest = (self.oldest is None) or (mjd < self._entries[self.oldest]['mjd1'])
+        assert mjd1 < mjd2 and error > 0
+        is_oldest = (self.oldest is None) or (mjd1 < self._entries[self.oldest]['mjd1'])
         if self.full:
             assert self.oldest is not None
             if is_oldest:
                 # Ignore this since it is older than all existing entries.
                 return
-            self._entries[self.oldest] = (mjd, mjd + exptime / self.SECS_PER_DAY, value, error)
+            self._entries[self.oldest] = (mjd1, mjd2, value, error)
             # Update the index of the oldest entry, which might be us.
             self.oldest = np.argmin(self.entries['mjd1'])
         else:
@@ -717,7 +717,7 @@ class MeasurementBuffer(object):
                 self.oldest = idx
             self.len += 1
             self.full = (self.len == self._entries.size)
-            self._entries[idx] = (mjd, mjd + exptime / 86400, value, error)
+            self._entries[idx] = (mjd1, mjd2, value, error)
 
     def inside(self, mjd1, mjd2):
         """Return a mask for entries whose intervals overlap [mjd1, mjd2].

@@ -8,11 +8,13 @@ except ImportError:
 
 import numpy as np
 
+import matplotlib.pyplot as plt
+
 import fitsio
 
 import desietc.gfa
 import desietc.sky
-
+import desietc.plot
 
 def replay_exposure(ETC, path, expid, outpath, teff=1000, cutoff=10000, cosmic=500,
                     overwrite=False, dry_run=False):
@@ -71,6 +73,7 @@ def replay_exposure(ETC, path, expid, outpath, teff=1000, cutoff=10000, cosmic=5
     # If the output directory exists, can we overwrite its contents?
     exppath_out = outpath / exptag
     if not overwrite and exppath_out.exists():
+        logging.info(f'Will not overwrite ETC outputs for {expid}.')
         return False
     # Start the ETC tracking of this exposure.
     ETC.start_exposure(night, expid, desi_mjd_obs, median_Ebv, teff, cutoff, cosmic)
@@ -134,10 +137,20 @@ def replay_exposure(ETC, path, expid, outpath, teff=1000, cutoff=10000, cosmic=5
             data = fits_to_online(sky_path, ETC.SKY.sky_names, frame['num'])
             ETC.process_sky(data)
 
-    teff = ETC.get_accumulated_teff(
-        ETC.mjd_start, ETC.mjd_start + desi_exptime / 86400, ETC.MW_transparency)
+    # Create the output path if necessary.
+    exppath_out.mkdir(parents=False, exist_ok=True)
 
+    # Save the ETC outputs for this exposure.
     ETC.save_exposure(exppath_out)
+
+    mjd1 = ETC.mjd_start
+    mjd2 = mjd1 + desi_exptime / ETC.SECS_PER_DAY
+    teff = ETC.get_accumulated_teff(mjd1, mjd2, ETC.MW_transparency)
+
+    desietc.plot.plot_measurements(
+        ETC.sky_measurements, mjd1, mjd2, label='Sky Level')
+    plt.savefig(exppath_out / f'sky-{ETC.expid}.png')
+
     return True
 
 

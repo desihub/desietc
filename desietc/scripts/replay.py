@@ -29,28 +29,9 @@ except ImportError:
 
 import numpy as np
 
-'''
-try:
-    from PIL import Image
-    img_format = 'jpg'
-except ImportError:
-    img_format = 'png'
-
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
-'''
-
-#import fitsio
-
-'''
-from desietc.gfa import GFACamera, load_guider_centroids
-from desietc.sky import SkyCamera
-from desietc.gmm import GMMFit
-from desietc.util import diskgrid, make_template
-from desietc.offline import replay_exposure
-from desietc.plot import plot_data, plot_guide_stars, plot_image_quality
-'''
 
 import desietc.etc
 import desietc.offline
