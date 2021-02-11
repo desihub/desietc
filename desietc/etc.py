@@ -1,7 +1,6 @@
 """The top-level ETC algorithm.
 """
 import time
-import collections
 
 try:
     import DOSlib.logger as logging
@@ -26,9 +25,6 @@ import desietc.util
 # - implement cutoff time logic
 # - implement cosmic split logic
 # - using multiprocessing for acquisition image analysis
-
-Rate = collections.namedtuple('Rate', ['type', 'mjd_start', 'mjd_stop', 'value', 'error'])
-
 
 class ETC(object):
 
@@ -71,8 +67,9 @@ class ETC(object):
         self.num_sky_frames = 0
         self.acquisition_results = None
         self.guide_stars = None
-        # Initialize a fixed-length deque of signal- and sky-rate measurements.
-        self.rate_history = collections.deque(maxlen=1024)
+        # Initialize buffers to record our signal- and sky-rate measurements.
+        self.thru_measurements = desietc.util.MeasurementBuffer(maxlen=1000, default_value=1)
+        self.sky_measurements = desietc.util.MeasurementBuffer(maxlen=200, default_value=1)
 
     def process_top_header(self, header, source, update_ok=False):
         """Process the top-level header of an exposure.
@@ -308,7 +305,7 @@ class ETC(object):
         logging.info(f'Guide transp={transp:.3f}, ffrac={ffrac:.3f}, thru={thru:.3f}.')
         # Record this measurement.
         mjd_start, mjd_stop = self.get_mjd_range(mjd_obs, exptime, f'guide[{fnum}]')
-        self.rate_history.append(Rate('gfa', mjd_start, mjd_stop, thru, 0))
+        self.thru_measurements.add(mjd_start, mjd_stop, thru, 0.1)
         # Report timing.
         elapsed = time.time() - start
         logging.debug(f'Guide frame processing took {elapsed:.2f}s for {nstar} stars in {ncamera} cameras.')
@@ -348,7 +345,7 @@ class ETC(object):
         logging.info(f'SKY flux = {flux:.2f} +/- {dflux:.2f}.')
         # Record this measurement.
         mjd_start, mjd_stop = self.get_mjd_range(mjd_obs, exptime, f'sky[{fnum}]')
-        self.rate_history.append(Rate('sky', mjd_start, mjd_stop, flux, dflux))
+        self.sky_measurements.add(mjd_start, mjd_stop, flux, dflux)
         # Profile timing.
         elapsed = time.time() - start
         logging.debug(f'Sky frame processing took {elapsed:.2f}s for {ncamera} cameras.')
@@ -386,64 +383,23 @@ class ETC(object):
         self.GFA.data -= self.GFA.get_dark_current(ccdtemp, self.exptime)
         return True
 
-    def get_accumulated_teff(self, mjd_start, mjd_stop,
-                             MW_transparency=1, sky_default=1, gfa_default=1, max_ngrid=10000):
+    def get_accumulated_teff(self, mjd_start, mjd_stop, MW_transparency=1):
         """
         """
         if mjd_stop <= mjd_start:
             logging.warn('get_accumulated_teff called with mjd_stop <= mjd_start.')
             return 0
-        # Build a grid with ~1 sec resolution covering (mjd_start, mjd_stop).
-        ngrid = min(max_ngrid, int(np.ceil((mjd_stop - mjd_start) * 86400)))
-        if ngrid == max_ngrid:
-            logging.warn('get_accumulated_teff reached max_ngrid.')
-        mjd_grid = np.linspace(mjd_start, mjd_stop, ngrid + 1)
-        # Lookup rate measurements covering this MJD window, extending one measurement
-        # above and below the window if possible.
-        first = last = len(self.rate_history)
-        while first > 0:
-            first -= 1
-            if self.rate_history[first].mjd_start > mjd_stop:
-                last -= 1
-            if self.rate_history[first].mjd_stop <= mjd_start:
-                break
-        # Extract the sky (background) rates to use.
-        sky_mjd = np.array([
-            0.5 * (self.rate_history[i].mjd_start + self.rate_history[i].mjd_stop)
-            for i in range(first, last + 1)
-            if self.rate_history[i].type == 'sky'])
-        sky_rate = np.array([
-            self.rate_history[i].value
-            for i in range(first, last + 1)
-            if self.rate_history[i].type == 'sky'])
-        # Extract the gfa (signal) rates to use.
-        gfa_mjd = np.array([
-            0.5 * (self.rate_history[i].mjd_start + self.rate_history[i].mjd_stop)
-            for i in range(first, last + 1)
-            if self.rate_history[i].type == 'gfa'])
-        gfa_rate = np.array([
-            self.rate_history[i].value
-            for i in range(first, last + 1)
-            if self.rate_history[i].type == 'gfa'])
-        # Interpolate the sky and gfa rates linearly to the grid and calculate the mean.
-        # Use constant extrapolation if necessary.
-        if len(sky_rate) > 0:
-            sky_rate_grid = np.interp(mjd_grid, sky_mjd, sky_rate, left=sky_rate[0], right=sky_rate[-1])
-            mean_sky_rate = np.mean(sky_rate_grid)
-        else:
-            logging.warn(f'Using default SKY rate = {sky_default}.')
-            mean_sky_rate = sky_default
-        if len(gfa_rate) > 0:
-            gfa_rate_grid = np.interp(mjd_grid, gfa_mjd, gfa_rate, left=gfa_rate[0], right=gfa_rate[-1])
-            mean_gfa_rate = np.mean(gfa_rate_grid)
-        else:
-            logging.warn(f'Using default GFA rate = {gfa_default}.')
-            mean_gfa_rate = gfa_default
+        # Calculate the average signal throughput.
+        _, thru_grid = self.thru_measurements.sample(mjd_start, mjd_stop)
+        thru = np.mean(thru_grid)
+        # Calculate the integrated sky background.
+        _, sky_grid = self.sky_measurements.sample(mjd_start, mjd_stop)
+        sky = np.mean(sky_grid)
         # Calculate the accumulated effective exposure time in seconds.
         treal = (mjd_stop - mjd_start) * 86400
-        teff = treal / mean_sky_rate * (MW_transparency * mean_gfa_rate) ** 2
+        teff = treal / sky * (MW_transparency * thru) ** 2
         logging.info(f'Calculated treal={treal:.1f}s, teff={teff:.1f}s using ' +
-            f'sky={mean_sky_rate:.3f}, gfa={mean_gfa_rate:.3f}, MW={MW_transparency:.3f}.')
+            f'sky={sky:.3f}, thru={thru:.3f}, MW={MW_transparency:.3f}.')
         return teff
 
     def start_exposure(self, night, expid, mjd, Ebv, teff, cutoff, cosmic):
