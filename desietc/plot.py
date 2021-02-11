@@ -415,3 +415,42 @@ def plot_image_quality(stacks, meta, size=33, zoom=5, pad=2, dpi=128, interpolat
             ax.plot([-u, v, 6 * u, -v, -u], [-v, -u, 6 * v, u, -v], 'c-', lw=2)
 
     return fig
+
+
+def plot_measurements(buffer, mjd1, mjd2, ymin=0, label=None, ax=None):
+    """Plot measurements spanning (mjd1, mjd2) in the specified buffer.
+    """
+    ax = ax or plt.gca()
+    # Convert from MJD to minutes after mjd1.
+    minutes = lambda mjd: (mjd - mjd1) * 720
+    # Plot measurements covering (mjd1, mjd2) with some extra padding.
+    xlo, xhi = mjd1 - 3 * buffer.padding, mjd2 + 3 * buffer.padding
+    padded = buffer.inside(xlo, xhi)
+    used = buffer.inside(mjd1 - buffer.padding, mjd2 + buffer.padding)
+    extra = padded & ~used
+    for sel, color in ((extra, 'lightgray'), (used, 'b')):
+        x = 0.5 * (buffer.entries['mjd1'][sel] + buffer.entries['mjd2'][sel])
+        dx = 0.5 * (buffer.entries['mjd2'][sel] - buffer.entries['mjd1'][sel])
+        y = buffer.entries['value'][sel]
+        dy = buffer.entries['error'][sel]
+        ax.errorbar(minutes(x), y, xerr=dx * 720, yerr=dy, fmt='.', color=color, ms=5)
+    # Draw the linear interpolation through the selected points.
+    x_grid, y_grid = buffer.sample(mjd1, mjd2)
+    ax.fill_between(minutes(x_grid), ymin, y_grid, color='b', lw=0, alpha=0.2)
+    # Highlight samples used for the trend.
+    sel = buffer.inside(mjd2 - buffer.recent, mjd2)
+    x = 0.5 * (buffer.entries['mjd1'][sel] + buffer.entries['mjd2'][sel])
+    y = buffer.entries['value'][sel]
+    ax.plot(minutes(x), y, 'r.', ms=10, zorder=10)
+    # Extrapolate the trend.
+    offset, slope = buffer.trend(mjd2)
+    trend = lambda mjd: offset + slope * np.asarray(mjd)
+    ax.fill_between([minutes(mjd2), minutes(xhi)], ymin, trend([mjd2, xhi]), color='r', lw=0, alpha=0.2)
+    # Draw vertical lines to show the (mjd1, mjd2) interval.
+    for xv in (mjd1, mjd2):
+        ax.axvline(minutes(xv), c='b', ls='--')
+    ax.set_xlim(minutes(xlo), minutes(xhi))
+    ax.set_ylim(ymin, None)
+    ax.set_xlabel(f'Minutes relative to MJD {mjd1:.6f}')
+    if label is not None:
+        ax.set_ylabel(label)

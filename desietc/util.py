@@ -677,12 +677,16 @@ class MeasurementBuffer(object):
     """
     SECS_PER_DAY = 86400
 
-    def __init__(self, maxlen):
+    def __init__(self, maxlen, default_value, resolution=1, padding=300, recent=300):
         self.oldest = None
         self.len = 0
         self.full = False
         self._entries = np.empty(shape=maxlen, dtype=[
             ('mjd1', np.float64), ('mjd2', np.float64), ('value', np.float32), ('error', np.float32)])
+        self.default_value = default_value
+        self.resolution = resolution / self.SECS_PER_DAY
+        self.padding = padding / self.SECS_PER_DAY
+        self.recent = recent / self.SECS_PER_DAY
 
     @property
     def entries(self):
@@ -721,32 +725,35 @@ class MeasurementBuffer(object):
         assert mjd1 <= mjd2
         return (self.entries['mjd2'] > mjd1) & (self.entries['mjd1'] < mjd2)
 
-    def sample(self, mjd_grid, default_value, padding=300):
-        """Sample measurements to mjd_grid using linear interpolation.
+    def sample(self, mjd1, mjd2):
+        """Sample measurements on a grid covering (mjd1, mjd2) using linear interpolation.
 
-        Use measurements that lie outside the grid up to padding seconds.
+        The grid spacing will be approximately resolution seconds.
+        Use measurements that lie outside the grid up to self.padding seconds.
         Return default_value when no measurements are available.
         Use constant extrapolation of the first/last measurement if necessary.
         """
+        assert mjd1 < mjd2
+        # Construct the grid to use.
+        ngrid = int(np.ceil((mjd2 - mjd1) / self.resolution))
+        mjd_grid = mjd1 + (np.arange(ngrid) + 0.5) * (mjd2 - mjd1) / ngrid
         # Select measurements that span the padded input grid.
-        lo = mjd_grid[0] - padding / self.SECS_PER_DAY
-        hi = mjd_grid[-1] + padding / self.SECS_PER_DAY
-        sel = self.inside(lo, hi)
+        sel = self.inside(mjd1 - self.padding, mjd2 + self.padding)
         if not np.any(sel):
-            return np.full_like(mjd_grid, default_value)
-        # Use linear interpolation with constant extrapolation beyond the endpoints.
+            return np.full_like(mjd_grid, self.default_value)
         mjd_sel = 0.5 * (self.entries[sel]['mjd1'] + self.entries[sel]['mjd2'])
         value_sel = self.entries[sel]['value']
         iorder = np.argsort(mjd_sel)
-        return np.interp(mjd_grid, mjd_sel[iorder], value_sel[iorder])
+        # Use linear interpolation with constant extrapolation beyond the endpoints.
+        return mjd_grid, np.interp(mjd_grid, mjd_sel[iorder], value_sel[iorder])
 
-    def trend(self, mjd1, mjd2, default_trend):
-        """Return the linear trend in values over (mjd1, mjd2).
+    def trend(self, mjd):
+        """Return the linear trend in values over (mjd - recent, mjd).
         For now, this returns a weighted average with zero slope.
         """
-        sel = self.inside(mjd1, mjd2)
+        sel = self.inside(mjd - self.recent, mjd)
         if not np.any(sel):
-            return default_trend
+            return self.default_value, 0
         wgt = self.entries[sel]['error'] ** -0.5
         val = self.entries[sel]['value']
         return np.sum(wgt * val) / np.sum(wgt), 0
