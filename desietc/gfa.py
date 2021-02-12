@@ -99,8 +99,8 @@ class GFACamera(object):
     gfa_names = [
         'GUIDE0', 'FOCUS1', 'GUIDE2', 'GUIDE3', 'FOCUS4',
         'GUIDE5', 'FOCUS6', 'GUIDE7', 'GUIDE8', 'FOCUS9']
-    ##guide_names = [name for name in gfa_names if name.startswith('GUIDE')]
-    guide_names = ['GUIDE0']
+    guide_names = [name for name in gfa_names if name.startswith('GUIDE')]
+    ##guide_names = ['GUIDE0']
     amp_names = ['E', 'F', 'G', 'H']
 
     nampy=516

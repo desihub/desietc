@@ -2,6 +2,12 @@
 """
 import time
 import multiprocessing
+try:
+    import multiprocessing.shared_memory
+    shared_memory_available = True
+except ImportError:
+    # We will complain about this later if we actually need it.
+    shared_memory_available = False
 
 try:
     import DOSlib.logger as logging
@@ -85,12 +91,10 @@ class ETC(object):
         self.SKY = desietc.sky.SkyCamera(calib_name=sky_calib)
         # Initialize the GFA camera processor(s).
         self.GFAs = {}
+        if parallel and not shared_memory_available:
+            raise RuntimeError('Python >= 3.8 required for the parallel ETC option.')
         self.parallel = parallel
         if parallel:
-            try:
-                import multiprocessing.shared_memory
-            except ImportError:
-                raise RuntimeError('Python >= 3.8 required for the parallel ETC option.')
             # Allocate shared-memory buffers for each guide camera's GFACamera object.
             bufsize = desietc.gfa.GFACamera.buffer_size
             self.shared_mem = {}
@@ -107,9 +111,11 @@ class ETC(object):
             logging.info(f'Allocated {nbytes/2**20:.1f}Mb of shared memory.')
             # Initialize per-GFA processes, each with its own pipe.
             context = multiprocessing.get_context(method='spawn')
-            self.pipes[camera], child = context.Pipe()
-            self.processes[camera] = context.Process(
-                target=ETC.gfa_process, args=(camera, gfa_calib, child))
+            for camera in desietc.gfa.GFACamera.guide_names:
+                self.pipes[camera], child = context.Pipe()
+                self.processes[camera] = context.Process(
+                    target=ETC.gfa_process, args=(camera, gfa_calib, self.GMM, self.psf_inset, child))
+                self.processes[camera].start()
             logging.info(f'Initialized {len(self.GFAs)} GFA processes.')
         else:
             # All GFAs use the same GFACamera object.
@@ -127,6 +133,7 @@ class ETC(object):
         # Shutdown our GFA process pool.
         for camera in desietc.gfa.GFACamera.guide_names:
             logging.info(f'Releasing {camera} resources')
+            self.pipes[camera].send('quit')
             self.processes[camera].join()
             self.shared_mem[camera].close()
             self.shared_mem[camera].unlink()
@@ -187,7 +194,7 @@ class ETC(object):
         return True
 
     @staticmethod
-    def gfa_process(camera, calib_name, pipe):
+    def gfa_process(camera, calib_name, GMM, inset, pipe):
         """Parallel process for a single GFA.
         """
         # Create a GFACamera object that shares its data and ivar arrays
@@ -205,7 +212,7 @@ class ETC(object):
                 break
             # Handle other actions here...
             elif action == 'measure_psf':
-                pipe.send(ETC.measure_psf(GFA))
+                pipe.send(ETC.measure_psf(GFA, GMM, inset))
 
     @staticmethod
     def measure_psf(thisGFA, GMM, inset):
@@ -237,10 +244,10 @@ class ETC(object):
         if not self.process_top_header(data['header'], 'acquisition image', update_ok=True):
             return False
         logging.info(f'Processing acquisition image for {self.night}/{self.exptag}.')
-        # Loop over cameras.
+        # Pass 1: reduce the raw GFA data and measure the PSF.
         self.acquisition_results = {}
+        pending = []
         for camera in desietc.gfa.GFACamera.guide_names:
-            camera_result = {}
             if camera not in data:
                 logging.warn(f'No acquisition image for {camera}.')
                 continue
@@ -249,20 +256,23 @@ class ETC(object):
             if not self.preprocess_gfa(camera, data[camera], f'{camera} acquisition image'):
                 continue
             if self.parallel:
-                pass
+                self.pipes[camera].send('measure_psf')
+                pending.append(camera)
             else:
-                camera_result = self.measure_psf(self.GFAs[camera], self.GMM, self.psf_inset)
-            if 'gmm' not in camera_result:
-                logging.error(f'Failed to fit PSF model for {camera}')
-                continue
-            else:
-                self.acquisition_results[camera] = camera_result
+                self.acquisition_results[camera] = self.measure_psf(
+                    self.GFAs[camera], self.GMM, self.psf_inset)
             ncamera += 1
+        for camera in pending:
+            logging.info(f'Waiting for {camera}...')
+            # Collect the parallel measure_psf outputs.
+            self.acquisition_results[camera] = self.pipes[camera].recv()
         # Do a second pass to precompute the PSF dithers needed to fit guide stars.
-        # This pass always runs in the main process.
-        for camera, camera_results in self.acquisition_results.items():
-            gmm_params = camera_results.get('gmm', None)
+        # This pass always runs in the main process since the dither array is ~6Mb
+        # and we don't want to have to pass it between processes.
+        for camera, camera_result in self.acquisition_results.items():
+            gmm_params = camera_result.get('gmm', None)
             if gmm_params is None:
+                logging.warn(f'PSF measurement failed for {camera}.')
                 continue
             camera_result['model'] = self.GMM.predict(gmm_params)
             # Precompute dithered renderings of the model for fast guide frame fits.
