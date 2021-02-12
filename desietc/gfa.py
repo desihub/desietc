@@ -121,8 +121,7 @@ class GFACamera(object):
     master_dark = None
     pixel_mask = None
 
-    def __init__(self, nrowtrim=4, maxdelta=50, calib_name='GFA_calib.fits',
-                 default_name=None, buffer=None):
+    def __init__(self, nrowtrim=4, maxdelta=50, calib_name='GFA_calib.fits', buffer=None):
         """Initialize a GFA Camera analysis object.
 
         Parameters
@@ -136,8 +135,6 @@ class GFACamera(object):
             an indication that the GFA is exhibiting excessive pattern noise.
         calib_name : str
             Name of the FITS file containing the GFA calibration data to use.
-        default_name : str
-            Camera name to use by default in :meth:`setraw`.
         buffer : object exposing buffer interface or None
             Buffer of size at least buffer_size to use for our data and
             ivar arrays.  Allocate new memory when None.
@@ -158,8 +155,6 @@ class GFACamera(object):
         # We have no centering algorithms initialized yet.
         self.psf_centering = None
         self.donut_centering = None
-        # Remember the default name to use in setraw.
-        self.default_name = default_name
 
     def setraw(self, raw, name=None, overscan_correction=True, subtract_master_zero=True, apply_gain=True):
         """Initialize using the raw GFA data provided for a single exposure.
@@ -188,7 +183,7 @@ class GFACamera(object):
             name : str or None
                 Name of the camera that produced this raw data. Must be set to one of the values in gfa_names
                 in order to lookup the correct master zero and dark images, and amplifier parameters, when
-                these features are used. Use the default specified in the ctor when None.
+                these features are used.
             overscan_correction : bool
                 Subtract the per-amplifier bias estimated from each overscan region when True. Otherwise,
                 these biases are still calculated and available in ``bias[amp]`` but not subtracted.
@@ -203,7 +198,6 @@ class GFACamera(object):
         if raw.shape != raw_shape:
             raise ValueError('raw data has dimensions {0} but expected {1}.'.format(raw.shape, raw_shape))
         ny, nx = raw.shape
-        name = name or self.default_name
         if name not in self.gfa_names:
             logging.warning('Not a valid GFA name: {0}.'.format(name))
         self.name = name
