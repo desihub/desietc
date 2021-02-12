@@ -113,20 +113,44 @@ class GFACamera(object):
         'G': (slice(nampy, None), slice(nampx, None)), # top left
     }
 
+    buffer_size = 2 * (2 * nampy) * (2 * nampx) * np.dtype(np.float32).itemsize
+
     lab_data = None
     calib_data = None
     master_zero = None
     master_dark = None
     pixel_mask = None
 
-    def __init__(self, nrowtrim=4, maxdelta=50, calib_name='GFA_calib.fits', default_name=None):
-        """
+    def __init__(self, nrowtrim=4, maxdelta=50, calib_name='GFA_calib.fits',
+                 default_name=None, buffer=None):
+        """Initialize a GFA Camera analysis object.
+
+        Parameters
+        ----------
+        nrowtrim : int
+            Number of overscan rows to trim before calculating the bias.
+        maxdelta : float
+            Maximum deviation between an overscan pixel value and the median
+            overscan pixel value in order for an overscan pixel to be
+            considered "good".  A large number of bad pixels is probably
+            an indication that the GFA is exhibiting excessive pattern noise.
+        calib_name : str
+            Name of the FITS file containing the GFA calibration data to use.
+        default_name : str
+            Camera name to use by default in :meth:`setraw`.
+        buffer : object exposing buffer interface or None
+            Buffer of size at least buffer_size to use for our data and
+            ivar arrays.  Allocate new memory when None.
         """
         self.nrowtrim = nrowtrim
         self.maxdelta = maxdelta
         # Allocate memory to use internally.
-        self.data = np.zeros((2 * self.nampy, 2 * self.nampx), np.float32)
-        self.ivar = np.zeros((2 * self.nampy, 2 * self.nampx), np.float32)
+        if buffer is not None:
+            self.data = np.ndarray((2 * self.nampy, 2 * self.nampx), np.float32, buffer=buffer[0])
+            self.ivar = np.ndarray((2 * self.nampy, 2 * self.nampx), np.float32, buffer=buffer[size//2:])
+        else:
+            self.data = np.zeros((2 * self.nampy, 2 * self.nampx), np.float32)
+            self.ivar = np.zeros((2 * self.nampy, 2 * self.nampx), np.float32)
         # Load the class-level calib data if necessary.
         if GFACamera.calib_data is None:
             (GFACamera.calib_data, GFACamera.master_zero,
@@ -138,12 +162,10 @@ class GFACamera(object):
         self.default_name = default_name
 
     def setraw(self, raw, name=None, overscan_correction=True, subtract_master_zero=True, apply_gain=True):
-        """Initialize using the raw GFA data provided, which can either be a single or multiple exposures.
+        """Initialize using the raw GFA data provided for a single exposure.
 
         After calling this method the following attributes are set:
 
-            nexp : int
-                Number of exposures loaded, which will be one if raw is a 2D array.
             bias : dict of arrays
                 Bias values in ADU estimated from the overscan in each exposure, indexed by the amplifier name.
             amps : dict of view
@@ -151,29 +173,27 @@ class GFACamera(object):
                 and column readout order.
             unit : str
                 Either 'elec' or 'ADU' depending on the value of apply_gain.
-            data : 3D array of float32
+            data : 2D array of float32
                 Bias subtracted pixel values in elec (or ADU if apply_gain is False) of shape
-                (nexp, 2 * nampy, 2 * nampx) with pre and post overscan regions removed from the raw data.
-            ivar : 3D array of float32
-                Inverse variance estimated for each exposure in units matched to the data array.
+                (2 * nampy, 2 * nampx) with pre and post overscan regions removed from the raw data.
+            ivar : 2D array of float32
+                Inverse variance estimated in units matched to the data array.
 
         To calculate the estimated dark current, use :meth:`get_dark_current`.  To remove the overscans
         but not apply any calibrations, set all options to False.
 
         Parameters:
             raw : numpy array
-                An array of raw data with shape (nexp, ny, nx) or (ny, nx). The raw input is not copied
-                or modified.
+                An array of raw data with shape (ny, nx). The raw input is not copied or modified.
             name : str or None
                 Name of the camera that produced this raw data. Must be set to one of the values in gfa_names
                 in order to lookup the correct master zero and dark images, and amplifier parameters, when
-                these features are used.
+                these features are used. Use the default specified in the ctor when None.
             overscan_correction : bool
                 Subtract the per-amplifier bias estimated from each overscan region when True. Otherwise,
-                these biases are still calculated and available in `bias[amp]` but not subtracted.
+                these biases are still calculated and available in ``bias[amp]`` but not subtracted.
             subtract_master_zero : bool
                 Subtract the master zero image for this camera after applying overscan bias correction.
-                Note that the overscan bias correction is always applied.
             apply_gain : bool
                 Convert from ADU to electrons using the gain specified for this camera.
         """
@@ -221,10 +241,8 @@ class GFACamera(object):
         self.data[self.nampy:, self.nampx:] = raw[self.nampy:, self.nxby2 + self.nscan:-self.nscan]
         if overscan_correction:
             # Apply the overscan bias corrections.
-            self.data[:self.nampy, :self.nampx] -= self.bias['E']
-            self.data[:self.nampy, self.nampx:] -= self.bias['F']
-            self.data[self.nampy:, :self.nampx] -= self.bias['H']
-            self.data[self.nampy:, self.nampx:] -= self.bias['G']
+            for amp in self.amp_names:
+                self.data[self.quad[amp]] -= self.bias[amp]
         # Subtract the master zero if requested.
         if subtract_master_zero:
             self.data -= GFACamera.master_zero[name]
@@ -317,7 +335,7 @@ class GFACamera(object):
 
     def get_psfs(self, downsampling=2, margin=16, stampsize=45, inset=4, minsnr=2.0, min_snr_ratio=0.1,
                  maxsrc=29, stack=True):
-        """Find PSF candidates in a specified exposure.
+        """Find PSF candidates in our ``data`` image.
 
         For best results, estimate and subtract the dark current before calling this method.
         """
@@ -341,7 +359,7 @@ class GFACamera(object):
 
     def get_donuts(self, downsampling=2, margin=16, stampsize=65, inset=8, minsnr=1.5,
                    min_snr_ratio=0.1, maxsrc=19, column_cut=920, stack=True):
-        """Find donut candidates in each half of a specified exposure.
+        """Find donut candidates in our ``data`` image.
 
         For best results, estimate and subtract the dark current before calling this method.
         """
