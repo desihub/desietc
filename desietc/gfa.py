@@ -114,7 +114,16 @@ class GFACamera(object):
         'G': (slice(nampy, None), slice(nampx, None)), # top left
     }
 
+    buffer_shape = (2, 2 * nampy, 2 * nampx)
     buffer_size = 2 * (2 * nampy) * (2 * nampx) * np.dtype(np.float32).itemsize
+
+    maxdither = 1
+    psf_stampsize = 45
+    psf_inset = 4
+    psf_stacksize = psf_stampsize - 2 * (psf_inset + maxdither)
+    donut_stampsize = 65
+    donut_inset = 8
+    donut_stacksize = donut_stampsize - 2 * (donut_inset + maxdither)
 
     lab_data = None
     calib_data = None
@@ -144,10 +153,10 @@ class GFACamera(object):
         self.maxdelta = maxdelta
         if buffer is not None:
             # Use the buffer provided, e.g. in shared memory.
-            self.array = np.ndarray((2, 2 * self.nampy, 2 * self.nampx), dtype=np.float32, buffer=buffer)
+            self.array = np.ndarray(self.buffer_shape, dtype=np.float32, buffer=buffer)
         else:
             # Allocate and zero new memory.
-            self.array = np.zeros((2, 2 * self.nampy, 2 * self.nampx), np.float32)
+            self.array = np.zeros(self.buffer_shape, np.float32)
         assert self.array.nbytes == self.buffer_size
         self.data = self.array[0]
         self.ivar = self.array[1]
@@ -330,16 +339,20 @@ class GFACamera(object):
         else:
             raise ValueError('Invalid retval "{0}".'.format(retval))
 
-    def get_psfs(self, downsampling=2, margin=16, stampsize=45, inset=4, minsnr=2.0, min_snr_ratio=0.1,
-                 maxsrc=29, stack=True):
+    def get_psfs(self, D=None, W=None, downsampling=2, margin=16, minsnr=2.0,
+                 min_snr_ratio=0.1, maxsrc=29, stack=True):
         """Find PSF candidates in our ``data`` image.
 
         For best results, estimate and subtract the dark current before calling this method.
         """
+        stampsize, inset = self.psf_stampsize, self.psf_inset
         if self.psf_centering is None or (
             self.psf_centering.stamp_size != stampsize or self.psf_centering.inset != inset):
             self.psf_centering = desietc.util.CenteredStamp(stampsize, inset, method='fiber')
-        D, W = self.data, self.ivar
+        if D is None:
+            D = self.data
+        if W is None:
+            W = self.ivar
         ny, nx = D.shape
         SNR = desietc.util.get_significance(D, W, downsampling=downsampling)
         M = GFASourceMeasure(
@@ -349,17 +362,18 @@ class GFACamera(object):
             SNR, measure=M, minsnr=minsnr, minsep=0.7 * stampsize / downsampling, maxsrc=maxsrc,
             min_snr_ratio=min_snr_ratio)
         if stack:
-            self.psf_stack = desietc.util.get_stacked(self.psfs)
+            self.psf_stack = desietc.util.get_stacked(self.psfs, maxdither=self.maxdither)
         else:
             self.psf_stack = None
         return len(self.psfs)
 
-    def get_donuts(self, downsampling=2, margin=16, stampsize=65, inset=8, minsnr=1.5,
+    def get_donuts(self, downsampling=2, margin=16, minsnr=1.5,
                    min_snr_ratio=0.1, maxsrc=19, column_cut=920, stack=True):
         """Find donut candidates in our ``data`` image.
 
         For best results, estimate and subtract the dark current before calling this method.
         """
+        stampsize, inset = self.donut_stampsize, self.donut_inset
         if self.donut_centering is None or (
             self.donut_centering.stamp_size != stampsize or self.donut_centering.inset != inset):
             self.donut_centering = desietc.util.CenteredStamp(stampsize, inset, method='donut')
@@ -379,8 +393,8 @@ class GFACamera(object):
             desietc.util.detect_sources(SNR, measure=MR, **args))
         if stack:
             self.donut_stack = (
-                desietc.util.get_stacked(self.donuts[0]),
-                desietc.util.get_stacked(self.donuts[1]))
+                desietc.util.get_stacked(self.donuts[0], maxdither=self.maxdither),
+                desietc.util.get_stacked(self.donuts[1], maxdither=self.maxdither))
         else:
             self.donut_stack = None
         return len(self.donuts[0]), len(self.donuts[1])

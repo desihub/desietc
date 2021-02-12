@@ -63,8 +63,14 @@ class ETC(object):
             raise ValueError('psf_pixels must be odd.')
         psf_grid = np.arange(psf_pixels + 1) - psf_pixels / 2
         self.GMM = desietc.gmm.GMMFit(psf_grid, psf_grid)
-        self.psf_pixels = psf_pixels
         self.xdither, self.ydither = desietc.util.diskgrid(num_dither, max_dither, alpha=2)
+        self.psf_pixels = psf_pixels
+        psf_stacksize = desietc.gfa.GFACamera.psf_stacksize
+        if self.psf_pixels > psf_stacksize:
+            raise ValueError(f'psf_pixels must be <= {psf_stacksize}.')
+        # Use a smaller stamp for fitting the PSF.
+        ntrim = (psf_stacksize - self.psf_pixels) // 2
+        self.psf_inset = slice(ntrim, ntrim + self.psf_pixels)
         # Initialize analysis results.
         self.night = None
         self.expid = None
@@ -88,6 +94,8 @@ class ETC(object):
             # Allocate shared-memory buffers for each guide camera's GFACamera object.
             bufsize = desietc.gfa.GFACamera.buffer_size
             self.shared_mem = {}
+            self.pipes = {}
+            self.processes = {}
             for camera in desietc.gfa.GFACamera.guide_names:
                 bufname = self.BUFFER_NAME.format(camera)
                 logging.debug(f'bufname={bufname}')
@@ -97,10 +105,12 @@ class ETC(object):
                     calib_name=gfa_calib, buffer=self.shared_mem[camera].buf)
             nbytes = bufsize * len(self.GFAs)
             logging.info(f'Allocated {nbytes/2**20:.1f}Mb of shared memory.')
-            # Initialize a pool of per-GFA processes.
+            # Initialize per-GFA processes, each with its own pipe.
             context = multiprocessing.get_context(method='spawn')
-            self.pool = context.Pool(processes=len(self.GFAs))
-            logging.info(f'Initialized pool of {len(self.GFAs)} GFA processes.')
+            self.pipes[camera], child = context.Pipe()
+            self.processes[camera] = context.Process(
+                target=ETC.gfa_process, args=(camera, gfa_calib, child))
+            logging.info(f'Initialized {len(self.GFAs)} GFA processes.')
         else:
             # All GFAs use the same GFACamera object.
             GFA = desietc.gfa.GFACamera(calib_name=gfa_calib)
@@ -115,14 +125,11 @@ class ETC(object):
         if not self.needs_shutdown:
             return
         # Shutdown our GFA process pool.
-        self.pool.close()
-        self.pool.terminate()
-        logging.info('Process pool terminated.')
-        # Release our shared memory.
         for camera in desietc.gfa.GFACamera.guide_names:
+            logging.info(f'Releasing {camera} resources')
+            self.processes[camera].join()
             self.shared_mem[camera].close()
             self.shared_mem[camera].unlink()
-        logging.info('Shared memory released.')
         self.needs_shutdown = False
 
     def process_top_header(self, header, source, update_ok=False):
@@ -179,6 +186,49 @@ class ETC(object):
         self.exptime = exptime
         return True
 
+    @staticmethod
+    def gfa_process(camera, calib_name, pipe):
+        """Parallel process for a single GFA.
+        """
+        # Create a GFACamera object that shares its data and ivar arrays
+        # with the parent process.
+        bufname = ETC.BUFFER_NAME.format(camera)
+        shared_mem = multiprocessing.shared_memory.SharedMemory(name=bufname)
+        GFA = desietc.gfa.GFACamera(calib_name=calib_name, buffer=shared_mem.buf)
+        # Command handling loop.
+        while True:
+            action = pipe.recv()
+            if action == 'quit':
+                shared_mem.close()
+                pipe.send('bye')
+                pipe.close()
+                break
+            # Handle other actions here...
+            elif action == 'measure_psf':
+                pipe.send(ETC.measure_psf(GFA))
+
+    @staticmethod
+    def measure_psf(thisGFA, GMM, inset):
+        """
+        """
+        camera_result = {}
+        #  Find PSF-like objects.
+        npsf = thisGFA.get_psfs()
+        camera_result['npsf'] = npsf
+        T, WT =  thisGFA.psf_stack
+        if T is None:
+            return camera_result
+        T, WT = T[inset, inset], WT[inset, inset]
+        # Save the PSF images.
+        camera_result['data'] = T
+        camera_result['ivar'] = WT
+        # Fit the PSF to a Gaussian mixture model.
+        gmm_params = GMM.fit(T, WT, maxgauss=3)
+        if gmm_params is None:
+            return camera_result
+        camera_result['gmm'] = gmm_params
+        return camera_result
+
     def process_acquisition(self, data):
         """Process the initial GFA acquisition images.
         """
@@ -198,36 +248,26 @@ class ETC(object):
                 continue
             if not self.preprocess_gfa(camera, data[camera], f'{camera} acquisition image'):
                 continue
-            thisGFA = self.GFAs[camera]
-            # Find PSF-like objects
-            npsf = thisGFA.get_psfs()
-            logging.info(f'Found {npsf} PSF candidates in {camera}.')
-            T, WT =  thisGFA.psf_stack
-            if T is None:
-                logging.error(f'Unable to find PSFs in {camera} acquisition image.')
+            if self.parallel:
+                pass
+            else:
+                camera_result = self.measure_psf(self.GFAs[camera], self.GMM, self.psf_inset)
+            if 'gmm' not in camera_result:
+                logging.error(f'Failed to fit PSF model for {camera}')
                 continue
-            # Use a smaller stamp for fitting the PSF.
-            nT = len(T)
-            assert T.shape == WT.shape == (nT, nT)
-            assert self.psf_pixels <= nT
-            ntrim = (nT - self.psf_pixels) // 2
-            S = slice(ntrim, ntrim + self.psf_pixels)
-            T, WT = T[S, S], WT[S, S]
-            # Save the PSF images.
-            camera_result['data'] = T
-            camera_result['ivar'] = WT
-            self.acquisition_results[camera] = camera_result
-            # Fit the PSF to a Gaussian mixture model.
-            gmm_params = self.GMM.fit(T, WT, maxgauss=3)
+            else:
+                self.acquisition_results[camera] = camera_result
+            ncamera += 1
+        # Do a second pass to precompute the PSF dithers needed to fit guide stars.
+        # This pass always runs in the main process.
+        for camera, camera_results in self.acquisition_results.items():
+            gmm_params = camera_results.get('gmm', None)
             if gmm_params is None:
-                logging.error(f'Unable to fit the PSF in {camera} acquisition image.')
                 continue
-            camera_result['gmm'] = gmm_params
             camera_result['model'] = self.GMM.predict(gmm_params)
             # Precompute dithered renderings of the model for fast guide frame fits.
             dithered = self.GMM.dither(gmm_params, self.xdither, self.ydither)
             camera_result['dithered'] = dithered
-            ncamera += 1
         # Update the current FWHM, FFRAC0 now.
         # ...
         # Reset the guide frame counter and guide star data.
