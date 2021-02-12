@@ -27,10 +27,12 @@ import desietc.util
 # - implement cosmic split logic
 # - using multiprocessing for acquisition image analysis
 # - flag issues detected in acq img
+# - context manager for ETC pool & shared mem buffers?
 
 class ETC(object):
 
     SECS_PER_DAY = 86400
+    BUFFER_NAME = 'ETC_{0}_buffer'
 
     def __init__(self, sky_calib, gfa_calib, psf_pixels=25, max_dither=7, num_dither=1200,
                  Ebv_coef=1.0, parallel=True):
@@ -73,17 +75,55 @@ class ETC(object):
         # Initialize buffers to record our signal- and sky-rate measurements.
         self.thru_measurements = desietc.util.MeasurementBuffer(maxlen=1000, default_value=1)
         self.sky_measurements = desietc.util.MeasurementBuffer(maxlen=200, default_value=1)
-        # Initialize parallel processing if requested.
-        if parallel:
-            context = multiprocessing.get_context(method='spawn')
-            npool = len(desietc.gfa.GFACamera.guide_names)
-            self.pool = context.Pool(processes=npool)
-            logging.info(f'Initialized pool of {npool} parallel GFA processors.')
-        # Initialize SKY and GFA camera processors.
+        # Initialize the SKY camera processor.
         self.SKY = desietc.sky.SkyCamera(calib_name=sky_calib)
-        self.GFAs = {
-            camera: desietc.gfa.GFACamera(calib_name=gfa_calib, default_name=camera)
-            for camera in desietc.gfa.GFACamera.guide_names}
+        # Initialize the GFA camera processor(s).
+        self.GFAs = {}
+        self.parallel = parallel
+        if parallel:
+            try:
+                import multiprocessing.shared_memory
+            except ImportError:
+                raise RuntimeError('Python >= 3.8 required for the parallel ETC option.')
+            # Allocate shared-memory buffers for each guide camera's GFACamera object.
+            bufsize = desietc.gfa.GFACamera.buffer_size
+            self.shared_mem = {}
+            for camera in desietc.gfa.GFACamera.guide_names:
+                bufname = self.BUFFER_NAME.format(camera)
+                logging.debug(f'bufname={bufname}')
+                self.shared_mem[camera] = multiprocessing.shared_memory.SharedMemory(
+                    name=bufname, size=bufsize, create=True)
+                self.GFAs[camera] = desietc.gfa.GFACamera(
+                    calib_name=gfa_calib, buffer=self.shared_mem[camera].buf)
+            nbytes = bufsize * len(self.GFAs)
+            logging.info(f'Allocated {nbytes/2**20:.1f}Mb of shared memory.')
+            # Initialize a pool of per-GFA processes.
+            context = multiprocessing.get_context(method='spawn')
+            self.pool = context.Pool(processes=len(self.GFAs))
+            logging.info(f'Initialized pool of {len(self.GFAs)} GFA processes.')
+        else:
+            # All GFAs use the same GFACamera object.
+            GFA = desietc.gfa.GFACamera(calib_name=gfa_calib)
+            for camera in desietc.gfa.GFACamera.guide_names:
+                self.GFAs[camera] = GFA
+        self.needs_shutdown = parallel
+
+    def shutdown(self):
+        """Release any resources allocated in our constructor.
+        """
+        logging.info('Shutting down ETC...')
+        if not self.needs_shutdown:
+            return
+        # Shutdown our GFA process pool.
+        self.pool.close()
+        self.pool.terminate()
+        logging.info('Process pool terminated.')
+        # Release our shared memory.
+        for camera in desietc.gfa.GFACamera.guide_names:
+            self.shared_mem[camera].close()
+            self.shared_mem[camera].unlink()
+        logging.info('Shared memory released.')
+        self.needs_shutdown = False
 
     def process_top_header(self, header, source, update_ok=False):
         """Process the top-level header of an exposure.
@@ -160,7 +200,8 @@ class ETC(object):
                 continue
             thisGFA = self.GFAs[camera]
             # Find PSF-like objects
-            thisGFA.get_psfs()
+            npsf = thisGFA.get_psfs()
+            logging.info(f'Found {npsf} PSF candidates in {camera}.')
             T, WT =  thisGFA.psf_stack
             if T is None:
                 logging.error(f'Unable to find PSFs in {camera} acquisition image.')
@@ -396,7 +437,7 @@ class ETC(object):
             logging.warning(f'Using default GCCDTEMP {ccdtemp}C for {source}')
         try:
             thisGFA = self.GFAs[camera]
-            thisGFA.setraw(data['data'])
+            thisGFA.setraw(data['data'], name=camera)
         except ValueError as e:
             logging.error(f'Failed to process {source} raw data: {e}')
             return False

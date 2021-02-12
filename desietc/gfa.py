@@ -99,7 +99,8 @@ class GFACamera(object):
     gfa_names = [
         'GUIDE0', 'FOCUS1', 'GUIDE2', 'GUIDE3', 'FOCUS4',
         'GUIDE5', 'FOCUS6', 'GUIDE7', 'GUIDE8', 'FOCUS9']
-    guide_names = [name for name in gfa_names if name.startswith('GUIDE')]
+    ##guide_names = [name for name in gfa_names if name.startswith('GUIDE')]
+    guide_names = ['GUIDE0']
     amp_names = ['E', 'F', 'G', 'H']
 
     nampy=516
@@ -141,13 +142,15 @@ class GFACamera(object):
         """
         self.nrowtrim = nrowtrim
         self.maxdelta = maxdelta
-        # Allocate memory to use internally.
         if buffer is not None:
-            self.data = np.ndarray((2 * self.nampy, 2 * self.nampx), np.float32, buffer=buffer[0])
-            self.ivar = np.ndarray((2 * self.nampy, 2 * self.nampx), np.float32, buffer=buffer[size//2:])
+            # Use the buffer provided, e.g. in shared memory.
+            self.array = np.ndarray((2, 2 * self.nampy, 2 * self.nampx), dtype=np.float32, buffer=buffer)
         else:
-            self.data = np.zeros((2 * self.nampy, 2 * self.nampx), np.float32)
-            self.ivar = np.zeros((2 * self.nampy, 2 * self.nampx), np.float32)
+            # Allocate and zero new memory.
+            self.array = np.zeros((2, 2 * self.nampy, 2 * self.nampx), np.float32)
+        assert self.array.nbytes == self.buffer_size
+        self.data = self.array[0]
+        self.ivar = self.array[1]
         # Load the class-level calib data if necessary.
         if GFACamera.calib_data is None:
             (GFACamera.calib_data, GFACamera.master_zero,

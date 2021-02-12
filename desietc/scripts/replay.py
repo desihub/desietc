@@ -124,9 +124,8 @@ def etcoffline(args):
     # Initialize the global ETC algorithm.
     ETC = desietc.etc.ETC(
         args.sky_calib, args.gfa_calib, args.psf_pixels,
-        args.max_dither, args.num_dither, args.Ebv_coef)
+        args.max_dither, args.num_dither, args.Ebv_coef, args.parallel)
 
-    nprocessed = 0
     def process(expid):
         nonlocal nprocessed
         success = desietc.offline.replay_exposure(
@@ -135,44 +134,50 @@ def etcoffline(args):
         if success:
             nprocessed += 1
 
-    if args.expid is not None:
-        exposures = set()
-        # Loop over comma-separated tokens.
-        for token in args.expid.split(','):
-            # Process a token of the form N or N1-N2.
-            limits = [int(expid) for expid in token.split('-')]
-            if len(limits) == 1:
-                start, stop = limits[0], limits[0] + 1
-            elif len(limits) == 2:
-                start, stop = limits[0], limits[1] + 1
-            else:
-                print('Invalid --expid (should be N or N1-N2): "{0}"'.format(args.expid))
-                sys.exit(-1)
-            for expid in range(start, stop):
-                process(expid)
+    nprocessed = 0
 
-    expid_pattern = re.compile('^[0-9]{8}$')
-    get_exposures = lambda: set([
-        int(p.name) for p in nightpath.glob('????????') if expid_pattern.match(p.name)])
+    # Wrap the processing of exposures to ensure that ETC.shutdown is always called.
+    try:
+        if args.expid is not None:
+            exposures = set()
+            # Loop over comma-separated tokens.
+            for token in args.expid.split(','):
+                # Process a token of the form N or N1-N2.
+                limits = [int(expid) for expid in token.split('-')]
+                if len(limits) == 1:
+                    start, stop = limits[0], limits[0] + 1
+                elif len(limits) == 2:
+                    start, stop = limits[0], limits[1] + 1
+                else:
+                    print('Invalid --expid (should be N or N1-N2): "{0}"'.format(args.expid))
+                    sys.exit(-1)
+                for expid in range(start, stop):
+                    process(expid)
 
-    if args.batch or args.watch:
-        # Find the existing exposures on this night.
-        existing = get_exposures()
-        if args.batch:
-            for expid in sorted(existing):
-                process(expid)
-        if args.watch:
-            logging.info('Watching for new exposures...hit ^C to exit')
-            try:
-                while True:
-                    time.sleep(args.watch_interval)
-                    newexp = get_exposures() - existing
-                    for expid in sorted(newexp):
-                        process(expid)
-                    existing |= newexp
-            except KeyboardInterrupt:
-                logging.info('Bye.')
-                pass
+        expid_pattern = re.compile('^[0-9]{8}$')
+        get_exposures = lambda: set([
+            int(p.name) for p in nightpath.glob('????????') if expid_pattern.match(p.name)])
+
+        if args.batch or args.watch:
+            # Find the existing exposures on this night.
+            existing = get_exposures()
+            if args.batch:
+                for expid in sorted(existing):
+                    process(expid)
+            if args.watch:
+                logging.info('Watching for new exposures...hit ^C to exit')
+                try:
+                    while True:
+                        time.sleep(args.watch_interval)
+                        newexp = get_exposures() - existing
+                        for expid in sorted(newexp):
+                            process(expid)
+                        existing |= newexp
+                except KeyboardInterrupt:
+                    logging.info('Bye.')
+                    pass
+    finally:
+        ETC.shutdown()
 
     logging.info(f'Processed {nprocessed} exposures.')
 
@@ -220,8 +225,8 @@ def main():
         help='Path to GFA calibration FITS file to use')
     parser.add_argument('--sky-calib', type=str, metavar='PATH',
         help='Path to SKYCAM calibration FITS file to use')
-    parser.add_argument('--npool', type=int, default=0, metavar='N',
-        help='Number of workers in multiprocessing pool')
+    parser.add_argument('--parallel', action='store_true',
+        help='Process GFA cameras in parallel')
     args = parser.parse_args()
 
     # Configure logging.
