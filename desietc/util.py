@@ -757,3 +757,12 @@ class MeasurementBuffer(object):
         wgt = self.entries[sel]['error'] ** -0.5
         val = self.entries[sel]['value']
         return np.sum(wgt * val) / np.sum(wgt), 0
+
+    def save(self, mjd1, mjd2):
+        """Return a json suitable serialization of our entries spanning (mjd1, mjd2).
+        """
+        sel = self.inside(mjd1, mjd2)
+        return [
+            dict(mjd1=float(E['mjd1']), mjd2=float(E['mjd2']),
+                 value=float(E['value']), error=float(E['error']))
+            for E in self.entries[sel]]

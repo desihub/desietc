@@ -1,6 +1,7 @@
 """The top-level ETC algorithm.
 """
 import time
+import json
 import multiprocessing
 try:
     import multiprocessing.shared_memory
