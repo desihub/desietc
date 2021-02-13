@@ -25,15 +25,12 @@ import desietc.gmm
 import desietc.util
 
 # TODO:
-# - calculate transp, ffrac from acquisition image
 # - update teff after each GFA/SKY update
 # - estimate GFA thru errors?
 # - implement save_exposure()
 # - implement cutoff time logic
 # - implement cosmic split logic
-# - using multiprocessing for acquisition image analysis
 # - flag issues detected in acq img
-# - context manager for ETC pool & shared mem buffers?
 
 class ETC(object):
 
@@ -77,6 +74,7 @@ class ETC(object):
         # Use a smaller stamp for fitting the PSF.
         ntrim = (psf_stacksize - self.psf_pixels) // 2
         self.psf_inset = slice(ntrim, ntrim + self.psf_pixels)
+        self.measure = desietc.util.PSFMeasure(psf_stacksize)
         # Initialize analysis results.
         self.night = None
         self.expid = None
@@ -114,7 +112,8 @@ class ETC(object):
             for camera in desietc.gfa.GFACamera.guide_names:
                 self.pipes[camera], child = context.Pipe()
                 self.processes[camera] = context.Process(
-                    target=ETC.gfa_process, args=(camera, gfa_calib, self.GMM, self.psf_inset, child))
+                    target=ETC.gfa_process, args=(
+                        camera, gfa_calib, self.GMM, self.psf_inset, self.measure, child))
                 self.processes[camera].start()
             logging.info(f'Initialized {len(self.GFAs)} GFA processes.')
         else:
@@ -194,7 +193,7 @@ class ETC(object):
         return True
 
     @staticmethod
-    def gfa_process(camera, calib_name, GMM, inset, pipe):
+    def gfa_process(camera, calib_name, GMM, inset, measure, pipe):
         """Parallel process for a single GFA.
         """
         # Create a GFACamera object that shares its data and ivar arrays
@@ -212,10 +211,10 @@ class ETC(object):
                 break
             # Handle other actions here...
             elif action == 'measure_psf':
-                pipe.send(ETC.measure_psf(GFA, GMM, inset))
+                pipe.send(ETC.measure_psf(GFA, GMM, inset, measure))
 
     @staticmethod
-    def measure_psf(thisGFA, GMM, inset):
+    def measure_psf(thisGFA, GMM, inset, measure):
         """
         """
         camera_result = {}
@@ -225,6 +224,11 @@ class ETC(object):
         T, WT =  thisGFA.psf_stack
         if T is None:
             return camera_result
+        # Measure the FWHM and FFRAC of the stacked PSF.
+        fwhm, ffrac = measure.measure(T, WT)
+        camera_result['fwhm'] = fwhm if fwhm > 0 else np.nan
+        camera_result['ffrac'] = ffrac if ffrac > 0 else np.nan
+        # Use a smaller size for GMM fitting.
         T, WT = T[inset, inset], WT[inset, inset]
         # Save the PSF images.
         camera_result['data'] = T
@@ -260,7 +264,7 @@ class ETC(object):
                 pending.append(camera)
             else:
                 self.acquisition_results[camera] = self.measure_psf(
-                    self.GFAs[camera], self.GMM, self.psf_inset)
+                    self.GFAs[camera], self.GMM, self.psf_inset, self.measure)
             ncamera += 1
         for camera in pending:
             logging.info(f'Waiting for {camera}...')
@@ -269,7 +273,10 @@ class ETC(object):
         # Do a second pass to precompute the PSF dithers needed to fit guide stars.
         # This pass always runs in the main process since the dither array is ~6Mb
         # and we don't want to have to pass it between processes.
+        fwhm_vec, ffrac_vec = [], []
         for camera, camera_result in self.acquisition_results.items():
+            fwhm_vec.append(camera_result.get('fwhm', np.nan))
+            ffrac_vec.append(camera_result.get('ffrac', np.nan))
             gmm_params = camera_result.get('gmm', None)
             if gmm_params is None:
                 logging.warn(f'PSF measurement failed for {camera}.')
@@ -278,8 +285,13 @@ class ETC(object):
             # Precompute dithered renderings of the model for fast guide frame fits.
             dithered = self.GMM.dither(gmm_params, self.xdither, self.ydither)
             camera_result['dithered'] = dithered
-        # Update the current FWHM, FFRAC0 now.
-        # ...
+        # Update the current FWHM, FFRAC values now.
+        fwhm, ffrac = -1, -1
+        if np.any(np.isfinite(fwhm_vec)):
+            fwhm = np.nanmedian(fwhm_vec)
+        if np.any(np.isfinite(ffrac_vec)):
+            ffrac = np.nanmedian(ffrac_vec)
+        logging.info(f'Acquisition image quality: FWHM={fwhm:.2f}", FFRAC={ffrac:.3}.')
         # Reset the guide frame counter and guide star data.
         self.num_guide_frames = 0
         self.guide_stars = None
