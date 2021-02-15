@@ -676,15 +676,19 @@ class CenteredStamp(object):
 
 class MeasurementBuffer(object):
     """Manage a circular buffer of measurements consisting of a time interval, value and error.
+
+    Auxiliary data can optionally be attached to each measurement.
     """
     SECS_PER_DAY = 86400
 
-    def __init__(self, maxlen, default_value, resolution=1, padding=300, recent=300):
+    def __init__(self, maxlen, default_value, resolution=1, padding=300, recent=300, aux_dtype=[]):
         self.oldest = None
         self.len = 0
         self.full = False
-        self._entries = np.empty(shape=maxlen, dtype=[
-            ('mjd1', np.float64), ('mjd2', np.float64), ('value', np.float32), ('error', np.float32)])
+        dtype = [
+            ('mjd1', np.float64), ('mjd2', np.float64), ('value', np.float32), ('error', np.float32)
+        ] + aux_dtype
+        self._entries = np.empty(shape=maxlen, dtype=dtype)
         self.default_value = default_value
         self.resolution = resolution / self.SECS_PER_DAY
         self.padding = padding / self.SECS_PER_DAY
@@ -697,19 +701,20 @@ class MeasurementBuffer(object):
     def __str__(self):
         return f'{self.__class__.__name__}(len={self.len}, full={self.full}, oldest={self.oldest})'
 
-    def add(self, mjd1, mjd2, value, error):
+    def add(self, mjd1, mjd2, value, error, aux_data=()):
         """Add a single measurement.
 
         We make no assumption that measurements are non-overlapping or added in time order.
         """
         assert mjd1 < mjd2 and error > 0
         is_oldest = (self.oldest is None) or (mjd1 < self._entries[self.oldest]['mjd1'])
+        entry = (mjd1, mjd2, value, error) + aux_data
         if self.full:
             assert self.oldest is not None
             if is_oldest:
                 # Ignore this since it is older than all existing entries.
                 return
-            self._entries[self.oldest] = (mjd1, mjd2, value, error)
+            self._entries[self.oldest] = entry
             # Update the index of the oldest entry, which might be us.
             self.oldest = np.argmin(self.entries['mjd1'])
         else:
@@ -719,7 +724,7 @@ class MeasurementBuffer(object):
                 self.oldest = idx
             self.len += 1
             self.full = (self.len == self._entries.size)
-            self._entries[idx] = (mjd1, mjd2, value, error)
+            self._entries[idx] = entry
 
     def inside(self, mjd1, mjd2):
         """Return a mask for entries whose intervals overlap [mjd1, mjd2].
@@ -768,14 +773,16 @@ class MeasurementBuffer(object):
         """Return a json suitable serialization of our entries spanning (mjd1, mjd2).
 
         Use mjd2=None to use all entries after mjd1.
-        Note that we return numpy float32 values, which are not JSON serializable by
+        If this buffer has auxiliary data, that will saved also.
+        Note that we return numpy data types, which are not JSON serializable by
         default, so this assumes that the caller uses :class:`NumpyEncoder` or
         something equivalent.
         """
         sel = self.inside(mjd1, mjd2)
+        names = self._entries.dtype.names
         return [
-            dict(mjd1=E['mjd1'], mjd2=E['mjd2'], value=E['value'], error=E['error'])
-            for E in self.entries[sel]]
+            {name: entry[name] for name in names}
+            for entry in self.entries[sel]]
 
 
 class NumpyEncoder(json.JSONEncoder):
