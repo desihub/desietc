@@ -780,9 +780,16 @@ class MeasurementBuffer(object):
         """
         sel = self.inside(mjd1, mjd2)
         names = self._entries.dtype.names
-        return [
-            {name: entry[name] for name in names}
-            for entry in self.entries[sel]]
+        output = []
+        for entry in self.entries[sel]:
+            row = {}
+            for name in names:
+                if self._entries.dtype[name].shape != ():
+                    row[name] = entry[name].tolist()
+                else:
+                    row[name] = entry[name]
+            output.append(row)
+        return output
 
 
 class NumpyEncoder(json.JSONEncoder):
