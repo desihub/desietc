@@ -83,9 +83,24 @@ class ETC(object):
         self.num_sky_frames = 0
         self.acquisition_data = None
         self.guide_stars = None
+        # How many GUIDE and SKY cameras do we expect?
+        self.ngfa = len(desietc.gfa.GFACamera.guide_names)
+        self.nsky = len(desietc.sky.SkyCamera.sky_names)
         # Initialize buffers to record our signal- and sky-rate measurements.
-        self.thru_measurements = desietc.util.MeasurementBuffer(maxlen=1000, default_value=1)
-        self.sky_measurements = desietc.util.MeasurementBuffer(maxlen=200, default_value=1)
+        # Define auxiliary data to save with each GFA or SKY measurement.
+        self.thru_measurements = desietc.util.MeasurementBuffer(
+            maxlen=1000, default_value=1, aux_dtype=[
+                ('ffrac', np.float32, (self.ngfa,)),  # fiber fraction measured from single GFA
+                ('transp', np.float32, (self.ngfa,)), # transparency measured from single GFA
+                ('dx', np.float32, (self.ngfa,)),     # mean x shift of centroid from single GFA in pixels
+                ('dy', np.float32, (self.ngfa,)),     # mean y shift of centroid from single GFA in pixels
+            ])
+        self.sky_measurements = desietc.util.MeasurementBuffer(
+            maxlen=200, default_value=1, aux_dtype=[
+                ('flux', np.float32, (self.nsky,)),  # sky flux meausured from a single SKYCAM.
+                ('dflux', np.float32, (self.nsky,)), # sky flux uncertainty meausured from a single SKYCAM.
+                ('ndrop', np.int32, (self.nsky,)),   # number of fibers dropped from the camera flux estimate.
+            ])
         # Initialize the SKY camera processor.
         self.SKY = desietc.sky.SkyCamera(calib_name=sky_calib)
         # Initialize the GFA camera processor(s).
@@ -382,7 +397,13 @@ class ETC(object):
             return False
         # Loop over cameras with acquisition results.
         mjd_obs, exptime, camera_transp, camera_ffrac = [], [], [], []
-        for camera, dithered in self.dithered_model.items():
+        each_ffrac, each_transp = np.zeros(self.ngfa, np.float32), np.zeros(self.ngfa, np.float32)
+        each_dx, each_dy = np.zeros(self.ngfa, np.float32), np.zeros(self.ngfa, np.float32)
+        for icam, camera in enumerate(desietc.gfa.GFACamera.guide_names):
+            if camera not in self.dithered_model:
+                # We do not have acquisition results for this camera.
+                continue
+            dithered = self.dithered_model[camera]
             if camera not in self.guide_stars:
                 loggining.info(f'Skipping {camera} guide frame {fnum} with no guide stars.')
                 continue
@@ -395,7 +416,7 @@ class ETC(object):
                 continue
             thisGFA = self.GFAs[camera]
             # Loop over guide stars for this camera.
-            star_ffrac, star_transp = [], []
+            star_ffrac, star_transp, star_dx, star_dy = [], [], [], []
             templates = self.fiber_templates[camera]
             for istar, star in enumerate(self.guide_stars[camera]):
                 # Extract the postage stamp for this star.
@@ -416,9 +437,17 @@ class ETC(object):
                 logging.debug(f'{camera}[{fnum},{istar}] dx={dx:.1f} dy={dy:.1f} ffrac={ffrac:.3f} transp={transp:.3f}')
                 star_transp.append(transp)
                 star_ffrac.append(ffrac)
+                star_dx.append(dx)
+                star_dy.append(dy)
                 nstar += 1
             camera_transp.append(np.nanmedian(star_transp))
             camera_ffrac.append(np.nanmedian(star_ffrac))
+            # Prepare the auxiliary data saved to the ETC json file.
+            if nstar > 0:
+                each_ffrac[icam] = camera_ffrac[-1]
+                each_transp[icam] = camera_transp[-1]
+                each_dx[icam] = np.nanmean(star_dx)
+                each_dy[icam] = np.nanmean(star_dy)
             mjd_obs.append(self.mjd_obs)
             exptime.append(self.exptime)
             ncamera += 1
@@ -430,7 +459,9 @@ class ETC(object):
         # Record this measurement.
         mjd_start, mjd_stop = self.get_mjd_range(mjd_obs, exptime, f'guide[{fnum}]')
         # Use constant error until we have a proper estimate.
-        self.thru_measurements.add(mjd_start, mjd_stop, thru, 0.01)
+        self.thru_measurements.add(
+            mjd_start, mjd_stop, thru, 0.01,
+            aux_data=(each_ffrac, each_transp, each_dx, each_dy))
         # Report timing.
         elapsed = time.time() - start
         logging.debug(f'Guide frame processing took {elapsed:.2f}s for {nstar} stars in {ncamera} cameras.')
@@ -448,7 +479,9 @@ class ETC(object):
         logging.info(f'Processing sky frame {fnum} for {self.night}/{self.exptag}.')
         flux, ivar = 0, 0
         mjd_obs, exptime = [], []
-        for camera in self.SKY.sky_names:
+        each_flux, each_dflux = np.zeros(self.nsky, np.float32), np.zeros(self.nsky, np.float32)
+        each_ndrop = np.zeros(self.nsky, np.int32)
+        for i, camera in enumerate(self.SKY.sky_names):
             if camera not in data:
                 logging.warn(f'No {camera} image for frame {fnum}.')
                 continue
@@ -457,6 +490,10 @@ class ETC(object):
             camera_flux, camera_dflux = self.SKY.setraw(data[camera]['data'], name=camera)
             camera_flux /= self.exptime
             camera_dflux /= self.exptime
+            # Prepare the auxiliary data saved to the ETC json file.
+            each_flux[i] = camera_flux
+            each_dflux[i] = camera_dflux
+            each_ndrop[i] = self.SKY.ndrop
             logging.debug(f'{camera}[{fnum}] flux = {camera_flux:.2f} +/- {camera_dflux:.2f}')
             camera_ivar = 1 / camera_dflux ** 2
             flux += camera_ivar * camera_flux
@@ -470,7 +507,9 @@ class ETC(object):
         logging.info(f'SKY flux = {flux:.2f} +/- {dflux:.2f}.')
         # Record this measurement.
         mjd_start, mjd_stop = self.get_mjd_range(mjd_obs, exptime, f'sky[{fnum}]')
-        self.sky_measurements.add(mjd_start, mjd_stop, flux, dflux)
+        self.sky_measurements.add(
+            mjd_start, mjd_stop, flux, dflux,
+            aux_data=(each_flux, each_dflux, each_ndrop))
         # Profile timing.
         elapsed = time.time() - start
         logging.debug(f'Sky frame processing took {elapsed:.2f}s for {ncamera} cameras.')
