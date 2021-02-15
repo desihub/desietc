@@ -140,9 +140,9 @@ def replay_exposure(ETC, path, expid, outpath, teff=1000, cutoff=10000, cosmic=5
     # Save the ETC outputs for this exposure.
     ETC.save_exposure(exppath_out)
 
-    mjd1 = ETC.mjd_start
+    mjd1 = ETC.exp_data['mjd_start']
     mjd2 = mjd1 + desi_exptime / ETC.SECS_PER_DAY
-    teff = ETC.get_accumulated_teff(mjd1, mjd2, ETC.MW_transparency)
+    teff = ETC.get_accumulated_teff(mjd1, mjd2, ETC.exp_data['MW_transparency'])
 
     fig, ax = plt.subplots(2, 1, figsize=(9, 9))
     fig.suptitle(f'ETC Analysis for {ETC.night}/{ETC.exptag}')

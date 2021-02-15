@@ -81,7 +81,7 @@ class ETC(object):
         self.expid = None
         self.num_guide_frames = 0
         self.num_sky_frames = 0
-        self.acquisition_results = None
+        self.acquisition_data = None
         self.guide_stars = None
         # Initialize buffers to record our signal- and sky-rate measurements.
         self.thru_measurements = desietc.util.MeasurementBuffer(maxlen=1000, default_value=1)
@@ -250,7 +250,7 @@ class ETC(object):
             return False
         logging.info(f'Processing acquisition image for {self.night}/{self.exptag}.')
         # Pass 1: reduce the raw GFA data and measure the PSF.
-        self.acquisition_results = {}
+        self.acquisition_data = {}
         pending = []
         for camera in desietc.gfa.GFACamera.guide_names:
             if camera not in data:
@@ -264,28 +264,28 @@ class ETC(object):
                 self.pipes[camera].send('measure_psf')
                 pending.append(camera)
             else:
-                self.acquisition_results[camera] = self.measure_psf(
+                self.acquisition_data[camera] = self.measure_psf(
                     self.GFAs[camera], self.GMM, self.psf_inset, self.measure)
             ncamera += 1
         for camera in pending:
             logging.info(f'Waiting for {camera}...')
             # Collect the parallel measure_psf outputs.
-            self.acquisition_results[camera] = self.pipes[camera].recv()
+            self.acquisition_data[camera] = self.pipes[camera].recv()
         # Do a second pass to precompute the PSF dithers needed to fit guide stars.
         # This pass always runs in the main process since the dither array is ~6Mb
         # and we don't want to have to pass it between processes.
         fwhm_vec, ffrac_vec = [], []
-        for camera, camera_result in self.acquisition_results.items():
+        self.dithered_model = {}
+        for camera, camera_result in self.acquisition_data.items():
             fwhm_vec.append(camera_result.get('fwhm', np.nan))
             ffrac_vec.append(camera_result.get('ffrac', np.nan))
             gmm_params = camera_result.get('gmm', None)
             if gmm_params is None:
                 logging.warn(f'PSF measurement failed for {camera}.')
                 continue
-            camera_result['model'] = self.GMM.predict(gmm_params)
+            ##self.psf_model[camera] = self.GMM.predict(gmm_params)
             # Precompute dithered renderings of the model for fast guide frame fits.
-            dithered = self.GMM.dither(gmm_params, self.xdither, self.ydither)
-            camera_result['dithered'] = dithered
+            self.dithered_model[camera] = self.GMM.dither(gmm_params, self.xdither, self.ydither)
         # Update the current FWHM, FFRAC values now.
         fwhm, ffrac = -1, -1
         if np.any(np.isfinite(fwhm_vec)):
@@ -306,9 +306,6 @@ class ETC(object):
         """Specify the guide star locations and magnitudes to use when analyzing
         each guide frame.  These are normally calculated by PlateMaker.
         """
-        if self.acquisition_results is None:
-            logging.error(f'Received guide stars with no acquisition image.')
-            return False
         if self.guide_stars is not None:
             logging.warning(f'Overwriting previous guide stars for {self.night}/{self.exptag}.')
         max_rsq = (0.5 * fiber_diam_um / pixel_size_um) ** 2
@@ -372,7 +369,7 @@ class ETC(object):
         if not self.process_top_header(data['header'], f'guide[{fnum}]'):
             return False
         logging.info(f'Processing guide frame {fnum} for {self.night}/{self.exptag}.')
-        if self.acquisition_results is None:
+        if self.dithered_model is None:
             logging.error('Ignoring guide frame before acquisition image.')
             return False
         if self.guide_stars is None:
@@ -380,7 +377,7 @@ class ETC(object):
             return False
         # Loop over cameras with acquisition results.
         mjd_obs, exptime, camera_transp, camera_ffrac = [], [], [], []
-        for camera, acquisition in self.acquisition_results.items():
+        for camera, dithered in self.dithered_model.items():
             if camera not in self.guide_stars:
                 loggining.info(f'Skipping {camera} guide frame {fnum} with no guide stars.')
                 continue
@@ -392,8 +389,6 @@ class ETC(object):
             if not self.preprocess_gfa(camera, data[camera], f'{camera}[{fnum}]'):
                 continue
             thisGFA = self.GFAs[camera]
-            # Lookup this camera's PSF model.
-            psf = self.acquisition_results[camera]
             # Loop over guide stars for this camera.
             star_ffrac, star_transp = [], []
             for istar, star in enumerate(self.guide_stars[camera]):
@@ -402,8 +397,9 @@ class ETC(object):
                 DW = thisGFA.ivar[star['xslice'], star['yslice']]
                 # Estimate the actual centroid in pixels, flux in electrons and
                 # constant background level in electrons / pixel.
+
                 dx, dy, flux, bg, nll, best_fit = self.GMM.fit_dithered(
-                    self.xdither, self.ydither, psf['dithered'], D, DW)
+                    self.xdither, self.ydither, dithered, D, DW)
                 # Calculate centroid offset relative to the target fiber center.
                 dx -= star['fiber_dx']
                 dy -= star['fiber_dy']
@@ -531,12 +527,15 @@ class ETC(object):
         """
         logging.info(f'Starting {night}/{expid} at {mjd} with teff={teff:.0f}s, cutoff={cutoff:.0f}s, ' +
             f'cosmic={cosmic:.0f}s, Ebv={Ebv:.2f}')
-        self.mjd_start = mjd
-        self.teff_target = teff
-        self.cutoff = cutoff
-        self.cosmic = cosmic
-        self.Ebv = Ebv
-        self.MW_transparency = 10 ** (-self.Ebv_coef * self.Ebv / 2.5)
+        self.exp_data = dict(
+            expid=expid,
+            mjd_start=mjd,
+            Ebv=Ebv,
+            MW_transparency = 10 ** (-self.Ebv_coef * Ebv / 2.5),
+            teff=teff,
+            cutof=cutoff,
+            cosmic=cosmic,
+        )
 
     def save_exposure(self, path):
         """
@@ -545,3 +544,17 @@ class ETC(object):
         if not path.exists():
             logging.error(f'Non-existent path: {path}.')
             return
+        # Save all measurements after mjd_start.
+        mjd1, mjd2 = self.exp_data['mjd_start'], None
+        # Build a data structure to save via json.
+        save = dict(
+            expinfo=self.exp_data,
+            acquisition=self.acquisition_data,
+            thru=self.thru_measurements.save(mjd1, mjd2),
+            sky=self.sky_measurements.save(mjd1, mjd2)
+        )
+        # Encode numpy types using python built-in types for serialization.
+        fname = path / f'etc-{self.exptag}.json'
+        with open(fname, 'w') as f:
+            json.dump(save, f, cls=desietc.util.NumpyEncoder)
+            logging.info(f'Wrote {fname} for {self.night}/{self.exptag}')

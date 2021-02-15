@@ -1,11 +1,13 @@
 """Numerical utilities for the online exposure-time calculator.
 
 The general guideline for things implemented here is that they only use
-numpy/scipy and do not read/write any files or produce any logging output.
+numpy/scipy/json and do not read/write any files or produce any logging output.
 """
 import numpy as np
 
 import scipy.ndimage
+
+import json
 
 
 def fit_spots(data, ivar, profile, area=1):
@@ -721,9 +723,13 @@ class MeasurementBuffer(object):
 
     def inside(self, mjd1, mjd2):
         """Return a mask for entries whose intervals overlap [mjd1, mjd2].
+
+        Use mjd2=None to select all entries after mjd1.
         """
-        assert mjd1 <= mjd2
-        return (self.entries['mjd2'] > mjd1) & (self.entries['mjd1'] < mjd2)
+        mask = self.entries['mjd2'] > mjd1
+        if mjd2 is not None:
+            mask &= self.entries['mjd1'] < mjd2
+        return mask
 
     def sample(self, mjd1, mjd2):
         """Sample measurements on a grid covering (mjd1, mjd2) using linear interpolation.
@@ -733,7 +739,7 @@ class MeasurementBuffer(object):
         Return default_value when no measurements are available.
         Use constant extrapolation of the first/last measurement if necessary.
         """
-        assert mjd1 < mjd2
+        assert (mjd2 is not None) and (mjd1 < mjd2)
         # Construct the grid to use.
         ngrid = int(np.ceil((mjd2 - mjd1) / self.resolution))
         mjd_grid = mjd1 + (np.arange(ngrid) + 0.5) * (mjd2 - mjd1) / ngrid
@@ -760,9 +766,79 @@ class MeasurementBuffer(object):
 
     def save(self, mjd1, mjd2):
         """Return a json suitable serialization of our entries spanning (mjd1, mjd2).
+
+        Use mjd2=None to use all entries after mjd1.
+        Note that we return numpy float32 values, which are not JSON serializable by
+        default, so this assumes that the caller uses :class:`NumpyEncoder` or
+        something equivalent.
         """
         sel = self.inside(mjd1, mjd2)
         return [
-            dict(mjd1=float(E['mjd1']), mjd2=float(E['mjd2']),
-                 value=float(E['value']), error=float(E['error']))
+            dict(mjd1=E['mjd1'], mjd2=E['mjd2'], value=E['value'], error=E['error'])
             for E in self.entries[sel]]
+
+
+class NumpyEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, np.floating):
+            return float(obj)
+        elif isinstance(obj, np.integer):
+            return int(obj)
+        elif isinstance(obj, np.ndarray):
+            return obj.tolist()
+        else:
+            return super().default(obj)
+
+
+def load_guider_centroids(path, expid):
+    """Attempt to read the centroids json file produced by the guider.
+
+    Extracts numbers from the json file into numpy arrays. Note that
+    the json file uses "x" for rows and "y" for columns, which we map
+    to indices 0 and 1, respectively.
+
+    Returns
+    -------
+    tuple
+        Tuple (expected, combined, centroid) where expected gives the
+        expected position of each star with shape (nstars, 2), combined
+        gives the combined guider move after each frame with shape (2, nframes),
+        and centroid gives the centroid of each star for each frame with
+        shape (nstars, 2, nframes). If a star is not measured in a frame,
+        the centroid values are np.nan.
+    """
+    cameras = ('GUIDE0', 'GUIDE2', 'GUIDE3', 'GUIDE5', 'GUIDE7', 'GUIDE8')
+    # Read the json file of guider outputs.
+    jsonpath = path / 'centroids-{0}.json'.format(expid)
+    if not jsonpath.exists():
+        raise ValueError('Non-existent path: {0}.'.format(jsonpath))
+    with open(jsonpath) as f:
+        D = json.load(f)
+        assert D['expid'] == int(expid)
+        nframes = D['summary']['frames']
+    # Use the first frame to lookup the guide stars for each camera.
+    frame0 = D['frames']['1']
+    stars = {G: len([K for K in frame0.keys() if K.startswith(G)]) for G in cameras}
+    expected = {G: np.zeros((stars[G], 2)) for G in cameras}
+    combined = {G: np.zeros((2, nframes)) for G in cameras}
+    centroid = {G: np.zeros((stars[G], 2, nframes)) for G in cameras}
+    for camera in cameras:
+        # Get the expected position for each guide star.
+        for istar in range(stars[camera]):
+            S = frame0.get(camera + f'_{istar}')
+            expected[camera][istar, 0] = S['y_expected']
+            expected[camera][istar, 1] = S['x_expected']
+        # Get the combined centroid sent to the telescope for each frame.
+        for iframe in range(nframes):
+            F = D['frames'].get(str(iframe + 1))
+            if F is None:
+                logging.warning('Missing frame {0}/{1} in {2}'.format(iframe + 1, nframes, jsonpath))
+                continue
+            combined[camera][0, iframe] = F['combined_y']
+            combined[camera][1, iframe] = F['combined_x']
+            # Get the measured centroids for each guide star in this frame.
+            for istar in range(stars[camera]):
+                S = F.get(camera + '_{0}'.format(istar))
+                centroid[camera][istar, 0, iframe] = S.get('y_centroid', np.nan)
+                centroid[camera][istar, 1, iframe] = S.get('x_centroid', np.nan)
+    return expected, combined, centroid
