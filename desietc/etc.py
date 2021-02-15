@@ -101,7 +101,6 @@ class ETC(object):
             self.processes = {}
             for camera in desietc.gfa.GFACamera.guide_names:
                 bufname = self.BUFFER_NAME.format(camera)
-                logging.debug(f'bufname={bufname}')
                 self.shared_mem[camera] = multiprocessing.shared_memory.SharedMemory(
                     name=bufname, size=bufsize, create=True)
                 self.GFAs[camera] = desietc.gfa.GFACamera(
@@ -212,7 +211,8 @@ class ETC(object):
                 break
             # Handle other actions here...
             elif action == 'measure_psf':
-                pipe.send(ETC.measure_psf(GFA, GMM, inset, measure))
+                camera_result, psf_stack = ETC.measure_psf(GFA, GMM, inset, measure)
+                pipe.send((camera_result, psf_stack))
 
     @staticmethod
     def measure_psf(thisGFA, GMM, inset, measure):
@@ -225,21 +225,20 @@ class ETC(object):
         T, WT =  thisGFA.psf_stack
         if T is None:
             return camera_result
+        # Save a copy of the PSF stacked image before insetting.
+        psf_stack = np.stack(thisGFA.psf_stack)
         # Measure the FWHM and FFRAC of the stacked PSF.
         fwhm, ffrac = measure.measure(T, WT)
         camera_result['fwhm'] = fwhm if fwhm > 0 else np.nan
         camera_result['ffrac'] = ffrac if ffrac > 0 else np.nan
         # Use a smaller size for GMM fitting.
         T, WT = T[inset, inset], WT[inset, inset]
-        # Save the PSF images.
-        camera_result['data'] = T
-        camera_result['ivar'] = WT
-        # Fit the PSF to a Gaussian mixture model.
+        # Fit the PSF to a Gaussian mixture model. This is the slow step...
         gmm_params = GMM.fit(T, WT, maxgauss=3)
         if gmm_params is None:
             return camera_result
         camera_result['gmm'] = gmm_params
-        return camera_result
+        return camera_result, psf_stack
 
     def process_acquisition(self, data):
         """Process the initial GFA acquisition images.
@@ -251,6 +250,7 @@ class ETC(object):
         logging.info(f'Processing acquisition image for {self.night}/{self.exptag}.')
         # Pass 1: reduce the raw GFA data and measure the PSF.
         self.acquisition_data = {}
+        self.psf_stack = {}
         pending = []
         for camera in desietc.gfa.GFACamera.guide_names:
             if camera not in data:
@@ -264,13 +264,13 @@ class ETC(object):
                 self.pipes[camera].send('measure_psf')
                 pending.append(camera)
             else:
-                self.acquisition_data[camera] = self.measure_psf(
+                self.acquisition_data[camera], self.psf_stack[camera] = self.measure_psf(
                     self.GFAs[camera], self.GMM, self.psf_inset, self.measure)
             ncamera += 1
         for camera in pending:
             logging.info(f'Waiting for {camera}...')
             # Collect the parallel measure_psf outputs.
-            self.acquisition_data[camera] = self.pipes[camera].recv()
+            self.acquisition_data[camera], self.psf_stack[camera] = self.pipes[camera].recv()
         # Do a second pass to precompute the PSF dithers needed to fit guide stars.
         # This pass always runs in the main process since the dither array is ~6Mb
         # and we don't want to have to pass it between processes.
@@ -312,6 +312,7 @@ class ETC(object):
         profile = lambda x, y: 1.0 * (x ** 2 + y ** 2 < max_rsq)
         halfsize = self.psf_pixels // 2
         self.guide_stars = {}
+        self.fiber_templates = {}
         nstars = []
         # The xy swap here is intentional
         ny, nx = 2 * desietc.gfa.GFACamera.nampx, 2 * desietc.gfa.GFACamera.nampy
@@ -323,6 +324,7 @@ class ETC(object):
                 continue
             # Loop over guide stars for this GFA.
             stars = []
+            templates = []
             for i in np.where(sel)[0]:
                 # Convert from PlateMaker indexing convention to (0,0) centered in bottom-left pixel.
                 x0 = col[i] - 0.5
@@ -338,18 +340,21 @@ class ETC(object):
                 if ylo < 0 or yhi > ny or xlo < 0 or xhi > nx:
                     logging.info(f'Skipping stamp too close to border at ({x0},{y0})')
                     continue
-                yslice, xslice = slice(ylo, yhi), slice(xlo, xhi)
+                yslice, xslice = (ylo, yhi), (xlo, xhi)
                 # Calculate an antialiased fiber template for FFRAC calculations.
                 fiber_dx, fiber_dy = x0 - ix, y0 - iy
                 fiber = desietc.util.make_template(
                     self.psf_pixels, profile, dx=fiber_dx, dy=fiber_dy, normalized=False)
                 stars.append(dict(
                     x0=x0, y0=y0, rmag=rmag, nelec_rate=nelec_rate,
-                    fiber_dx=fiber_dx, fiber_dy=fiber_dy,
-                    yslice=yslice, xslice=xslice, fiber=fiber))
+                    fiber_dx=fiber_dx, fiber_dy=fiber_dy, yslice=yslice, xslice=xslice))
+                # Save the template separately from the stars info since we do not want
+                # to archive it in the ETC json output.
+                templates.append(fiber)
             nstars.append(len(stars))
-            if len(stars):
+            if len(stars) > 0:
                 self.guide_stars[camera] = stars
+                self.fiber_templates[camera] = templates
         if len(self.guide_stars) == 0:
             logging.error(f'No usable guide stars for {self.night}/{self.exptag}.')
             return False
@@ -391,20 +396,21 @@ class ETC(object):
             thisGFA = self.GFAs[camera]
             # Loop over guide stars for this camera.
             star_ffrac, star_transp = [], []
+            templates = self.fiber_templates[camera]
             for istar, star in enumerate(self.guide_stars[camera]):
                 # Extract the postage stamp for this star.
-                D = thisGFA.data[star['xslice'], star['yslice']]
-                DW = thisGFA.ivar[star['xslice'], star['yslice']]
+                xslice, yslice = slice(*star['xslice']), slice(*star['yslice'])
+                D = thisGFA.data[xslice, yslice]
+                DW = thisGFA.ivar[xslice, yslice]
                 # Estimate the actual centroid in pixels, flux in electrons and
                 # constant background level in electrons / pixel.
-
                 dx, dy, flux, bg, nll, best_fit = self.GMM.fit_dithered(
                     self.xdither, self.ydither, dithered, D, DW)
                 # Calculate centroid offset relative to the target fiber center.
                 dx -= star['fiber_dx']
                 dy -= star['fiber_dy']
                 # Calculate the corresponding fiber fraction for this star.
-                ffrac = np.sum(star['fiber'] * best_fit)
+                ffrac = np.sum(templates[istar] * best_fit)
                 # Calculate the transparency as the ratio of measured / predicted electrons.
                 transp = flux / (star['nelec_rate'] * self.exptime)
                 logging.debug(f'{camera}[{fnum},{istar}] dx={dx:.1f} dy={dy:.1f} ffrac={ffrac:.3f} transp={transp:.3f}')
@@ -550,6 +556,7 @@ class ETC(object):
         save = dict(
             expinfo=self.exp_data,
             acquisition=self.acquisition_data,
+            guide_stars=self.guide_stars,
             thru=self.thru_measurements.save(mjd1, mjd2),
             sky=self.sky_measurements.save(mjd1, mjd2)
         )
