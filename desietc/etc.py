@@ -40,7 +40,7 @@ class ETC(object):
     BUFFER_NAME = 'ETC_{0}_buffer'
 
     def __init__(self, sky_calib, gfa_calib, psf_pixels=25, max_dither=7, num_dither=1200,
-                 Ebv_coef=1.0, nbad_threshold=100, parallel=True):
+                 Ebv_coef=1.0, nbad_threshold=100, nll_threshold=10, parallel=True):
         """Initialize once per session.
 
         Parameters
@@ -62,11 +62,15 @@ class ETC(object):
         nbad_threshold : int
             Maximum number of allowed bad overscan pixel values before a GFA is
             flagged as noisy.
+        nll_threshold : float
+            Maximum allowed GMM fit NLL value before a PSF fit is flagged as
+            potentially bad.
         parallel : bool
             Process GFA images in parallel when True.
         """
         self.Ebv_coef = Ebv_coef
         self.nbad_threshold = nbad_threshold
+        self.nll_threshold = nll_threshold
         # Initialize PSF fitting.
         if psf_pixels % 2 == 0:
             raise ValueError('psf_pixels must be odd.')
@@ -255,8 +259,8 @@ class ETC(object):
         """
         camera_result = {}
         #  Find PSF-like objects.
-        npsf = thisGFA.get_psfs()
-        camera_result['npsf'] = npsf
+        nstar = thisGFA.get_psfs()
+        camera_result['nstar'] = nstar
         T, WT =  thisGFA.psf_stack
         if T is None:
             return camera_result
@@ -271,8 +275,9 @@ class ETC(object):
         # Fit the PSF to a Gaussian mixture model. This is the slow step...
         gmm_params = GMM.fit(T, WT, maxgauss=3)
         if gmm_params is None:
-            return camera_result
-        camera_result['gmm'] = gmm_params
+            camera_result.update(dict(gmm=[], nll=0, ngauss=0))
+        else:
+            camera_result.update(dict(gmm=gmm_params, nll=GMM.best_nll, ngauss=GMM.ngauss))
         return camera_result, psf_stack
 
     def process_acquisition(self, data):
@@ -310,10 +315,21 @@ class ETC(object):
         # Do a second pass to precompute the PSF dithers needed to fit guide stars.
         # This pass always runs in the main process since the dither array is ~6Mb
         # and we don't want to have to pass it between processes.
+        nstars = {C: 0 for C in desietc.gfa.GFACamera.guide_names}
+        nstars_tot = 0
+        badfit = []
         fwhm_vec, ffrac_vec = [], []
         self.dithered_model = {}
         psf_model = {}
         for camera, camera_result in self.acquisition_data.items():
+            nstars[camera] = camera_result['nstar']
+            if nstars[camera] == 0:
+                logging.warn(f'No stars found for {camera}.')
+                continue
+            if camera_result['nll'] > self.nll_threshold:
+                logging.warn(f'Bad fit for {camera} with NLL={camera_result["nll"]:.1f}.')
+                badfit.append(camera)
+            nstars_tot += nstars[camera]
             fwhm_vec.append(camera_result.get('fwhm', np.nan))
             ffrac_vec.append(camera_result.get('ffrac', np.nan))
             gmm_params = camera_result.get('gmm', None)
@@ -329,11 +345,11 @@ class ETC(object):
             fwhm = np.nanmedian(fwhm_vec)
         if np.any(np.isfinite(ffrac_vec)):
             ffrac = np.nanmedian(ffrac_vec)
-        logging.info(f'Acquisition image quality: FWHM={fwhm:.2f}", FFRAC={ffrac:.3}.')
+        logging.info(f'Acquisition image quality using {nstars_tot} stars: FWHM={fwhm:.2f}", FFRAC={ffrac:.3}.')
         # Generate an acquisition analysis summary image.
         if self.image_path is not None:
             desietc.plot.save_acquisition_summary(
-                data['header'], psf_model, self.psf_stack, fwhm, ffrac, self.noisy_gfa,
+                data['header'], psf_model, self.psf_stack, fwhm, ffrac, nstars, badfit, self.noisy_gfa,
                 self.image_path / f'PSF-{self.exptag}.png')
         # Reset the guide frame counter and guide star data.
         self.num_guide_frames = 0
@@ -632,7 +648,7 @@ class ETC(object):
             sky=self.sky_measurements.save(mjd1, mjd2)
         )
         # Encode numpy types using python built-in types for serialization.
-        fname = path / f'etc-{self.exptag}.json'
+        fname = path / f'ETC-{self.exptag}.json'
         with open(fname, 'w') as f:
             json.dump(save, f, cls=desietc.util.NumpyEncoder)
             logging.info(f'Wrote {fname} for {self.night}/{self.exptag}')

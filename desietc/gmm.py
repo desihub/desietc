@@ -390,7 +390,12 @@ class GMMFit(object):
         drop_cut : float
         max_ndrop : int
             Up to max_ndrop pixels with ivar * (data - model) ** 2 > drop_cut
-            will be removed (by setting ivar to zero) after the
+            will be removed (by setting ivar to zero)
+
+        Returns
+        -------
+        array
+            Array of best-fit parameters.
         """
         ny, nx = data.shape
         # Smooth the input image.
@@ -452,6 +457,8 @@ class GMMFit(object):
                             best_params, best_result = final_params, result
                             if best_nll < threshold:
                                 logging.debug(f'reached threshold {best_nll:.3f} < {threshold} with ngauss={ngauss}')
+                                self.best_nll = best_nll
+                                self.ngauss = ngauss
                                 return best_params
                         break
             if best_nll != np.inf and ngauss == 1 and max_ndrop > 0:
@@ -468,8 +475,12 @@ class GMMFit(object):
                 nll = np.sum((ivar * (data - model) ** 2)) / data.size
                 if nll < threshold:
                     logging.debug(f'Reached threshold {nll:.3f} < {threshold} with ngauss={ngauss} after drops.')
+                    self.best_nll = nll
+                    self.ngauss = ngauss
                     return best_params
         logging.debug(f'best nll={best_nll:.3f} but never reached threshold')
+        self.best_nll = best_nll
+        self.ngauss = ngauss
         return None if best_nll == np.inf else best_params
 
     def dither(self, params, xdither, ydither):

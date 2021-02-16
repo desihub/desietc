@@ -182,8 +182,8 @@ def plot_guide_stars(Dsum, WDsum, Msum, params, night, expid, camera, maxdxy=5):
 
 
 def save_acquisition_summary(
-    header, psf_model, psf_stack, fwhm, ffrac, noisy, path, show_north=True,
-    size=33, zoom=5, pad=2, dpi=128, cmap='magma', masked_color='cyan'):
+    header, psf_model, psf_stack, fwhm, ffrac, nstars, badfit, noisy, path,
+    show_north=True, show_fiber=True, zoom=5, dpi=128, cmap='magma', masked_color='gray'):
     """
     """
     # Get the size of the PSF model and stack images.
@@ -202,15 +202,23 @@ def save_acquisition_summary(
     cmap.set_bad(color=masked_color)
     # Get the colormap scale to use for all images.
     model_sum = {name: psf_model[name].sum() for name in psf_model}
-    model_max = np.max([psf_model[camera].max() / model_sum[camera] for camera in psf_model])
-    vmin, vmax = -0.05 * model_max, 1.05 * model_max
+    model_max = np.median([psf_model[camera].max() / model_sum[camera] for camera in psf_model])
+    vmin, vmax = -0.1 * model_max, 1.0 * model_max
+    # Calculate the image extent.
     # Outline text to ensure that it is visible whatever pixels are below.
     outline = [
         matplotlib.patheffects.Stroke(linewidth=1, foreground='k'),
         matplotlib.patheffects.Normal()]
+    # Calculate the fiber diameter to overlay in GFA pixels.
+    fiber_diam_um = 107
+    pixel_size_um = 15
+    radius = 0.5 * fiber_diam_um / pixel_size_um
+    center = ((size - 1) / 2, (size - 1) / 2)
     # Loop over cameras.
     default_norm = np.median([s for s in model_sum.values()])
     for i, name in enumerate(names):
+        axes[0, i].axis('off')
+        axes[1, i].axis('off')
         if name in psf_stack:
             data = psf_stack[name][0].copy()
             norm = model_sum.get(name, default_norm)
@@ -233,6 +241,10 @@ def save_acquisition_summary(
             data /= model_sum[name]
             axes[1, i].imshow(psf_model[name], vmin=vmin, vmax=vmax, cmap=cmap,
                               interpolation='bicubic', origin='lower')
+            if show_fiber:
+                # Draw an outline of the fiber.
+                fiber = matplotlib.patches.Circle(center, radius, color='c', ls='-', lw=1, alpha=0.7, fill=False)
+                axes[1,i].add_artist(fiber)
     # Generate a text overlay.
     ax = plt.axes((0, 0, 1, 1))
     ax.axis('off')
@@ -253,6 +265,17 @@ def save_acquisition_summary(
     for x, name in zip(xtext, names):
         text = ax.text(x, 0.5, name, color='w', ha='center', va='center', size=8, transform=ax.transAxes)
         text.set_path_effects(outline)
+        nstar = nstars[name]
+        label = f'{nstar} star'
+        if nstar > 1: label += 's'
+        text = ax.text(x, 0.45, label, color='w', ha='center', va='center', size=7, transform=ax.transAxes)
+        text.set_path_effects(outline)
+        if nstar == 0:
+            text = ax.text(x, 0.92, 'NO STARS?', color='r', ha='center', va='top', size=10, transform=ax.transAxes)
+            text.set_path_effects(outline)
+        elif name in badfit:
+            text = ax.text(x, 0.92, 'BAD PSF?', color='r', ha='center', va='top', size=10, transform=ax.transAxes)
+            text.set_path_effects(outline)
         if name in noisy:
             text = ax.text(x, 1, 'NOISY?', color='r', ha='center', va='top', size=10, transform=ax.transAxes)
             text.set_path_effects(outline)

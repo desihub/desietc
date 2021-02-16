@@ -130,9 +130,6 @@ def replay_exposure(ETC, path, expid, outpath, teff=1000, cutoff=10000, cosmic=5
                 # Specify the guide stars.
                 ETC.set_guide_stars(*guide_stars)
             else:
-
-                continue
-
                 # Process the next guide frame.
                 ETC.process_guide_frame(data)
         else: # SKY
