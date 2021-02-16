@@ -125,7 +125,7 @@ class OnlineETC():
                 # Always process a sky frame if available.
                 sky_image = self.call_for_sky_image()
                 if sky_image:
-                    self.ETCalg.process_sky(sky_image['image'])
+                    self.ETCalg.process_sky_frame(sky_image['image'])
                     have_new_telemetry = True
 
                 elif not shutter_open and self.etc_processing.is_set():
@@ -214,9 +214,11 @@ class OnlineETC():
         etc_status['skylevel'] = self.ETCalg.skylevel
 
         # ETC effective exposure time tracking.
+        etc_status['last_update_mjd'] = self.ETCalg.last_update_mjd
         etc_status['accumulated_signal'] = self.ETCalg.accumulated_signal
         etc_status['accumulated_background'] = self.ETCalg.accumulated_background
-        etc_status['accumulated_teff'] = self.ETCalg.accumulated_teff
+        etc_status['accumulated_eff_time'] = self.ETCalg.accumulated_eff_time
+        etc_status['accumulated_real_time'] = self.ETCalg.accumulated_real_time
 
         return etc_status
 

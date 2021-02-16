@@ -128,7 +128,12 @@ def replay_exposure(ETC, path, expid, outpath, teff=1000, cutoff=10000, cosmic=5
                 ETC.process_guide_frame(data)
         else: # SKY
             data = fits_to_online(sky_path, ETC.SKY.sky_names, frame['num'])
-            ETC.process_sky(data)
+            ETC.process_sky_frame(data)
+
+    # A final update when the shutter closes.
+    mjd1 = desi_mjd_obs
+    mjd2 = mjd1 + desi_exptime / ETC.SECS_PER_DAY
+    ETC.update_accumulated(mjd2)
 
     # Create the output path if necessary.
     exppath_out.mkdir(parents=False, exist_ok=True)
@@ -136,10 +141,7 @@ def replay_exposure(ETC, path, expid, outpath, teff=1000, cutoff=10000, cosmic=5
     # Save the ETC outputs for this exposure.
     ETC.save_exposure(exppath_out)
 
-    mjd1 = ETC.exp_data['mjd_start']
-    mjd2 = mjd1 + desi_exptime / ETC.SECS_PER_DAY
-    teff = ETC.get_accumulated_teff(mjd1, mjd2, ETC.fassign_data['MW_transp'])
-
+    # Plot the signal and background measurement buffers spanning this exposure.
     fig, ax = plt.subplots(2, 1, figsize=(9, 9))
     fig.suptitle(f'ETC Analysis for {ETC.night}/{ETC.exptag}')
     desietc.plot.plot_measurements(

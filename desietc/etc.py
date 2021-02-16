@@ -105,12 +105,18 @@ class ETCAlgorithm(object):
                 ('transp', np.float32, (self.ngfa,)), # transparency measured from single GFA
                 ('dx', np.float32, (self.ngfa,)),     # mean x shift of centroid from single GFA in pixels
                 ('dy', np.float32, (self.ngfa,)),     # mean y shift of centroid from single GFA in pixels
+                ('sig', np.float32),                  # accumulated signal estimate
+                ('bg', np.float32),                   # accumulated background estimate
+                ('teff', np.float32),                 # accumulated effective time estimate
             ])
         self.sky_measurements = desietc.util.MeasurementBuffer(
             maxlen=200, default_value=1, aux_dtype=[
-                ('flux', np.float32, (self.nsky,)),  # sky flux meausured from a single SKYCAM.
-                ('dflux', np.float32, (self.nsky,)), # sky flux uncertainty meausured from a single SKYCAM.
-                ('ndrop', np.int32, (self.nsky,)),   # number of fibers dropped from the camera flux estimate.
+                ('flux', np.float32, (self.nsky,)),   # sky flux meausured from a single SKYCAM.
+                ('dflux', np.float32, (self.nsky,)),  # sky flux uncertainty meausured from a single SKYCAM.
+                ('ndrop', np.int32, (self.nsky,)),    # number of fibers dropped from the camera flux estimate.
+                ('sig', np.float32),                  # accumulated signal estimate
+                ('bg', np.float32),                   # accumulated background estimate
+                ('teff', np.float32),                 # accumulated effective time estimate
             ])
         # Initialize the SKY camera processor.
         self.SKY = desietc.sky.SkyCamera(calib_name=sky_calib)
@@ -365,6 +371,7 @@ class ETCAlgorithm(object):
         # Reset the guide frame counter and guide star data.
         self.num_guide_frames = 0
         self.guide_stars = None
+        self.exp_data = None
         # Report timing.
         elapsed = time.time() - start
         logging.info(f'Acquisition processing took {elapsed:.2f}s for {ncamera} cameras.')
@@ -514,13 +521,18 @@ class ETCAlgorithm(object):
         # Use constant error until we have a proper estimate.
         self.thru_measurements.add(
             mjd_start, mjd_stop, thru, 0.01,
-            aux_data=(each_ffrac, each_transp, each_dx, each_dy))
+            aux_data=(each_ffrac, each_transp, each_dx, each_dy, 0, 0, 0))
+        # Update our accumulated signal.
+        if self.exp_data is not None:
+            self.update_accumulated(mjd_stop)
+            self.thru_measurements.set_last(
+                sig=self.accumulated_signal, bg=self.accumulated_background, teff=self.accumulated_eff_time)
         # Report timing.
         elapsed = time.time() - start
         logging.debug(f'Guide frame processing took {elapsed:.2f}s for {nstar} stars in {ncamera} cameras.')
         return True
 
-    def process_sky(self, data):
+    def process_sky_frame(self, data):
         """Process a SKY frame.
         """
         ncamera = 0
@@ -563,7 +575,12 @@ class ETCAlgorithm(object):
         mjd_start, mjd_stop = self.get_mjd_range(mjd_obs, exptime, f'sky[{fnum}]')
         self.sky_measurements.add(
             mjd_start, mjd_stop, flux, dflux,
-            aux_data=(each_flux, each_dflux, each_ndrop))
+            aux_data=(each_flux, each_dflux, each_ndrop, 0, 0, 0))
+        # Update our accumulated background.
+        if self.exp_data is not None:
+            self.update_accumulated(mjd_stop)
+            self.sky_measurements.set_last(
+                sig=self.accumulated_signal, bg=self.accumulated_background, teff=self.accumulated_eff_time)
         # Profile timing.
         elapsed = time.time() - start
         logging.debug(f'Sky frame processing took {elapsed:.2f}s for {ncamera} cameras.')
@@ -607,25 +624,6 @@ class ETCAlgorithm(object):
                 self.noisy_gfa.add(camera)
         return True
 
-    def get_accumulated_teff(self, mjd_start, mjd_stop, MW_transp=1):
-        """
-        """
-        if mjd_stop <= mjd_start:
-            logging.warn('get_accumulated_teff called with mjd_stop <= mjd_start.')
-            return 0
-        # Calculate the average signal throughput.
-        _, thru_grid = self.thru_measurements.sample(mjd_start, mjd_stop)
-        thru = np.mean(thru_grid)
-        # Calculate the integrated sky background.
-        _, sky_grid = self.sky_measurements.sample(mjd_start, mjd_stop)
-        sky = np.mean(sky_grid)
-        # Calculate the accumulated effective exposure time in seconds.
-        treal = (mjd_stop - mjd_start) * self.SECS_PER_DAY
-        teff = treal / sky * (MW_transp * thru) ** 2
-        logging.info(f'Calculated treal={treal:.1f}s, teff={teff:.1f}s using ' +
-            f'sky={sky:.3f}, thru={thru:.3f}, MW={MW_transp:.3f}.')
-        return teff
-
     def start_exposure(self, night, expid, mjd, teff, cutoff, cosmic):
         """
         """
@@ -638,6 +636,39 @@ class ETCAlgorithm(object):
             cutof=cutoff,
             cosmic=cosmic,
         )
+        self.last_update_mjd = self.accumulated_eff_time = self.accumulated_real_time = 0
+        self.accumulated_signal = self.accumulated_background = 0
+
+    def update_accumulated(self, mjd_now):
+        """Update our estimates of the accumulated signal, background and
+        effective exposure time.  These values are reset to 0 by
+        :meth:`start_exposure` then updated by calls to :meth:`process_guide_frame`
+        and :meth:`process_sky`.
+        """
+        if self.exp_data is None:
+            logging.warn('update_accumulated() called before start_exposure().')
+            return False
+        mjd_start = self.exp_data['mjd_start']
+        if mjd_now <= mjd_start:
+            logging.warn('update_accumulated() called with mjd_now <= exposure mjd_start.')
+            return False
+        self.last_update_mjd = mjd_now
+        # Calculate the average signal throughput.
+        _, thru_grid = self.thru_measurements.sample(mjd_start, mjd_now)
+        self.accumulated_signal = np.mean(thru_grid)
+        # Calculate the integrated sky background.
+        _, sky_grid = self.sky_measurements.sample(mjd_start, mjd_now)
+        self.accumulated_background = np.mean(sky_grid)
+        # Lookup the MW transparency to use, or default to 1.
+        MW_transp = self.fassign_data.get('MW_transp', 1.)
+        # Calculate the accumulated effective exposure time in seconds.
+        self.accumulated_real_time = (mjd_now - mjd_start) * self.SECS_PER_DAY
+        self.accumulated_eff_time = (
+            self.accumulated_real_time / self.accumulated_background
+            * (MW_transp * self.accumulated_signal) ** 2)
+        logging.info(f'Calculated treal={self.accumulated_real_time:.1f}s, teff={self.accumulated_eff_time:.1f}s' +
+            f' using bg={self.accumulated_background:.3f}, sig={self.accumulated_signal:.3f}.')
+        return True
 
     def read_fiberassign(self, fname):
         """

@@ -686,10 +686,12 @@ class MeasurementBuffer(object):
         self.oldest = None
         self.len = 0
         self.full = False
+        self.last = None
         dtype = [
             ('mjd1', np.float64), ('mjd2', np.float64), ('value', np.float32), ('error', np.float32)
         ] + aux_dtype
         self._entries = np.empty(shape=maxlen, dtype=dtype)
+        self.names = self._entries.dtype.names
         self.default_value = default_value
         self.resolution = resolution / self.SECS_PER_DAY
         self.padding = padding / self.SECS_PER_DAY
@@ -715,17 +717,26 @@ class MeasurementBuffer(object):
             if is_oldest:
                 # Ignore this since it is older than all existing entries.
                 return
-            self._entries[self.oldest] = entry
+            self.last = self.oldest
+            self._entries[self.last] = entry
             # Update the index of the oldest entry, which might be us.
             self.oldest = np.argmin(self.entries['mjd1'])
         else:
-            idx = self.len
+            self.last = self.len
             if is_oldest:
                 # This is now the oldest entry.
-                self.oldest = idx
+                self.oldest = self.last
             self.len += 1
             self.full = (self.len == self._entries.size)
-            self._entries[idx] = entry
+            self._entries[self.last] = entry
+
+    def set_last(self, **kwargs):
+        """Set values of the most recently added measurement.
+        """
+        if self.last is not None:
+            for name, value in kwargs.items():
+                if name in self.names:
+                    self._entries[self.last][name] = value
 
     def inside(self, mjd1, mjd2):
         """Return a mask for entries whose intervals overlap [mjd1, mjd2].
@@ -780,11 +791,10 @@ class MeasurementBuffer(object):
         something equivalent.
         """
         sel = self.inside(mjd1, mjd2)
-        names = self._entries.dtype.names
         output = []
         for entry in self.entries[sel]:
             row = {}
-            for name in names:
+            for name in self.names:
                 if self._entries.dtype[name].shape != ():
                     row[name] = entry[name].tolist()
                 else:
