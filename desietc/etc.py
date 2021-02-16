@@ -93,6 +93,7 @@ class ETCAlgorithm(object):
         self.acquisition_data = None
         self.guide_stars = None
         self.image_path = None
+        self.reset_counts()
         # How many GUIDE and SKY cameras do we expect?
         self.ngfa = len(desietc.gfa.GFACamera.guide_names)
         self.nsky = len(desietc.sky.SkyCamera.sky_names)
@@ -176,6 +177,11 @@ class ETCAlgorithm(object):
         else:
             logging.info('Images will no longer be written.')
             self.image_path = None
+
+    def reset_counts(self):
+        self.total_guider_count = 0
+        self.total_acq_count = 0
+        self.total_sky_count = 0
 
     def process_top_header(self, header, source, update_ok=False):
         """Process the top-level header of an exposure.
@@ -285,6 +291,7 @@ class ETCAlgorithm(object):
         """
         ncamera = 0
         start = time.time()
+        self.total_acq_count += 1
         if not self.process_top_header(data['header'], 'acquisition image', update_ok=True):
             return False
         logging.info(f'Processing acquisition image for {self.night}/{self.exptag}.')
@@ -431,6 +438,7 @@ class ETCAlgorithm(object):
         start = time.time()
         fnum = self.num_guide_frames
         self.num_guide_frames += 1
+        self.total_guider_count += 1
         if not self.process_top_header(data['header'], f'guide[{fnum}]'):
             return False
         logging.info(f'Processing guide frame {fnum} for {self.night}/{self.exptag}.')
@@ -521,6 +529,7 @@ class ETCAlgorithm(object):
         start = time.time()
         fnum = self.num_sky_frames
         self.num_sky_frames += 1
+        self.total_sky_count += 1
         if not self.process_top_header(data['header'], f'sky[{fnum}]', update_ok=True):
             return False
         logging.info(f'Processing sky frame {fnum} for {self.night}/{self.exptag}.')

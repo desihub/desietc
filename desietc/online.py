@@ -75,39 +75,6 @@ class OnlineETC():
         self.simulate = False
         self.splittable = False
 
-        # status
-        self.target_snr = None
-        self.estimated_snr = 0.0       # cummulative across cosmics splits
-        self.current_snr = 0.0         # snr for current spectrograph exposure
-        self.will_not_finish = False
-        self.about_to_stop_snr = 0.0
-        self.about_to_stop_remaining = 0.0
-        self.skylevel = None
-        self.seeing = None
-        self.transparency = None
-        self.image_processing_start_time = None
-        self.image_processing_last_update = None
-        self.etc_processing_start_time = None
-        self.etc_processing_last_update = None
-        self.accumulated_etc_processing_time = 0.0     # integerated exposure time processing time across cosmics splits
-        self.current_etc_processing_time = 0.0         # current exposure time processing time
-        self.max_exposure_time = None
-        self.cosmics_split_time = None
-        self.current_expid = None     # initial exposure id from prepare_for_exposure
-        self.current_specid = None    # exposure id of current spectrograph exposure
-        self.stop_cause = None        # why was exposure stopped
-        self.guider_count = 0         # cummulative guider frame count
-        self.sky_count = 0            # cummulative sky frame count
-        self.acq_count = 0            # cummulative acq frame count
-        self.pm_count = 0             # cummulative pm info count
-        self.etc_cycle_count = 0
-        self.max_count = 99999
-        self.announcement_made = {'stop':None,'split':None,'about_to_stop':None,'about_to_split':None}
-        self.stop_cause = None        # why was exposure stop requested
-        self.split_cause = None        # why was exposure split requested
-        self.about_to_stop_cause = None        # why was exposure about to stop
-        self.about_to_split_cause = None        # why was exposure about to split
-
         # Initialize the ETC algorithm.
         gfa_calib = os.getenv('ETC_GFA_CALIB', None)
         sky_calib = os.getenv('ETC_SKY_CALIB', None)
@@ -126,6 +93,8 @@ class OnlineETC():
         Log.info('ETC: processing thread running')
 
     def shutdown(self):
+        """Release resources allocated for the ETC algorithm in our constructor.
+        """
         self.ETCalg.shutdown()
 
     def _etc(self):
@@ -208,13 +177,59 @@ class OnlineETC():
 
         Log.info('ETC: processing thread exiting.')
 
-    def reset(self, all = True, keep_accumulated = False, update_status = True):
+    def get_status(self):
+        """Capture and return the current ETC status.
+        """
+        etc_status = {}
 
+        # Use now as the timestamp for this status update.
+        etc_status['last_updated'] = datetime.datetime.utcnow().isoformat()
+
+        # Exposure parameters set in prepare_for_exposure()
+        etc_status['expid'] = self.current_expid
+        etc_status['target_teff'] = self.target_teff
+        etc_status['max_exposure_time'] = self.max_exposure_time
+        etc_status['cosmics_split_time'] = self.cosmics_split_time
+
+        # Exposure parameters set in start_etc()
+        etc_status['specid'] = self.current_specid
+        etc_status['splittable'] = self.splittable
+
+        # Timestamps captured by start() and start_etc()
+        etc_status['image_processing_start_time'] = self.image_processing_start_time
+        etc_status['etc_processing_start_time'] = self.etc_processing_start_time
+
+        # Flags used to synchronize with the _etc thread.
+        etc_status['processing_images'] = self.image_processing.is_set()
+        etc_status['processing_etc'] = self.etc_processing.is_set()
+
+        # Counters tracked by ETCalg
+        etc_status['total_guider_count'] = self.GFAalg.total_guider_count
+        etc_status['total_sky_count'] = self.GFAalg.total_sky_count
+        etc_status['total_acq_count'] = self.GFAalg.total_acq_count
+
+        # Observing conditions updated after each GFA or SKY frame.
+        etc_status['seeing'] = self.ETCalg.fwhm
+        etc_status['ffrac'] = self.ETCalg.ffrac
+        etc_status['transparency'] = self.ETCalg.transp
+        etc_status['skylevel'] = self.ETCalg.skylevel
+
+        # ETC effective exposure time tracking.
+        etc_status['accumulated_signal'] = self.ETCalg.accumulated_signal
+        etc_status['accumulated_background'] = self.ETCalg.accumulated_background
+        etc_status['accumulated_teff'] = self.ETCalg.accumulated_teff
+
+        return etc_status
+
+    def reset(self, all = True, keep_accumulated = False, update_status = True):
+        """
+        """
         # stop processing (if necessary)
         self.etc_processing.clear()
 
         # accumulated values:
         if keep_accumulated == False or all == True:
+            self.GFAalg.reset_counts()
             self.image_processing.clear()
 
         # update status
@@ -264,6 +279,7 @@ class OnlineETC():
 
         # Reset status variables, keep seeing, sky level and transparency values
         self.reset(all=True, update_status = False)
+
         # and store calling arguments
         self.target_teff = target_teff
         self.max_exposure_time = max_exposure_time
@@ -273,137 +289,69 @@ class OnlineETC():
             self.max_count = count
         else:
             self.max_count = 999999
-        self.stars = stars
-
-        # set snr, remaining time thresholds for stop announcement
-        self.about_to_stop_snr = self.target_snr * 0.9                # 90% of SNR collected
-        self.about_to_stop_remaining = min(self.max_exposure_time * 0.9, (self.max_exposure_time - 20.0) if self.max_exposure_time>20.0 else self.max_exposure_time)   # 90% of max. exposure time or at least 20 s
 
         # update status
         self.call_to_update_status()
 
         return SUCCESS
 
-    def start(self, **options):
+    def start(self, start_time=None, **options):
         """
         start etc image processing
         """
-        Log.info('start: start image processing: %r' % options)
-        self.cosmics_split_time = options.get('comics_split_time', self.cosmics_split_time)
-        self.image_processing_start_time = options.get('start_time', datetime.datetime.utcnow())
+        self.image_processing_start_time = start_time or datetime.datetime.utcnow()
+        Log.info('start: start image processing at %r' % self.image_processing_start_time)
+        if options:
+            Log.warn('start: ignoring extra options: %r' % options)
 
-        # reset some internal values - again (a bit redundant)
-        self.announcement_made = {'stop':None,'split':None,'about_to_stop':None,'about_to_split':None}
-        self.stop_cause = None        # why was exposure stop requested
-        self.split_cause = None        # why was exposure split requested
-        self.about_to_stop_cause = None        # why was exposure about to stop
-        self.about_to_split_cause = None        # why was exposure about to split
-        self.estimated_snr = 0.0
-        self.current_snr = 0.0
-        self.etc_cycle_count = 0
-        self.guider_count = 0
-        self.sky_count = 0
-        self.acq_count = 0
-        self.pm_count = 0
-        self.etc_cycle_count = 0
-        self.image_processing_start_time = options.get('start_time', datetime.datetime.utcnow())
-        self.image_processing_last_update = options.get('start_time', datetime.datetime.utcnow())
-        self.accumulated_etc_processing_time = 0.0
-        self.current_etc_processing_time = 0.0
+        # Signal our worker thread that image processing should start.
         self.image_processing.set()
-        # update status
-        if callable(self.call_to_update_status):
-            self.call_to_update_status()
+
+        # Update our status.
+        self.call_to_update_status()
 
     def start_etc(self, start_time = None,  splittable = None, specid = None, **options):
         """
-        start etc exposure time  processing
+        start etc exposure time processing
         """
-        # reset announcements
-        self.announcement_made = {'stop':None,'split':None,'about_to_stop':None,'about_to_split':None}
-        self.stop_cause = None        # why was exposure stop requested
-        self.split_cause = None        # why was exposure split requested
-        self.about_to_stop_cause = None        # why was exposure about to stop
-        self.about_to_split_cause = None        # why was exposure about to split
-        if splittable is None:
-            splittable = False
-        self.splittable = splittable
-        Log.info('start_etc (%r): start exposure time processing (splittable = %r)' % (self.current_expid, self.splittable))
-        self.etc_processing_start_time = start_time
+        self.etc_processing_start_time = start_time or datetime.datetime.utcnow()
+        self.splittable = splittable or False
+        self.current_specid = specid
+        Log.info('start_etc: start etc processing at %r with splittable=%r, specid=%r' % (
+            self.etc_processing_start_time, self.splittable, self.current_specid))
+        if options:
+            Log.warn('start_etc: ignoring extra options: %r' % options)
 
-        # initialize current variables
-        self.current_snr = 0.0
-        self.current_etc_processing_time = 0.0
-        self.etc_processing_start_time = options.get('start_time', datetime.datetime.utcnow())
-        self.etc_processing_last_update = options.get('start_time', datetime.datetime.utcnow())
-        self.etc_processing.set()
-        # update status
-        if callable(self.call_to_update_status):
-            self.call_to_update_status()
+        # Signal our worker thread that etc processing should start.
+        self.image_processing.set()
 
-    def stop(self, source = 'OPERATOR', stop_time = None, **options):
-        """
-        Force ETC image processing to stop
-        """
-        Log.info('stop: stop image processing request received from source %s' % source)
-        self.image_processing.clear()
-        # update status
-        if callable(self.call_to_update_status):
-            self.call_to_update_status()
-
-        # add whatever else needs to be done
-
-        return SUCCESS
+        # Update our status.
+        self.call_to_update_status()
 
     def stop_etc(self, source = 'OPERATOR', **options):
         """
         Force ETC exposure time processing to stop
         """
         Log.info('stop_etc: stop exposure time processing request received from source %s' % source)
+        if options:
+            Log.warn('stop_etc: ignoring extra options: %r' % options)
+
+        # Signal our worker thread that etc processing should stop.
         self.etc_processing.clear()
-        # update status
-        if callable(self.call_to_update_status):
-            self.call_to_update_status()
 
-        # add whatever else needs to be done
+        # Update our status.
+        self.call_to_update_status()
 
-        return SUCCESS
+    def stop(self, source = 'OPERATOR', **options):
+        """
+        Force ETC image processing to stop
+        """
+        Log.info('stop: stop image processing request received from source %s' % source)
+        if options:
+            Log.warn('stop: ignoring extra options: %r' % options)
 
-    def get_status(self):
-        self.last_updated = datetime.datetime.utcnow().isoformat()
-        etc_status = {}
-        etc_status['last_updated'] = self.last_updated
+        # Signal our worker thread that image processing should start.
+        self.image_processing.clear()
 
-        etc_status['expid'] = self.current_expid
-        etc_status['specid'] = self.current_specid
-        etc_status['splittable'] = self.splittable
-        etc_status['estimated_snr'] = None if not isinstance(self.estimated_snr, (int, float)) else round(self.estimated_snr, 3)
-        etc_status['current_snr'] = None if not isinstance(self.current_snr, (int, float)) else round(self.current_snr, 3)
-        etc_status['target_snr'] = self.target_snr
-        etc_status['will_not_finish'] = self.will_not_finish
-        etc_status['stop_request'] = self.announcement_made['stop']
-        etc_status['about_to_stop'] = self.announcement_made['about_to_stop']
-        etc_status['about_to_stop_cause'] = self.about_to_stop_cause
-        etc_status['about_to_stop_snr'] = self.about_to_stop_snr
-        etc_status['about_to_stop_remaining'] = self.about_to_stop_remaining
-        etc_status['split_request'] = self.announcement_made['split']
-        etc_status['about_to_split'] = self.announcement_made['about_to_split']
-        etc_status['about_to_split_cause'] = self.about_to_split_cause
-        etc_status['seeing'] = None if not isinstance(self.seeing, (int, float)) else round(self.seeing, 3)
-        etc_status['transparency'] = None if not isinstance(self.transparency, (int, float)) else round(self.transparency, 3)
-        etc_status['skylevel'] = None if not isinstance(self.skylevel, (int, float)) else round(self.skylevel, 3)
-        etc_status['image_processing_start_time'] = self.image_processing_start_time
-        etc_status['processing_images'] = self.image_processing.is_set()
-        etc_status['etc_processing_start_time'] = self.etc_processing_start_time
-        etc_status['accumulated_etc_processing_time'] = round(self.accumulated_etc_processing_time,3)
-        etc_status['processing_etc'] = self.etc_processing.is_set()
-        etc_status['max_exposure_time'] = self.max_exposure_time
-        etc_status['cosmics_split_time'] = self.cosmics_split_time
-        etc_status['total_guider_count'] = self.guider_count
-        etc_status['total_sky_count'] = self.sky_count
-        etc_status['total_acq_count'] = self.acq_count
-        etc_status['total_pm_count'] = self.pm_count
-        etc_status['etc_cycles'] = self.etc_cycle_count
-        return etc_status
-
-########################## End of ETC Class ########################
+        # Update our status.
+        self.call_to_update_status()
