@@ -601,7 +601,7 @@ class ETC(object):
                 self.noisy_gfa.add(camera)
         return True
 
-    def get_accumulated_teff(self, mjd_start, mjd_stop, MW_transparency=1):
+    def get_accumulated_teff(self, mjd_start, mjd_stop, MW_transp=1):
         """
         """
         if mjd_stop <= mjd_start:
@@ -615,25 +615,42 @@ class ETC(object):
         sky = np.mean(sky_grid)
         # Calculate the accumulated effective exposure time in seconds.
         treal = (mjd_stop - mjd_start) * self.SECS_PER_DAY
-        teff = treal / sky * (MW_transparency * thru) ** 2
+        teff = treal / sky * (MW_transp * thru) ** 2
         logging.info(f'Calculated treal={treal:.1f}s, teff={teff:.1f}s using ' +
-            f'sky={sky:.3f}, thru={thru:.3f}, MW={MW_transparency:.3f}.')
+            f'sky={sky:.3f}, thru={thru:.3f}, MW={MW_transp:.3f}.')
         return teff
 
-    def start_exposure(self, night, expid, mjd, Ebv, teff, cutoff, cosmic):
+    def start_exposure(self, night, expid, mjd, teff, cutoff, cosmic):
         """
         """
         logging.info(f'Starting {night}/{expid} at {mjd} with teff={teff:.0f}s, cutoff={cutoff:.0f}s, ' +
-            f'cosmic={cosmic:.0f}s, Ebv={Ebv:.2f}')
+            f'cosmic={cosmic:.0f}s')
         self.exp_data = dict(
             expid=expid,
             mjd_start=mjd,
-            Ebv=Ebv,
-            MW_transparency = 10 ** (-self.Ebv_coef * Ebv / 2.5),
             teff=teff,
             cutof=cutoff,
             cosmic=cosmic,
         )
+
+    def read_fiberassign(self, fname):
+        """
+        """
+        self.fassign_data = dict(MW_transp=1)
+        if not pathlib.Path(fname).exists():
+            logging.error(f'Non-existent fiberassign file: {fname}.')
+            return False
+        fassign = fitsio.read(fname, ext='FIBERASSIGN')
+        sel = (fassign['OBJTYPE'] == 'TGT')
+        ntarget = np.count_nonzero(sel)
+        if ntarget == 0:
+            logging.error(f'Fiberassign file has not targets: {fname}.')
+            return False
+        Ebv = np.nanmedian(fassign[sel]['EBV'])
+        MW_transp = 10 ** (-self.Ebv_coef * Ebv / 2.5)
+        self.fassign_data = dict(ntarget=ntarget, Ebv=Ebv, MW_transp=MW_transp)
+        logging.info(f'Tile has {ntarget} targets with median(Ebv)={Ebv:.5f} and MW transparency {MW_transp:.5f}.')
+        return True
 
     def save_exposure(self, path):
         """
@@ -647,6 +664,7 @@ class ETC(object):
         # Build a data structure to save via json.
         save = dict(
             expinfo=self.exp_data,
+            fassign=self.fassign_data,
             acquisition=self.acquisition_data,
             guide_stars=self.guide_stars,
             thru=self.thru_measurements.save(mjd1, mjd2),

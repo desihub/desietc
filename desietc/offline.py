@@ -61,12 +61,6 @@ def replay_exposure(ETC, path, expid, outpath, teff=1000, cutoff=10000, cosmic=5
     if not fassign_path.exists():
         logging.error(f'Missing fiberassign file: {fassign_path}.')
         return False
-    # Read the fiberassign file.
-    fassign = fitsio.read(str(fassign_path), ext='FIBERASSIGN')
-    sel = (fassign['OBJTYPE'] == 'TGT')
-    ntarget = np.count_nonzero(sel)
-    median_Ebv = np.nanmedian(fassign[sel]['EBV'])
-    logging.info(f'Tile {desi_tileid} has {ntarget} targets with median(Ebv)={median_Ebv:.5f}.')
     # If this is a dry run, stop now.
     if dry_run:
         return True
@@ -75,8 +69,6 @@ def replay_exposure(ETC, path, expid, outpath, teff=1000, cutoff=10000, cosmic=5
     if not overwrite and exppath_out.exists():
         logging.info(f'Will not overwrite ETC outputs for {expid}.')
         return False
-    # Start the ETC tracking of this exposure.
-    ETC.start_exposure(night, expid, desi_mjd_obs, median_Ebv, teff, cutoff, cosmic)
     # Save images with the per-exposure outputs.
     ETC.set_image_path(exppath_out)
     # Get the SKY exposure info for the first available camera.
@@ -121,14 +113,17 @@ def replay_exposure(ETC, path, expid, outpath, teff=1000, cutoff=10000, cosmic=5
     frames = sorted(frames, key=lambda frame: frame['when'])
     # Loop over frames to replay.
     for frame in frames:
-        logging.debug(f'Replaying frame: {frame}')
         if frame['typ'] == 'gfa':
             data = fits_to_online(gfa_path, desietc.gfa.GFACamera.guide_names, frame['num'])
             if frame['num'] == 0:
+                # Read the fibermap.
+                ETC.read_fiberassign(fassign_path)
                 # Process the acquisition image.
                 ETC.process_acquisition(data)
                 # Specify the guide stars.
                 ETC.set_guide_stars(*guide_stars)
+                # Start the ETC tracking of this exposure.
+                ETC.start_exposure(night, expid, desi_mjd_obs, teff, cutoff, cosmic)
             else:
                 # Process the next guide frame.
                 ETC.process_guide_frame(data)
@@ -144,7 +139,7 @@ def replay_exposure(ETC, path, expid, outpath, teff=1000, cutoff=10000, cosmic=5
 
     mjd1 = ETC.exp_data['mjd_start']
     mjd2 = mjd1 + desi_exptime / ETC.SECS_PER_DAY
-    teff = ETC.get_accumulated_teff(mjd1, mjd2, ETC.exp_data['MW_transparency'])
+    teff = ETC.get_accumulated_teff(mjd1, mjd2, ETC.fassign_data['MW_transp'])
 
     fig, ax = plt.subplots(2, 1, figsize=(9, 9))
     fig.suptitle(f'ETC Analysis for {ETC.night}/{ETC.exptag}')
