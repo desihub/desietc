@@ -1,13 +1,14 @@
 """Numerical utilities for the online exposure-time calculator.
 
-The general guideline for things implemented here is that they only use
-numpy/scipy/json and do not read/write any files or produce any logging output.
+The general guideline for things implemented here is that they
+do not read/write any files or produce any logging output.
 """
+import datetime
+import json
+
 import numpy as np
 
 import scipy.ndimage
-
-import json
 
 
 def fit_spots(data, ivar, profile, area=1):
@@ -792,9 +793,33 @@ class MeasurementBuffer(object):
         return output
 
 
+def mjd_to_date(mjd, utc_offset=-7):
+    """Convert an MJD value to a datetime using the specified UTC offset in hours.
+
+    The default utc_offset of -7 corresponds to local time at Kitt Peak.
+    Use :func:`date_to_mjd` to invert this calculation.
+    """
+    return datetime.datetime(2019, 1, 1) + datetime.timedelta(days=mjd - 58484.0, hours=utc_offset)
+
+
+def date_to_mjd(date, utc_offset=-7):
+    """Convert a datetime using the specified UTC offset in hours to an MJD value.
+
+    The default utc_offset of -7 corresponds to local time at Kitt Peak.
+    Use :func:`mjd_to_date` to invert this calculation.
+    """
+    delta = date - datetime.datetime(2019, 1, 1) - datetime.timedelta(hours=utc_offset)
+    return 58484 + delta.days + (delta.seconds + 1e-6 * delta.microseconds) / 86400
+
+
 class NumpyEncoder(json.JSONEncoder):
+    """JSON encoder to use with numpy data.
+    """
     def default(self, obj):
-        if isinstance(obj, np.floating):
+        if isinstance(obj, np.float32):
+            # TODO: round output to 6 decimals
+            return float(obj)
+        elif isinstance(obj, np.floating):
             return float(obj)
         elif isinstance(obj, np.integer):
             return int(obj)

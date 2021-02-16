@@ -348,9 +348,12 @@ class ETC(object):
         logging.info(f'Acquisition image quality using {nstars_tot} stars: FWHM={fwhm:.2f}", FFRAC={ffrac:.3}.')
         # Generate an acquisition analysis summary image.
         if self.image_path is not None:
-            desietc.plot.save_acquisition_summary(
-                data['header'], psf_model, self.psf_stack, fwhm, ffrac, nstars, badfit, self.noisy_gfa,
-                self.image_path / f'PSF-{self.exptag}.png')
+            try:
+                desietc.plot.save_acquisition_summary(
+                    data['header'], psf_model, self.psf_stack, fwhm, ffrac, nstars, badfit, self.noisy_gfa,
+                    self.image_path / f'PSF-{self.exptag}.png')
+            except Exception as e:
+                logging.error(f'Failed to save acquisition analysis summary image: {e}')
         # Reset the guide frame counter and guide star data.
         self.num_guide_frames = 0
         self.guide_stars = None
@@ -652,3 +655,9 @@ class ETC(object):
         with open(fname, 'w') as f:
             json.dump(save, f, cls=desietc.util.NumpyEncoder)
             logging.info(f'Wrote {fname} for {self.night}/{self.exptag}')
+        # Copy the acquisition analysis summary image.
+        if self.image_path is not None:
+            name = f'PSF-{self.exptag}.png'
+            if (self.image_path / name).exists() and not (path / name).exists():
+                logging.info(f'Copying {name} to {path}.')
+                shutil.copy(self.image_path / name, path / name)

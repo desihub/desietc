@@ -252,7 +252,7 @@ def save_acquisition_summary(
     exptag = str(header.get('EXPID', 0)).zfill(8)
     left = f'{night}/{exptag}'
     if 'MJD-OBS' in header:
-        localtime = datetime.datetime(2019, 1, 1) + datetime.timedelta(days=header['MJD-OBS'] - 58484.0, hours=-7)
+        localtime = desietc.util.mjd_to_date(header['MJD-OBS'], utc_offset=-7)
         center = localtime.strftime('%H:%M:%S') + ' (UTC-7)'
     else:
         center = ''
