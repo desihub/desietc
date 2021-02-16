@@ -130,7 +130,7 @@ class OnlineETC():
 
                 elif not shutter_open and self.etc_processing.is_set():
                     # Spectrograph shutter has just opened: start ETC tracking.
-                    mjd = desietc.util.date_to_mjd(self.etc_processing_start_time, utc_offset=0)
+                    mjd = desietc.util.date_to_mjd(self.etc_proc_start, utc_offset=0)
                     cutoff = mjd + self.max_exposure_time / self.ETCalg.SECS_PER_DAY
                     self.ETCalg.start_exposure(
                         self.night, self.expid, mjd, self.target_teff, cutoff, self.cosmics_split_time)
@@ -178,6 +178,9 @@ class OnlineETC():
 
     def get_status(self):
         """Capture and return the current ETC status.
+
+        Names used here correspond to columns in the telemetry database, so should be
+        descriptive but not too verbose.
         """
         etc_status = {}
 
@@ -187,25 +190,25 @@ class OnlineETC():
         # Exposure parameters set in prepare_for_exposure()
         etc_status['expid'] = self.current_expid
         etc_status['target_teff'] = self.target_teff
-        etc_status['max_exposure_time'] = self.max_exposure_time
-        etc_status['cosmics_split_time'] = self.cosmics_split_time
+        etc_status['max_exptime'] = self.max_exposure_time
+        etc_status['cosmics_split'] = self.cosmics_split_time
 
         # Exposure parameters set in start_etc()
         etc_status['specid'] = self.current_specid
         etc_status['splittable'] = self.splittable
 
         # Timestamps captured by start() and start_etc()
-        etc_status['image_processing_start_time'] = self.image_processing_start_time
-        etc_status['etc_processing_start_time'] = self.etc_processing_start_time
+        etc_status['img_proc_start'] = self.img_proc_start
+        etc_status['etc_proc_start'] = self.etc_proc_start
 
         # Flags used to synchronize with the _etc thread.
-        etc_status['processing_images'] = self.image_processing.is_set()
-        etc_status['processing_etc'] = self.etc_processing.is_set()
+        etc_status['img_proc'] = self.image_processing.is_set()
+        etc_status['etc_proc'] = self.etc_processing.is_set()
 
         # Counters tracked by ETCalg
-        etc_status['total_guider_count'] = self.GFAalg.total_guider_count
-        etc_status['total_sky_count'] = self.GFAalg.total_sky_count
-        etc_status['total_acq_count'] = self.GFAalg.total_acq_count
+        etc_status['guider_count'] = self.GFAalg.total_guider_count
+        etc_status['sky_count'] = self.GFAalg.total_sky_count
+        etc_status['acq_count'] = self.GFAalg.total_acq_count
 
         # Observing conditions updated after each GFA or SKY frame.
         etc_status['seeing'] = self.ETCalg.fwhm
@@ -214,11 +217,10 @@ class OnlineETC():
         etc_status['skylevel'] = self.ETCalg.skylevel
 
         # ETC effective exposure time tracking.
-        etc_status['last_update_mjd'] = self.ETCalg.last_update_mjd
-        etc_status['accumulated_signal'] = self.ETCalg.accumulated_signal
-        etc_status['accumulated_background'] = self.ETCalg.accumulated_background
-        etc_status['accumulated_eff_time'] = self.ETCalg.accumulated_eff_time
-        etc_status['accumulated_real_time'] = self.ETCalg.accumulated_real_time
+        etc_status['accum_mjd'] = self.ETCalg.last_update_mjd
+        etc_status['accum_sig'] = self.ETCalg.accumulated_signal
+        etc_status['accum_bg'] = self.ETCalg.accumulated_background
+        etc_status['accum_teff'] = self.ETCalg.accumulated_eff_time
 
         return etc_status
 
@@ -300,8 +302,8 @@ class OnlineETC():
         """
         start etc image processing
         """
-        self.image_processing_start_time = start_time or datetime.datetime.utcnow()
-        Log.info('start: start image processing at %r' % self.image_processing_start_time)
+        self.img_proc_start = start_time or datetime.datetime.utcnow()
+        Log.info('start: start image processing at %r' % self.img_proc_start)
         if options:
             Log.warn('start: ignoring extra options: %r' % options)
 
@@ -315,11 +317,11 @@ class OnlineETC():
         """
         start etc exposure time processing
         """
-        self.etc_processing_start_time = start_time or datetime.datetime.utcnow()
+        self.etc_proc_start = start_time or datetime.datetime.utcnow()
         self.splittable = splittable or False
         self.current_specid = specid
         Log.info('start_etc: start etc processing at %r with splittable=%r, specid=%r' % (
-            self.etc_processing_start_time, self.splittable, self.current_specid))
+            self.etc_proc_start, self.splittable, self.current_specid))
         if options:
             Log.warn('start_etc: ignoring extra options: %r' % options)
 
