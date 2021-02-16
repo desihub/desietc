@@ -91,9 +91,8 @@ def replay_exposure(ETC, path, expid, outpath, teff=1000, cutoff=10000, cosmic=5
         if 'PMGSTARS' not in hdus:
             logging.error(f'Missing PMGSTARS HDU: no guide stars specified.')
             return False
-        pm = hdus['PMGSTARS'].read()
-        guide_stars = pm['GFA_LOC'], pm['ROW'], pm['COL'], pm['MAG']
-        logging.info(f'Exposure has {len(guide_stars[0])} guide stars.')
+        pm_info = hdus['PMGSTARS'].read()
+        logging.info(f'Exposure has {len(pm_info[0])} guide stars.')
         for camera in desietc.gfa.GFACamera.guide_names:
             if camera+'T' not in hdus:
                 continue
@@ -121,7 +120,7 @@ def replay_exposure(ETC, path, expid, outpath, teff=1000, cutoff=10000, cosmic=5
                 # Process the acquisition image.
                 ETC.process_acquisition(data)
                 # Specify the guide stars.
-                ETC.set_guide_stars(*guide_stars)
+                ETC.set_guide_stars(pm_info)
                 # Start the ETC tracking of this exposure.
                 ETC.start_exposure(night, expid, desi_mjd_obs, teff, cutoff, cosmic)
             else:

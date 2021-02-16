@@ -138,7 +138,7 @@ class ETCAlgorithm(object):
             for camera in desietc.gfa.GFACamera.guide_names:
                 self.pipes[camera], child = context.Pipe()
                 self.processes[camera] = context.Process(
-                    target=ETC.gfa_process, args=(
+                    target=ETCAlgorithm.gfa_process, args=(
                         camera, gfa_calib, self.GMM, self.psf_inset, self.measure, child))
                 self.processes[camera].start()
             logging.info(f'Initialized {len(self.GFAs)} GFA processes.')
@@ -243,7 +243,7 @@ class ETCAlgorithm(object):
         """
         # Create a GFACamera object that shares its data and ivar arrays
         # with the parent process.
-        bufname = ETC.BUFFER_NAME.format(camera)
+        bufname = ETCAlgorithm.BUFFER_NAME.format(camera)
         shared_mem = multiprocessing.shared_memory.SharedMemory(name=bufname)
         GFA = desietc.gfa.GFACamera(calib_name=calib_name, buffer=shared_mem.buf)
         # Command handling loop.
@@ -256,7 +256,7 @@ class ETCAlgorithm(object):
                 break
             # Handle other actions here...
             elif action == 'measure_psf':
-                camera_result, psf_stack = ETC.measure_psf(GFA, GMM, inset, measure)
+                camera_result, psf_stack = ETCAlgorithm.measure_psf(GFA, GMM, inset, measure)
                 pipe.send((camera_result, psf_stack))
 
     @staticmethod
@@ -370,8 +370,7 @@ class ETCAlgorithm(object):
         logging.info(f'Acquisition processing took {elapsed:.2f}s for {ncamera} cameras.')
         return True
 
-    def set_guide_stars(self, gfa_loc, col, row, mag,
-                        zeropoint=27.06, fiber_diam_um=107, pixel_size_um=15):
+    def set_guide_stars(self, pm_info, zeropoint=27.06, fiber_diam_um=107, pixel_size_um=15):
         """Specify the guide star locations and magnitudes to use when analyzing
         each guide frame.  These are normally calculated by PlateMaker.
         """
@@ -383,10 +382,9 @@ class ETCAlgorithm(object):
         self.guide_stars = {}
         self.fiber_templates = {}
         nstars = []
-        # The xy swap here is intentional
-        ny, nx = 2 * desietc.gfa.GFACamera.nampx, 2 * desietc.gfa.GFACamera.nampy
+        _, ny, nx = desietc.gfa.GFACamera.buffer_shape
         for camera in desietc.gfa.GFACamera.guide_names:
-            sel = (gfa_loc == camera) & (mag > 0)
+            sel = (pm_info['GFA_LOC'] == camera) & (pm_info['MAG'] > 0) & (pm_info['GUIDE_FLAG']==1)
             if not np.any(sel):
                 logging.warning(f'No guide stars available for {camera}.')
                 nstars.append(0)
@@ -396,12 +394,12 @@ class ETCAlgorithm(object):
             templates = []
             for i in np.where(sel)[0]:
                 # Convert from PlateMaker indexing convention to (0,0) centered in bottom-left pixel.
-                x0 = col[i] - 0.5
-                y0 = row[i] - 0.5
-                rmag = mag[i]
+                x0 = pm_info[i]['COL'] - 0.5
+                y0 = pm_info[i]['ROW'] - 0.5
+                rmag = pm_info[i]['MAG']
                 # Convert flux to predicted detected electrons per second in the
                 # GFA filter with nominal zenith atmospheric transmission.
-                nelec_rate = 10 ** (-(mag[i] - zeropoint) / 2.5)
+                nelec_rate = 10 ** (-(rmag - zeropoint) / 2.5)
                 # Prepare slices to extract this star in each guide frame.
                 iy, ix = np.round(y0).astype(int), np.round(x0).astype(int)
                 ylo, yhi = iy - halfsize, iy + halfsize + 1
@@ -458,7 +456,7 @@ class ETCAlgorithm(object):
                 continue
             dithered = self.dithered_model[camera]
             if camera not in self.guide_stars:
-                loggining.info(f'Skipping {camera} guide frame {fnum} with no guide stars.')
+                logging.info(f'Skipping {camera} guide frame {fnum} with no guide stars.')
                 continue
             if camera not in data:
                 logging.warning(f'Missing {camera} guide frame {fnum}.')
@@ -474,8 +472,8 @@ class ETCAlgorithm(object):
             for istar, star in enumerate(self.guide_stars[camera]):
                 # Extract the postage stamp for this star.
                 xslice, yslice = slice(*star['xslice']), slice(*star['yslice'])
-                D = thisGFA.data[xslice, yslice]
-                DW = thisGFA.ivar[xslice, yslice]
+                D = thisGFA.data[yslice, xslice]
+                DW = thisGFA.ivar[yslice, xslice]
                 # Estimate the actual centroid in pixels, flux in electrons and
                 # constant background level in electrons / pixel.
                 dx, dy, flux, bg, nll, best_fit = self.GMM.fit_dithered(

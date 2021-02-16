@@ -130,8 +130,7 @@ class OnlineETC():
 
                 elif not shutter_open and self.etc_processing.is_set():
                     # Spectrograph shutter has just opened: start ETC tracking.
-                    now = datetime.datetime.utcnow()
-                    mjd = desietc.util.date_to_mjd(now, utc_offset=0)
+                    mjd = desietc.util.date_to_mjd(self.etc_processing_start_time, utc_offset=0)
                     cutoff = mjd + self.max_exposure_time / self.ETCalg.SECS_PER_DAY
                     self.ETCalg.start_exposure(
                         self.night, self.expid, mjd, self.target_teff, cutoff, self.cosmics_split_time)
