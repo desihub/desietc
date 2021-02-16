@@ -226,6 +226,7 @@ class GFACamera(object):
         # Since we use a mean rather than median, subtracting this bias changes the dtype from
         # uint32 to float32 and means that digitization noise averages out over exposures.
         self.bias = {}
+        self.nbad_overscan = 0
         for amp in self.amp_names:
             overscan = self.amps[amp][self.nrowtrim:, -self.nscan:]
             delta = overscan - np.median(overscan)
@@ -237,6 +238,7 @@ class GFACamera(object):
                 overscan = np.copy(overscan)
                 overscan[bad] = 0.
                 ngood -= nbad
+                self.nbad_overscan += nbad
             self.bias[amp] = np.sum(overscan) / ngood
         # Assemble the real pixel data with the pre and post overscans removed.
         self.data[:self.nampy, :self.nampx] = raw[:self.nampy, self.nscan:self.nampx + self.nscan]

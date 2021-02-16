@@ -2,6 +2,7 @@
 """
 import time
 import json
+import pathlib
 import multiprocessing
 try:
     import multiprocessing.shared_memory
@@ -24,11 +25,11 @@ import desietc.sky
 import desietc.gfa
 import desietc.gmm
 import desietc.util
+import desietc.plot
 
 # TODO:
 # - update teff after each GFA/SKY update
 # - estimate GFA thru errors?
-# - implement save_exposure()
 # - implement cutoff time logic
 # - implement cosmic split logic
 # - flag issues detected in acq img
@@ -39,7 +40,7 @@ class ETC(object):
     BUFFER_NAME = 'ETC_{0}_buffer'
 
     def __init__(self, sky_calib, gfa_calib, psf_pixels=25, max_dither=7, num_dither=1200,
-                 Ebv_coef=1.0, parallel=True):
+                 Ebv_coef=1.0, nbad_threshold=100, parallel=True):
         """Initialize once per session.
 
         Parameters
@@ -58,10 +59,14 @@ class ETC(object):
         Ebv_coef : float
             Coefficient to use for converting Ebv into an equivalent MW
             transparency via 10 ** (-coef * Ebv / 2.5)
+        nbad_threshold : int
+            Maximum number of allowed bad overscan pixel values before a GFA is
+            flagged as noisy.
         parallel : bool
             Process GFA images in parallel when True.
         """
         self.Ebv_coef = Ebv_coef
+        self.nbad_threshold = nbad_threshold
         # Initialize PSF fitting.
         if psf_pixels % 2 == 0:
             raise ValueError('psf_pixels must be odd.')
@@ -83,6 +88,7 @@ class ETC(object):
         self.num_sky_frames = 0
         self.acquisition_data = None
         self.guide_stars = None
+        self.image_path = None
         # How many GUIDE and SKY cameras do we expect?
         self.ngfa = len(desietc.gfa.GFACamera.guide_names)
         self.nsky = len(desietc.sky.SkyCamera.sky_names)
@@ -152,6 +158,20 @@ class ETC(object):
             self.shared_mem[camera].close()
             self.shared_mem[camera].unlink()
         self.needs_shutdown = False
+
+    def set_image_path(self, image_path):
+        """Set the path where future images should be written or None to prevent saving images.
+        """
+        if image_path is not None:
+            self.image_path = pathlib.Path(image_path)
+            if not self.image_path.exists():
+                logging.error(f'Non-existant image_path: {image_path}.')
+                self.image_path = None
+            else:
+                logging.info(f'Images will be written in: {image_path}.')
+        else:
+            logging.info('Images will no longer be written.')
+            self.image_path = None
 
     def process_top_header(self, header, source, update_ok=False):
         """Process the top-level header of an exposure.
@@ -240,14 +260,14 @@ class ETC(object):
         T, WT =  thisGFA.psf_stack
         if T is None:
             return camera_result
-        # Save a copy of the PSF stacked image before insetting.
-        psf_stack = np.stack(thisGFA.psf_stack)
         # Measure the FWHM and FFRAC of the stacked PSF.
         fwhm, ffrac = measure.measure(T, WT)
         camera_result['fwhm'] = fwhm if fwhm > 0 else np.nan
         camera_result['ffrac'] = ffrac if ffrac > 0 else np.nan
         # Use a smaller size for GMM fitting.
         T, WT = T[inset, inset], WT[inset, inset]
+        # Save a copy of the cropped stacked image.
+        psf_stack = np.stack((T, WT))
         # Fit the PSF to a Gaussian mixture model. This is the slow step...
         gmm_params = GMM.fit(T, WT, maxgauss=3)
         if gmm_params is None:
@@ -266,6 +286,7 @@ class ETC(object):
         # Pass 1: reduce the raw GFA data and measure the PSF.
         self.acquisition_data = {}
         self.psf_stack = {}
+        self.noisy_gfa = set()
         pending = []
         for camera in desietc.gfa.GFACamera.guide_names:
             if camera not in data:
@@ -291,6 +312,7 @@ class ETC(object):
         # and we don't want to have to pass it between processes.
         fwhm_vec, ffrac_vec = [], []
         self.dithered_model = {}
+        psf_model = {}
         for camera, camera_result in self.acquisition_data.items():
             fwhm_vec.append(camera_result.get('fwhm', np.nan))
             ffrac_vec.append(camera_result.get('ffrac', np.nan))
@@ -298,7 +320,7 @@ class ETC(object):
             if gmm_params is None:
                 logging.warn(f'PSF measurement failed for {camera}.')
                 continue
-            ##self.psf_model[camera] = self.GMM.predict(gmm_params)
+            psf_model[camera] = self.GMM.predict(gmm_params)
             # Precompute dithered renderings of the model for fast guide frame fits.
             self.dithered_model[camera] = self.GMM.dither(gmm_params, self.xdither, self.ydither)
         # Update the current FWHM, FFRAC values now.
@@ -308,6 +330,11 @@ class ETC(object):
         if np.any(np.isfinite(ffrac_vec)):
             ffrac = np.nanmedian(ffrac_vec)
         logging.info(f'Acquisition image quality: FWHM={fwhm:.2f}", FFRAC={ffrac:.3}.')
+        # Generate an acquisition analysis summary image.
+        if self.image_path is not None:
+            desietc.plot.save_acquisition_summary(
+                data['header'], psf_model, self.psf_stack, fwhm, ffrac, self.noisy_gfa,
+                self.image_path / f'PSF-{self.exptag}.png')
         # Reset the guide frame counter and guide star data.
         self.num_guide_frames = 0
         self.guide_stars = None
@@ -546,6 +573,11 @@ class ETC(object):
             logging.error(f'Failed to process {source} raw data: {e}')
             return False
         thisGFA.data -= thisGFA.get_dark_current(ccdtemp, self.exptime)
+        # Flag this camera if it appears to have excessive noise
+        if thisGFA.nbad_overscan >= self.nbad_threshold:
+            if camera not in self.noisy_gfa:
+                logging.warn(f'{camera} has excessive noise in {source}.')
+                self.noisy_gfa.add(camera)
         return True
 
     def get_accumulated_teff(self, mjd_start, mjd_stop, MW_transparency=1):

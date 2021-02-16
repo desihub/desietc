@@ -123,8 +123,8 @@ def etcoffline(args):
 
     # Initialize the global ETC algorithm.
     ETC = desietc.etc.ETC(
-        args.sky_calib, args.gfa_calib, args.psf_pixels,
-        args.max_dither, args.num_dither, args.Ebv_coef, args.parallel)
+        args.sky_calib, args.gfa_calib, args.psf_pixels, args.max_dither,
+        args.num_dither, args.Ebv_coef, args.nbad_threshold, args.parallel)
 
     def process(expid):
         nonlocal nprocessed
@@ -211,6 +211,8 @@ def main():
         help='Number of dithers to use between (-max,+max)')
     parser.add_argument('--Ebv-coef', type=float, default=1,
         help='Coefficient to use for MW extinction')
+    parser.add_argument('--nbad-threshold', type=int, default=100,
+        help='Maximum allowed bad overscan pixels')
     parser.add_argument('--dry-run', action='store_true',
         help='Check FITS file names and headers with no ETC processing')
     parser.add_argument('--inpath', type=str, metavar='PATH',

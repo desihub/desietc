@@ -77,6 +77,8 @@ def replay_exposure(ETC, path, expid, outpath, teff=1000, cutoff=10000, cosmic=5
         return False
     # Start the ETC tracking of this exposure.
     ETC.start_exposure(night, expid, desi_mjd_obs, median_Ebv, teff, cutoff, cosmic)
+    # Save images with the per-exposure outputs.
+    ETC.set_image_path(exppath_out)
     # Get the SKY exposure info for the first available camera.
     sky_info = None
     with fitsio.FITS(str(sky_path)) as hdus:
@@ -128,6 +130,9 @@ def replay_exposure(ETC, path, expid, outpath, teff=1000, cutoff=10000, cosmic=5
                 # Specify the guide stars.
                 ETC.set_guide_stars(*guide_stars)
             else:
+
+                continue
+
                 # Process the next guide frame.
                 ETC.process_guide_frame(data)
         else: # SKY

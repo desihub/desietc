@@ -181,6 +181,86 @@ def plot_guide_stars(Dsum, WDsum, Msum, params, night, expid, camera, maxdxy=5):
     return fig, ax
 
 
+def save_acquisition_summary(
+    header, psf_model, psf_stack, fwhm, ffrac, noisy, path, show_north=True,
+    size=33, zoom=5, pad=2, dpi=128, cmap='magma', masked_color='cyan'):
+    """
+    """
+    # Get the size of the PSF model and stack images.
+    first = next(iter(psf_stack))
+    size = psf_stack[first].shape[1]
+    # Get the number of expected in-focus GFAs.
+    names = desietc.gfa.GFACamera.guide_names
+    ngfa = len(names)
+    # Initialize the figure.
+    width = size * zoom * ngfa
+    height = size * zoom * 2
+    fig, axes = plt.subplots(2, ngfa, figsize=(width / dpi, height / dpi), dpi=dpi, frameon=False)
+    plt.subplots_adjust(left=0, right=1, bottom=0, top=1, wspace=0, hspace=0)
+    # Prepare a colormap with our custom ivar=0 color.
+    cmap = copy.copy(matplotlib.cm.get_cmap(cmap))
+    cmap.set_bad(color=masked_color)
+    # Get the colormap scale to use for all images.
+    model_sum = {name: psf_model[name].sum() for name in psf_model}
+    model_max = np.max([psf_model[camera].max() / model_sum[camera] for camera in psf_model])
+    vmin, vmax = -0.05 * model_max, 1.05 * model_max
+    # Outline text to ensure that it is visible whatever pixels are below.
+    outline = [
+        matplotlib.patheffects.Stroke(linewidth=1, foreground='k'),
+        matplotlib.patheffects.Normal()]
+    # Loop over cameras.
+    default_norm = np.median([s for s in model_sum.values()])
+    for i, name in enumerate(names):
+        if name in psf_stack:
+            data = psf_stack[name][0].copy()
+            norm = model_sum.get(name, default_norm)
+            data /= norm
+            # do not show ivar=0 pixels
+            data[psf_stack[name][1] == 0] = np.nan
+            axes[0, i].imshow(data, vmin=vmin, vmax=vmax, cmap=cmap, interpolation='none', origin='lower')
+            if show_north:
+                # Draw an arrow point north in this GFA's pixel basis.
+                n = int(name[5])
+                angle = np.deg2rad(36 * (n - 2))
+                xc, yc = 0.5 * size, 0.16 * size
+                du = 0.02 * size * np.cos(angle)
+                dv = 0.02 * size * np.sin(angle)
+                xpt = np.array([-4 * du, dv, du, -dv, -4 * du])
+                ypt = np.array([4 * dv, du, -dv, -du, 4 * dv])
+                axes[0, i].add_line(matplotlib.lines.Line2D(xpt + xc, ypt + yc, c='c', lw=1, ls='-'))
+        if name in psf_model:
+            data = psf_model[name]
+            data /= model_sum[name]
+            axes[1, i].imshow(psf_model[name], vmin=vmin, vmax=vmax, cmap=cmap,
+                              interpolation='bicubic', origin='lower')
+    # Generate a text overlay.
+    ax = plt.axes((0, 0, 1, 1))
+    ax.axis('off')
+    night = header.get('NIGHT', 'YYYYMMDD')
+    exptag = str(header.get('EXPID', 0)).zfill(8)
+    left = f'{night}/{exptag}'
+    if 'MJD-OBS' in header:
+        localtime = datetime.datetime(2019, 1, 1) + datetime.timedelta(days=header['MJD-OBS'] - 58484.0, hours=-7)
+        center = localtime.strftime('%H:%M:%S') + ' (UTC-7)'
+    else:
+        center = ''
+    right = f'FWHM={fwhm:.2f}" ({100*ffrac:.1f}%)'
+    for (x, ha, label) in zip((0, 0.5, 1), ('left', 'center', 'right'), (left, center, right)):
+        text = ax.text(x, 0, label, color='w', ha=ha, va='bottom', size=10, transform=ax.transAxes)
+        text.set_path_effects(outline)
+    # Add per-GFA labels.
+    xtext = (np.arange(ngfa) + 0.5) / ngfa
+    for x, name in zip(xtext, names):
+        text = ax.text(x, 0.5, name, color='w', ha='center', va='center', size=8, transform=ax.transAxes)
+        text.set_path_effects(outline)
+        if name in noisy:
+            text = ax.text(x, 1, 'NOISY?', color='r', ha='center', va='top', size=10, transform=ax.transAxes)
+            text.set_path_effects(outline)
+    # Save the image.
+    plt.savefig(path)
+    plt.close(fig)
+
+
 def plot_image_quality(stacks, meta, size=33, zoom=5, pad=2, dpi=128, interpolation='none', maxline=17):
     # Calculate crops to use, without assuming which cameras are present in stacks.
     gsize, fsize = 0, 0
