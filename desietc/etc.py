@@ -40,7 +40,7 @@ class ETCAlgorithm(object):
     BUFFER_NAME = 'ETC_{0}_buffer'
 
     def __init__(self, sky_calib, gfa_calib, psf_pixels=25, max_dither=7, num_dither=1200,
-                 Ebv_coef=1.0, nbad_threshold=100, nll_threshold=10, parallel=True):
+                 Ebv_coef=2.3, nbad_threshold=100, nll_threshold=10, parallel=True):
         """Initialize once per session.
 
         Parameters
@@ -340,18 +340,19 @@ class ETCAlgorithm(object):
             # Precompute dithered renderings of the model for fast guide frame fits.
             self.dithered_model[camera] = self.GMM.dither(gmm_params, self.xdither, self.ydither)
         # Update the current FWHM, FFRAC values now.
-        fwhm, ffrac = -1, -1
+        self.fwhm, self.ffrac = -1, -1
         if np.any(np.isfinite(fwhm_vec)):
-            fwhm = np.nanmedian(fwhm_vec)
+            self.fwhm = np.nanmedian(fwhm_vec)
         if np.any(np.isfinite(ffrac_vec)):
-            ffrac = np.nanmedian(ffrac_vec)
-        logging.info(f'Acquisition image quality using {nstars_tot} stars: FWHM={fwhm:.2f}", FFRAC={ffrac:.3}.')
+            self.ffrac = np.nanmedian(ffrac_vec)
+        logging.info(f'Acquisition image quality using {nstars_tot} stars: ' +
+            f'FWHM={self.fwhm:.2f}", FFRAC={self.ffrac:.3}.')
         # Generate an acquisition analysis summary image.
         if self.image_path is not None:
             try:
                 desietc.plot.save_acquisition_summary(
-                    data['header'], psf_model, self.psf_stack, fwhm, ffrac, nstars, badfit, self.noisy_gfa,
-                    self.image_path / f'PSF-{self.exptag}.png')
+                    data['header'], psf_model, self.psf_stack, self.fwhm, self.ffrac, nstars,
+                    badfit, self.noisy_gfa, self.image_path / f'PSF-{self.exptag}.png')
             except Exception as e:
                 logging.error(f'Failed to save acquisition analysis summary image: {e}')
         # Reset the guide frame counter and guide star data.
@@ -421,8 +422,6 @@ class ETCAlgorithm(object):
             return False
         nstars_msg = '+'.join([str(n) for n in nstars]) + '=' + str(np.sum(nstars))
         logging.info(f'Using {nstars_msg} guide stars for {self.night}/{self.exptag}.')
-        # Update the current FFRAC,TRANSP now.
-        # ...
         return True
 
     def process_guide_frame(self, data):
