@@ -1,12 +1,9 @@
-#!/usr/bin/env python3
+"""Online ETC class that intefaces with ICS via callouts implemented by ETCApp.
 
-"""
-The ETC class includes the actual ETC algorithms.
-Communication with the ETCApp framework is done via callouts
-Currently, the image queues are managed by the ETCApp, not the ETC, but this can be changed if necessary
+Original code written by Klaus Honscheid and copied here 16-Feb-2021 from
+https://desi.lbl.gov/trac/browser/code/online/ETC/trunk/python/ETC/ETC.py
 
-Log.debug  (or info, warn, error) are logger functions (messages are displayed on screen and added to log files
-for archive and debugging purposes)
+ETCApp at https://desi.lbl.gov/trac/browser/code/online/ETC/trunk/python/ETC/ETCApp.py
 
 5 callouts are used to interact with the ETCapp and the rest of DOS.
 The basic idea is the the etc code checks if the callout variable is callable and then executes the function at
@@ -37,20 +34,22 @@ This is the list of current call outs:
 
 After configure,  start/stop calls control image processing
 When active, i.e. processing images, exposure time processing is controlled by the start_etc/stop_etc commands
-
 """
-
-from DOSlib.util import raise_error
-import DOSlib.logger as Log
-from DOSlib.PML import SUCCESS, FAILED
 import datetime
 import sys
 import os
 import threading
 import time
-import random
 
-class ETC():
+from DOSlib.util import raise_error
+import DOSlib.logger as Log
+from DOSlib.PML import SUCCESS, FAILED
+
+import desietc.etc
+
+
+class OnlineETC():
+
     def __init__(self, shutdown_event):
 
         self.shutdown = shutdown_event
@@ -110,7 +109,15 @@ class ETC():
         self.split_cause = None        # why was exposure split requested
         self.about_to_stop_cause = None        # why was exposure about to stop
         self.about_to_split_cause = None        # why was exposure about to split
-        # start processing thread
+
+        # Initialize the ETC algorithm.
+        gfa_calib = os.getenv('ETC_GFA_CALIB', None)
+        sky_calib = os.getenv('ETC_SKY_CALIB', None)
+        if gfa_calib is None or sky_calib is None:
+            raise RuntimeError('ETC_GFA_CALIB and ETC_SKY_CALIB must be set.')
+        self.ETCalg = desietc.etc.ETCAlgorithm(gfa_calib, sky_calib)
+
+        # Start our processing thread and create the flags we use to synchronize with it.
         self.image_processing = threading.Event()
         self.image_processing.clear()
         self.etc_processing = threading.Event()
@@ -120,17 +127,21 @@ class ETC():
         self.etc_thread.start()
         Log.info('ETC: processing thread running')
 
-    def _app_access(self, *args, **kwargs):
-        """
-        To be overloaded
-        """
-        pass
-
     def _etc(self):
-        """
-        etc worker thread
-        request images and run algorithms. Maybe split into separate threads for gfa and skycam images
-        simulated algorithm: "measure" seeing, skylevel and transparency when ACTIVE, accumulate SNR when PROCESSING
+        """This is the ETC algorithm that does the actual work.
+
+        This function normally runs in a separate thread and synchronizes with the
+        rest of ICS via two flags:
+
+         - image_processing: set to indicate that the following are or will soon be available:
+            - fiberassign file
+            - acquisition image
+            - PlateMaker guide stars
+
+         - etc_processing: set when the spectrograph exposure has started and cleared when we
+            should save our outputs to the exposure directory.
+
+        The thread that runs this function is started in our constructor.
         """
         step = 0.01
         image_processing_time = 3.0    # for simulation

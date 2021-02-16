@@ -117,7 +117,7 @@ def etcoffline(args):
         sys.exit(-2)
 
     # Initialize the global ETC algorithm.
-    ETC = desietc.etc.ETC(
+    ETC = desietc.etc.ETCAlgorithm(
         args.sky_calib, args.gfa_calib, args.psf_pixels, args.max_dither, args.num_dither,
         args.Ebv_coef, args.nbad_threshold, args.nll_threshold, args.parallel)
 

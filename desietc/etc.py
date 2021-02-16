@@ -34,7 +34,7 @@ import desietc.plot
 # - implement cosmic split logic
 # - flag issues detected in acq img
 
-class ETC(object):
+class ETCAlgorithm(object):
 
     SECS_PER_DAY = 86400
     BUFFER_NAME = 'ETC_{0}_buffer'
