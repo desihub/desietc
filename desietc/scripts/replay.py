@@ -20,12 +20,7 @@ import argparse
 import warnings
 import re
 import pathlib
-
-try:
-    import DOSlib.logger as logging
-except ImportError:
-    # Fallback when we are not running as a DOS application.
-    import logging
+import logging
 
 import numpy as np
 
@@ -126,6 +121,13 @@ def etcoffline(args):
         args.sky_calib, args.gfa_calib, args.psf_pixels, args.max_dither, args.num_dither,
         args.Ebv_coef, args.nbad_threshold, args.nll_threshold, args.parallel)
 
+    # Enable GMM debug messages if requested.
+    if args.debug and args.gmm_debug:
+        if args.parallel:
+            print('Ignoring --gmm-debug with --parallel')
+        else:
+            ETC.GMM.set_debug(True)
+
     def process(expid):
         nonlocal nprocessed
         success = desietc.offline.replay_exposure(
@@ -215,6 +217,8 @@ def main():
         help='Maximum allowed bad overscan pixels before warning')
     parser.add_argument('--nll-threshold', type=float, default=10,
         help='Maximum allowed GMM fit NLL value before warning')
+    parser.add_argument('--gmm-debug', action='store_true',
+        help='Generate debug log messages during GMM.fit')
     parser.add_argument('--dry-run', action='store_true',
         help='Check FITS file names and headers with no ETC processing')
     parser.add_argument('--inpath', type=str, metavar='PATH',

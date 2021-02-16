@@ -480,7 +480,6 @@ class ETC(object):
                 ffrac = np.sum(templates[istar] * best_fit)
                 # Calculate the transparency as the ratio of measured / predicted electrons.
                 transp = flux / (star['nelec_rate'] * self.exptime)
-                logging.debug(f'{camera}[{fnum},{istar}] dx={dx:.1f} dy={dy:.1f} ffrac={ffrac:.3f} transp={transp:.3f}')
                 star_transp.append(transp)
                 star_ffrac.append(ffrac)
                 star_dx.append(dx)
@@ -494,6 +493,9 @@ class ETC(object):
                 each_transp[icam] = camera_transp[-1]
                 each_dx[icam] = np.nanmean(star_dx)
                 each_dy[icam] = np.nanmean(star_dy)
+                logging.debug(
+                    f'{camera}[{fnum}] ffrac={each_ffrac[icam]:.3f} transp={each_transp[icam]:.3f} ' +
+                    f'dx={each_dx[icam]:.2f} dy={each_dy[icam]:.2f} nstar={nstar}.')
             mjd_obs.append(self.mjd_obs)
             exptime.append(self.exptime)
             ncamera += 1

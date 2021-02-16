@@ -2,11 +2,7 @@
 
 Used to model the PSF from sources detected in GFA images.
 """
-try:
-    import DOSlib.logger as logging
-except ImportError:
-    # Fallback when we are not running as a DOS application.
-    import logging
+import logging
 
 import numpy as np
 
@@ -48,6 +44,15 @@ class GMMFit(object):
         # Save fit config.
         self.rhomax = rhomax
         self.rhoprior_power = rhoprior_power
+        # No debug output by default.
+        self.set_debug(False)
+
+    def set_debug(self, debug):
+        """Send verbose output to logging.debug during :meth:`fit` when True.
+        """
+        self.debug = debug
+        if debug:
+            logging.debug('GMM.fit will generate verbose debug messages.')
 
     def gauss(self, mu1, mu2, sigma1, sigma2, rho, moments=False):
         """Calculate a single normalized Gaussian integrated over pixels.
@@ -448,15 +453,18 @@ class GMMFit(object):
                         try:
                             final_params, result = self.minimize(params, data, ivar, kwargs=method)
                         except FloatingPointError as e:
-                            logging.debug('minimize giving up after: {0}'.format(e))
+                            if self.debug:
+                                logging.debug('minimize giving up after: {0}'.format(e))
                             continue
-                    logging.debug(f'fit {ngauss}/{i} {method["method"]} {result.success} {result.fun:.4f} {best_nll:.4f}')
+                    if self.debug:
+                        logging.debug(f'fit {ngauss}/{i} {method["method"]} {result.success} {result.fun:.4f} {best_nll:.4f}')
                     if result.success:
                         if result.fun < best_nll:
                             best_nll = result.fun
                             best_params, best_result = final_params, result
                             if best_nll < threshold:
-                                logging.debug(f'reached threshold {best_nll:.3f} < {threshold} with ngauss={ngauss}')
+                                if self.debug:
+                                    logging.debug(f'reached threshold {best_nll:.3f} < {threshold} with ngauss={ngauss}')
                                 self.best_nll = best_nll
                                 self.ngauss = ngauss
                                 return best_params
@@ -469,16 +477,19 @@ class GMMFit(object):
                 rank = chisq.size - np.argsort(np.argsort(chisq))
                 drop = (rank <= max_ndrop) & (chisq > drop_cut)
                 ndrop = np.count_nonzero(drop)
-                logging.debug(f'Dropping {ndrop} pixels with chisq > {drop_cut}')
+                if self.debug:
+                    logging.debug(f'Dropping {ndrop} pixels with chisq > {drop_cut}')
                 ivar[drop.reshape(data.shape)] = 0
                 # Recalcuate the nll
                 nll = np.sum((ivar * (data - model) ** 2)) / data.size
                 if nll < threshold:
-                    logging.debug(f'Reached threshold {nll:.3f} < {threshold} with ngauss={ngauss} after drops.')
+                    if self.debug:
+                        logging.debug(f'Reached threshold {nll:.3f} < {threshold} with ngauss={ngauss} after drops.')
                     self.best_nll = nll
                     self.ngauss = ngauss
                     return best_params
-        logging.debug(f'best nll={best_nll:.3f} but never reached threshold')
+        if self.debug:
+            logging.debug(f'best nll={best_nll:.3f} but never reached threshold')
         self.best_nll = best_nll
         self.ngauss = ngauss
         return None if best_nll == np.inf else best_params
