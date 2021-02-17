@@ -630,7 +630,7 @@ class ETCAlgorithm(object):
         self.last_update_mjd = self.accumulated_eff_time = self.accumulated_real_time = 0
         self.accumulated_signal = self.accumulated_background = 0
 
-    def start_exposure(self, night, expid, mjd, teff, cutoff, cosmic):
+    def start_exposure(self, night, expid, mjd, teff, cutoff, cosmic, splittable=False):
         """
         """
         logging.info(f'Starting {self.night}/{self.exptag} at {mjd} with target teff={teff:.0f}s, ' +
@@ -642,6 +642,7 @@ class ETCAlgorithm(object):
             cutoff=cutoff,
             mjd_max=mjd + cutoff / self.SECS_PER_DAY,
             cosmic=cosmic,
+            splittable=splittable,
         )
         self.reset_accumulated()
 
@@ -701,7 +702,8 @@ class ETCAlgorithm(object):
         sig_forecast = (1 - w) * self.accumulated_signal + w * cum_mean(thru_forecast)
         bg_forecast = (1 - w) * self.accumulated_background + w * cum_mean(sky_forecast)
         dt_forecast = (mjd - mjd_now) * self.SECS_PER_DAY
-        teff_forecast = dt_forecast * self.exptime_factor(sig_forecast, bg_forecast, MW_transp)
+        teff_forecast = (self.accumulated_real_time + dt_forecast) * self.exptime_factor(
+            sig_forecast, bg_forecast, MW_transp)
         # Do we expect to reach the target before the cutoff?
         target = self.exp_data['teff']
         if teff_forecast[-1] < target:

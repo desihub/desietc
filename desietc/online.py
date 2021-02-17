@@ -80,7 +80,7 @@ class OnlineETC():
         sky_calib = os.getenv('ETC_SKY_CALIB', None)
         if gfa_calib is None or sky_calib is None:
             raise RuntimeError('ETC_GFA_CALIB and ETC_SKY_CALIB must be set.')
-        self.ETCalg = desietc.etc.ETCAlgorithm(gfa_calib, sky_calib)
+        self.ETCalg = desietc.etc.ETCAlgorithm(gfa_calib, sky_calib, parallel=True)
 
         # Start our processing thread and create the flags we use to synchronize with it.
         self.image_processing = threading.Event()
@@ -133,7 +133,7 @@ class OnlineETC():
                     mjd = desietc.util.date_to_mjd(self.etc_proc_start, utc_offset=0)
                     self.ETCalg.start_exposure(
                         self.night, self.expid, mjd, self.target_teff,
-                        self.max_exposure_time, self.cosmics_split_time)
+                        self.max_exposure_time, self.cosmics_split_time, self.splittable)
                     need_acq_image = need_stars = shutter_open = True
 
                 elif shutter_open:
@@ -175,6 +175,9 @@ class OnlineETC():
             else:
                 Log.info('_etc (%r): Image processing complete' % self.current_expid)
                 shutter_open = False
+
+            # Need some delay here to allow the main thread to run.
+            time.sleep(1)
 
         Log.info('ETC: processing thread exiting.')
 
