@@ -624,11 +624,17 @@ class ETCAlgorithm(object):
                 self.noisy_gfa.add(camera)
         return True
 
+    def reset_accumulated(self):
+        """
+        """
+        self.last_update_mjd = self.accumulated_eff_time = self.accumulated_real_time = 0
+        self.accumulated_signal = self.accumulated_background = 0
+
     def start_exposure(self, night, expid, mjd, teff, cutoff, cosmic):
         """
         """
-        logging.info(f'Starting {night}/{expid} at {mjd} with teff={teff:.0f}s, cutoff={cutoff:.0f}s, ' +
-            f'cosmic={cosmic:.0f}s')
+        logging.info(f'Starting {self.night}/{self.exptag} at {mjd} with target teff={teff:.0f}s, ' +
+            f'cutoff={cutoff:.0f}s, cosmic split={cosmic:.0f}s')
         self.exp_data = dict(
             expid=expid,
             mjd_start=mjd,
@@ -636,8 +642,14 @@ class ETCAlgorithm(object):
             cutof=cutoff,
             cosmic=cosmic,
         )
-        self.last_update_mjd = self.accumulated_eff_time = self.accumulated_real_time = 0
-        self.accumulated_signal = self.accumulated_background = 0
+        self.reset_accumulated()
+
+    def stop_exposure(self, mjd):
+        """
+        """
+        self.update_accumulated(mjd)
+        logging.info(f'Ended {self.night}/{self.exptag} at {mjd} after {self.accumulated_real_time:.1f}s ' +
+            f'with actual teff={self.accumulated_eff_time:.1f}s')
 
     def update_accumulated(self, mjd_now):
         """Update our estimates of the accumulated signal, background and

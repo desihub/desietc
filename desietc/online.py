@@ -139,7 +139,9 @@ class OnlineETC():
                 elif shutter_open:
 
                     if not self.etc_processing.is_set():
-                        # Shutter has just closed: save ETC outputs.
+                        # Shutter has just closed: get final estimates and save ETC outputs.
+                        mjd = desietc.util.date_to_mjd(self.etc_proc_stop, utc_offset=0)
+                        self.ETCalg.stop_exposure(mjd)
                         self.ETCalg.save_exposure(self.get_exp_dir())
                         shutter_open = False
                         continue
@@ -197,18 +199,19 @@ class OnlineETC():
         etc_status['specid'] = self.current_specid
         etc_status['splittable'] = self.splittable
 
-        # Timestamps captured by start() and start_etc()
+        # Timestamps captured by start(), start_etc(), stop_etc()
         etc_status['img_proc_start'] = self.img_proc_start
         etc_status['etc_proc_start'] = self.etc_proc_start
+        etc_status['etc_proc_stop'] = self.etc_proc_stop
 
         # Flags used to synchronize with the _etc thread.
         etc_status['img_proc'] = self.image_processing.is_set()
         etc_status['etc_proc'] = self.etc_processing.is_set()
 
         # Counters tracked by ETCalg
-        etc_status['guider_count'] = self.GFAalg.total_guider_count
-        etc_status['sky_count'] = self.GFAalg.total_sky_count
-        etc_status['acq_count'] = self.GFAalg.total_acq_count
+        etc_status['guider_count'] = self.ETCalg.total_guider_count
+        etc_status['sky_count'] = self.ETCalg.total_sky_count
+        etc_status['acq_count'] = self.ETCalg.total_acq_count
 
         # Observing conditions updated after each GFA or SKY frame.
         etc_status['seeing'] = self.ETCalg.fwhm
@@ -221,6 +224,7 @@ class OnlineETC():
         etc_status['accum_sig'] = self.ETCalg.accumulated_signal
         etc_status['accum_bg'] = self.ETCalg.accumulated_background
         etc_status['accum_teff'] = self.ETCalg.accumulated_eff_time
+        etc_status['accum_real'] = self.ETCalg.accumulated_real_time
 
         return etc_status
 
@@ -232,7 +236,8 @@ class OnlineETC():
 
         # accumulated values:
         if keep_accumulated == False or all == True:
-            self.GFAalg.reset_counts()
+            self.ETCalg.reset_counts()
+            self.ETCalg.reset_accumulated()
             self.image_processing.clear()
 
         # update status
@@ -331,11 +336,12 @@ class OnlineETC():
         # Update our status.
         self.call_to_update_status()
 
-    def stop_etc(self, source = 'OPERATOR', **options):
+    def stop_etc(self, source='OPERATOR', stop_time=None, **options):
         """
         Force ETC exposure time processing to stop
         """
-        Log.info('stop_etc: stop exposure time processing request received from source %s' % source)
+        self.etc_proc_stop = stop_time or datetime.datetime.utcnow()
+        Log.info('stop_etc: stop etc processing at %r from source %s ' % (self.etc_proc_stop, source))
         if options:
             Log.warn('stop_etc: ignoring extra options: %r' % options)
 

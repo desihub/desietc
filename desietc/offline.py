@@ -105,13 +105,17 @@ def replay_exposure(ETC, path, expid, outpath, teff=1000, cutoff=10000, cosmic=5
     logging.info(f'Exposure has {num_gfa_frames} GFA frames.')
     # Determine the order in which the combined GFA+SKY frames should be fed to the ETC.
     frames = (
-        [ dict(typ='gfa', num=n, when=gfa_info[n]['MJD-OBS']+gfa_info[n]['EXPTIME']/86400)
+        [ dict(typ='gfa', num=n, when=gfa_info[n]['MJD-OBS']+gfa_info[n]['EXPTIME']/ETC.SECS_PER_DAY)
           for n in range(num_gfa_frames) ] +
-        [ dict(typ='sky', num=n, when=sky_info[n]['MJD-OBS']+sky_info[n]['EXPTIME']/86400)
+        [ dict(typ='sky', num=n, when=sky_info[n]['MJD-OBS']+sky_info[n]['EXPTIME']/ETC.SECS_PER_DAY)
           for n in range(num_sky_frames) ])
     frames = sorted(frames, key=lambda frame: frame['when'])
+    mjd1 = desi_mjd_obs
+    mjd2 = mjd1 + desi_exptime / ETC.SECS_PER_DAY
     # Loop over frames to replay.
     for frame in frames:
+        if frame['when'] > mjd2:
+            break
         if frame['typ'] == 'gfa':
             data = fits_to_online(gfa_path, desietc.gfa.GFACamera.guide_names, frame['num'])
             if frame['num'] == 0:
@@ -130,10 +134,8 @@ def replay_exposure(ETC, path, expid, outpath, teff=1000, cutoff=10000, cosmic=5
             data = fits_to_online(sky_path, ETC.SKY.sky_names, frame['num'])
             ETC.process_sky_frame(data)
 
-    # A final update when the shutter closes.
-    mjd1 = desi_mjd_obs
-    mjd2 = mjd1 + desi_exptime / ETC.SECS_PER_DAY
-    ETC.update_accumulated(mjd2)
+    # Do a final update when the shutter closes.
+    ETC.stop_exposure(mjd2)
 
     # Create the output path if necessary.
     exppath_out.mkdir(parents=False, exist_ok=True)
