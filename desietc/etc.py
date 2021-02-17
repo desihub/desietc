@@ -100,7 +100,7 @@ class ETCAlgorithm(object):
         # Initialize buffers to record our signal- and sky-rate measurements.
         # Define auxiliary data to save with each GFA or SKY measurement.
         self.thru_measurements = desietc.util.MeasurementBuffer(
-            maxlen=1000, default_value=1, aux_dtype=[
+            maxlen=1000, default_value=1, resolution=0.2, aux_dtype=[
                 ('ffrac', np.float32, (self.ngfa,)),  # fiber fraction measured from single GFA
                 ('transp', np.float32, (self.ngfa,)), # transparency measured from single GFA
                 ('dx', np.float32, (self.ngfa,)),     # mean x shift of centroid from single GFA in pixels
@@ -110,7 +110,7 @@ class ETCAlgorithm(object):
                 ('teff', np.float32),                 # accumulated effective time estimate
             ])
         self.sky_measurements = desietc.util.MeasurementBuffer(
-            maxlen=200, default_value=1, aux_dtype=[
+            maxlen=200, default_value=1, resolution=0.2, aux_dtype=[
                 ('flux', np.float32, (self.nsky,)),   # sky flux meausured from a single SKYCAM.
                 ('dflux', np.float32, (self.nsky,)),  # sky flux uncertainty meausured from a single SKYCAM.
                 ('ndrop', np.int32, (self.nsky,)),    # number of fibers dropped from the camera flux estimate.
@@ -639,7 +639,8 @@ class ETCAlgorithm(object):
             expid=expid,
             mjd_start=mjd,
             teff=teff,
-            cutof=cutoff,
+            cutoff=cutoff,
+            mjd_max=mjd + cutoff / self.SECS_PER_DAY,
             cosmic=cosmic,
         )
         self.reset_accumulated()
@@ -651,6 +652,15 @@ class ETCAlgorithm(object):
         logging.info(f'Ended {self.night}/{self.exptag} at {mjd} after {self.accumulated_real_time:.1f}s ' +
             f'with actual teff={self.accumulated_eff_time:.1f}s')
 
+    def exptime_factor(self, signal, background, MW_transp):
+        """Calculate the ratio between effective and real exposure time using the
+        specified (relative) accumulated signal and background rates, and MW
+        transparency of the current tile.  These inputs are normalized so that
+        values of 1 correspond to real = effective.
+        """
+        # Lookup the MW transparency to use, or default to 1.
+        return (MW_transp * signal) ** 2 / background
+
     def update_accumulated(self, mjd_now):
         """Update our estimates of the accumulated signal, background and
         effective exposure time.  These values are reset to 0 by
@@ -660,7 +670,7 @@ class ETCAlgorithm(object):
         if self.exp_data is None:
             logging.warn('update_accumulated() called before start_exposure().')
             return False
-        mjd_start = self.exp_data['mjd_start']
+        mjd_start, mjd_max = self.exp_data['mjd_start'], self.exp_data['mjd_max']
         if mjd_now <= mjd_start:
             logging.warn('update_accumulated() called with mjd_now <= exposure mjd_start.')
             return False
@@ -675,11 +685,30 @@ class ETCAlgorithm(object):
         MW_transp = self.fassign_data.get('MW_transp', 1.)
         # Calculate the accumulated effective exposure time in seconds.
         self.accumulated_real_time = (mjd_now - mjd_start) * self.SECS_PER_DAY
-        self.accumulated_eff_time = (
-            self.accumulated_real_time / self.accumulated_background
-            * (MW_transp * self.accumulated_signal) ** 2)
-        logging.info(f'Calculated treal={self.accumulated_real_time:.1f}s, teff={self.accumulated_eff_time:.1f}s' +
+        self.accumulated_eff_time = self.accumulated_real_time * self.exptime_factor(
+            self.accumulated_signal, self.accumulated_background, MW_transp)
+        logging.info(f'Update treal={self.accumulated_real_time:.1f}s, teff={self.accumulated_eff_time:.1f}s' +
             f' using bg={self.accumulated_background:.3f}, sig={self.accumulated_signal:.3f}.')
+        # Have we already reached the cutoff time?
+        if mjd_now >= mjd_max:
+            logging.warn(f'Cutoff time reached.')
+            self.action = ('stop', 'cutoff')
+        # Forecast how much more (real) time is required to reach the target teff.
+        mjd, sky_forecast = self.sky_measurements.forecast(mjd_now, mjd_max)
+        mjd, thru_forecast = self.thru_measurements.forecast(mjd_now, mjd_max)
+        w = (mjd - mjd_now) / (mjd - mjd_start)
+        cum_mean = lambda z: np.cumsum(z) / (1 + np.arange(len(z)))
+        sig_forecast = (1 - w) * self.accumulated_signal + w * cum_mean(thru_forecast)
+        bg_forecast = (1 - w) * self.accumulated_background + w * cum_mean(sky_forecast)
+        dt_forecast = (mjd - mjd_now) * self.SECS_PER_DAY
+        teff_forecast = dt_forecast * self.exptime_factor(sig_forecast, bg_forecast, MW_transp)
+        # Do we expect to reach the target before the cutoff?
+        target = self.exp_data['teff']
+        if teff_forecast[-1] < target:
+            logging.info(f'Will only reach teff = {teff_forecast[-1]:.1f}s before cutoff.')
+        else:
+            dt_remaining = dt_forecast[np.argmax(teff_forecast >= target)]
+            logging.info(f'Expect to reach teff = {target:.1f}s in {dt_remaining:.1f}s.')
         return True
 
     def read_fiberassign(self, fname):
@@ -689,16 +718,35 @@ class ETCAlgorithm(object):
         if not pathlib.Path(fname).exists():
             logging.error(f'Non-existent fiberassign file: {fname}.')
             return False
+        logging.info(f'Reading fiber assignments from {fname}.')
+        # Read the header for some metadata.
+        header = fitsio.read_header(fname, ext=0)
+        # Check for required keywords.
+        self.fassign_data = {}
+        for key in ('TILEID', 'TILERA', 'TILEDEC', 'FIELDROT'):
+            if key not in header:
+                logging.warn(f'Fiberassign file is missing header keyword {key}.')
+                self.fassign_data[key] = None
+            else:
+                self.fassign_data[key] = header[key]
+        tileid = self.fassign_data['TILEID']
+        # Read the binary table of fiber assignments for this tile.
         fassign = fitsio.read(fname, ext='FIBERASSIGN')
-        sel = (fassign['OBJTYPE'] == 'TGT')
+        # Calculate the median EBV of non-sky targets.
+        sel = (fassign['OBJTYPE'] == 'TGT') & np.isfinite(fassign['EBV'])
         ntarget = np.count_nonzero(sel)
-        if ntarget == 0:
-            logging.error(f'Fiberassign file has not targets: {fname}.')
+        if ntarget < 100:
+            logging.warn(f'Fiberassignment for tile {tileid} only has {ntarget} targets.')
             return False
-        Ebv = np.nanmedian(fassign[sel]['EBV'])
+        if ntarget > 0:
+            Ebv = np.median(fassign[sel]['EBV'])
+        else:
+            Ebv = 0.
+        # Calculate the corresponding MW transparency factor.
         MW_transp = 10 ** (-self.Ebv_coef * Ebv / 2.5)
-        self.fassign_data = dict(ntarget=ntarget, Ebv=Ebv, MW_transp=MW_transp)
-        logging.info(f'Tile has {ntarget} targets with median(Ebv)={Ebv:.5f} and MW transparency {MW_transp:.5f}.')
+        # Save what we need later and will write to our json file.
+        self.fassign_data.update(dict(ntarget=ntarget, Ebv=Ebv, MW_transp=MW_transp))
+        logging.info(f'Tile {tileid} has {ntarget} targets with median(Ebv)={Ebv:.5f} and MW transp {MW_transp:.5f}.')
         return True
 
     def save_exposure(self, path):

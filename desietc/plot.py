@@ -258,9 +258,8 @@ def plot_measurements(buffer, mjd1, mjd2, ymin=0, label=None, ax=None):
     y = buffer.entries['value'][sel]
     ax.plot(minutes(x), y, 'r.', ms=4, zorder=10)
     # Extrapolate the trend.
-    offset, slope = buffer.trend(mjd2)
-    trend = lambda mjd: offset + slope * np.asarray(mjd)
-    ax.fill_between([minutes(mjd2), minutes(xhi)], ymin, trend([mjd2, xhi]), color='r', lw=0, alpha=0.2)
+    x, y = buffer.forecast(mjd2, xhi)
+    ax.fill_between(minutes(x), ymin, y, color='r', lw=0, alpha=0.2)
     # Draw vertical lines to show the (mjd1, mjd2) interval.
     for xv in (mjd1, mjd2):
         ax.axvline(minutes(xv), c='b', ls='--')

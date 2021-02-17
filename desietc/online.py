@@ -131,9 +131,9 @@ class OnlineETC():
                 elif not shutter_open and self.etc_processing.is_set():
                     # Spectrograph shutter has just opened: start ETC tracking.
                     mjd = desietc.util.date_to_mjd(self.etc_proc_start, utc_offset=0)
-                    cutoff = mjd + self.max_exposure_time / self.ETCalg.SECS_PER_DAY
                     self.ETCalg.start_exposure(
-                        self.night, self.expid, mjd, self.target_teff, cutoff, self.cosmics_split_time)
+                        self.night, self.expid, mjd, self.target_teff,
+                        self.max_exposure_time, self.cosmics_split_time)
                     need_acq_image = need_stars = shutter_open = True
 
                 elif shutter_open:

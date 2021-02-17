@@ -757,7 +757,7 @@ class MeasurementBuffer(object):
         Use constant extrapolation of the first/last measurement if necessary.
         """
         assert (mjd2 is not None) and (mjd1 < mjd2)
-        # Construct the grid to use.
+        # Construct a grid of bin centers covering [mjd1,mjd2] with spacing ~ resolution.
         ngrid = int(np.ceil((mjd2 - mjd1) / self.resolution))
         mjd_grid = mjd1 + (np.arange(ngrid) + 0.5) * (mjd2 - mjd1) / ngrid
         # Select measurements that span the padded input grid.
@@ -780,6 +780,18 @@ class MeasurementBuffer(object):
         wgt = self.entries[sel]['error'] ** -0.5
         val = self.entries[sel]['value']
         return np.sum(wgt * val) / np.sum(wgt), 0
+
+    def forecast(self, mjd1, mjd2):
+        """Forecast our trend from mjd1 to mjd2.
+        """
+        assert (mjd2 is not None) and (mjd1 < mjd2)
+        # Construct a grid of bin edges covering [mjd1,mjd2] with spacing ~ resolution.
+        ngrid = int(np.ceil((mjd2 - mjd1) / self.resolution))
+        mjd_grid = np.linspace(mjd1, mjd2, ngrid + 1)
+        # Calculate the trend at mjd1.
+        offset, slope = self.trend(mjd1)
+        # Forecast the trend on our grid.
+        return mjd_grid, offset + slope * (mjd_grid - mjd1)
 
     def save(self, mjd1, mjd2):
         """Return a json suitable serialization of our entries spanning (mjd1, mjd2).
