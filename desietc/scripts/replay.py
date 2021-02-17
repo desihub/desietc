@@ -8,8 +8,12 @@ under --inpath.  Reads the following files, when available:
  - centroids-EXPID.json : Results of online guider analysis
  - gfa-EXPID.fits.fz : Raw data for all GFA cameras
 
+For local tests use:
+
+etcreplay --debug --gfa-calib ~/Data/DESI/ETC/GFA_calib.fits --sky-calib  ~/Data/DESI/ETC/SKY_calib.fits --inpath ~/Data/DESI --outpath ~/Data/DESI/ETC --night 20201218 --expid 68630 --overwrite --parallel
+
 Requires that matplotlib is installed, in addition to the desietc
-dependencies.  PIL is also required for compressed jpeg ouput.
+dependencies.
 """
 import os
 import sys
