@@ -28,11 +28,10 @@ import desietc.util
 import desietc.plot
 
 # TODO:
-# - update teff after each GFA/SKY update
-# - estimate GFA thru errors?
+# - estimate GFA thru errors
 # - implement cutoff time logic
 # - implement cosmic split logic
-# - flag issues detected in acq img
+# -
 
 class ETCAlgorithm(object):
 
@@ -365,7 +364,7 @@ class ETCAlgorithm(object):
             try:
                 desietc.plot.save_acquisition_summary(
                     data['header'], psf_model, self.psf_stack, self.fwhm, self.ffrac, nstars,
-                    badfit, self.noisy_gfa, self.image_path / f'PSF-{self.exptag}.png')
+                    badfit, self.noisy_gfa, self.image_path / f'etc-{self.exptag}.png')
             except Exception as e:
                 logging.error(f'Failed to save acquisition analysis summary image: {e}')
         # Reset the guide frame counter and guide star data.
@@ -770,13 +769,13 @@ class ETCAlgorithm(object):
             sky=self.sky_measurements.save(mjd1, mjd2)
         )
         # Encode numpy types using python built-in types for serialization.
-        fname = path / f'ETC-{self.exptag}.json'
+        fname = path / f'etc-{self.exptag}.json'
         with open(fname, 'w') as f:
             json.dump(save, f, cls=desietc.util.NumpyEncoder)
             logging.info(f'Wrote {fname} for {self.night}/{self.exptag}')
         # Copy the acquisition analysis summary image.
         if self.image_path is not None:
-            name = f'PSF-{self.exptag}.png'
+            name = f'psf-{self.exptag}.png'
             if (self.image_path / name).exists() and not (path / name).exists():
                 logging.info(f'Copying {name} to {path}.')
                 shutil.copy(self.image_path / name, path / name)

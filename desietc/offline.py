@@ -150,7 +150,7 @@ def replay_exposure(ETC, path, expid, outpath, teff=1000, cutoff=10000, cosmic=5
         ETC.sky_measurements, mjd1, mjd2, label='SKYCAM Level', ax=ax[0])
     desietc.plot.plot_measurements(
         ETC.thru_measurements, mjd1, mjd2, label='GFA Throughput', ax=ax[1])
-    plt.savefig(exppath_out / f'ETC-{ETC.exptag}.png')
+    plt.savefig(exppath_out / f'etc-measure-{ETC.exptag}.png')
     plt.close(fig)
 
     return True

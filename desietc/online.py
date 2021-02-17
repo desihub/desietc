@@ -142,7 +142,9 @@ class OnlineETC():
                         # Shutter has just closed: get final estimates and save ETC outputs.
                         mjd = desietc.util.date_to_mjd(self.etc_proc_stop, utc_offset=0)
                         self.ETCalg.stop_exposure(mjd)
-                        self.ETCalg.save_exposure(self.get_exp_dir())
+
+                        #self.ETCalg.save_exposure(self.call_for_exp_dir())
+
                         shutter_open = False
                         continue
 
