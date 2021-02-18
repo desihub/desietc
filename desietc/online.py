@@ -50,9 +50,10 @@ import desietc.etc
 
 class OnlineETC():
 
-    def __init__(self, shutdown_event):
+    def __init__(self, shutdown_event, max_update_delay=30):
 
         self.shutdown = shutdown_event
+        self.max_update_delay = timedate.timedelta(seconds=max_update_delay)
 
         # callouts to ETC application
         self.call_for_sky_image = None
@@ -75,12 +76,15 @@ class OnlineETC():
         self.simulate = False
         self.splittable = False
 
-        # Initialize the ETC algorithm.
+        # Initialize the ETC algorithm. This will spawn 6 parallel proccesses (one per GFA)
+        # and allocated ~100Mb of shared memory. Use the shutdown() method to free these
+        # resources.
         gfa_calib = os.getenv('ETC_GFA_CALIB', None)
         sky_calib = os.getenv('ETC_SKY_CALIB', None)
         if gfa_calib is None or sky_calib is None:
             raise RuntimeError('ETC_GFA_CALIB and ETC_SKY_CALIB must be set.')
         self.ETCalg = desietc.etc.ETCAlgorithm(gfa_calib, sky_calib, parallel=True)
+        self.last_update_time = timedate.timedate.utcnow()
 
         # Start our processing thread and create the flags we use to synchronize with it.
         self.image_processing = threading.Event()
@@ -101,15 +105,27 @@ class OnlineETC():
         """This is the ETC algorithm that does the actual work.
 
         This function normally runs in a separate thread and synchronizes with the
-        rest of ICS via two flags:
+        rest of ICS via two flags: image_processing and etc_processing.
 
-         - image_processing: set to indicate that the following are or will soon be available:
-            - fiberassign file
-            - acquisition image
-            - PlateMaker guide stars
+        image_processing is set to indicate that the following are or will soon be available:
+         - fiberassign file
+         - acquisition image
+         - PlateMaker guide stars
 
-         - etc_processing: set when the spectrograph exposure has started and cleared when we
-            should save our outputs to the exposure directory.
+        etc_processing is set when the spectrograph shutter has opened so effective exposure
+        time tracking should start or resume.
+
+        etc_processing is cleared when the spectrograph shutter has closed so effective exposure
+        time tracking should be paused.
+
+        image_processing is cleared to indicate that the sequence of cosmic splits for an
+        exposure has finished so we should save our outputs to the exposure directory.
+
+        When image_processing is set, a new status update is generated after:
+         - the initial acquisition image has been processed (which takes ~10s in parallel mode)
+         - a new guide frame has been processed (which takes ~0.5s)
+         - a new sky frame has been processed (which takes ~0.2s)
+         - a period of max_update_delay with no other status updates (with a ~1s resolution).
 
         The thread that runs this function is started in our constructor.
         """
@@ -171,7 +187,9 @@ class OnlineETC():
                             self.ETCalg.process_guide_frame(gfa_image['image'])
                             have_new_telemetry = True
 
-                if have_new_telemetry:
+                now = datetime.datetime.utcnow()
+                if have_new_telemetry or now > self.last_upate_time + self.max_update_delay:
+                    self.last_update_time = now
                     self.call_to_update_status()
 
             else:
@@ -179,20 +197,27 @@ class OnlineETC():
                 shutter_open = False
 
             # Need some delay here to allow the main thread to run.
-            time.sleep(1)
+            time.sleep(0.5)
 
         Log.info('ETC: processing thread exiting.')
 
     def get_status(self):
-        """Capture and return the current ETC status.
+        """Return the current ETC status.
 
         Names used here correspond to columns in the telemetry database, so should be
         descriptive but not too verbose.
+
+        Note that this method is called from the main thread (when changes of state
+        are signalled by calls to start, stop, ...), the _etc thread (e.g. after each
+        new guide frame) and from ETCApp. Therefore, this method only reads object
+        attributes, in order to be thread safe.
+
+        Each variable is updated either by the main thread or by the _etc thread,
+        but never both, as indicated in the comments below.
         """
         etc_status = {}
 
-        # Use now as the timestamp for this status update.
-        etc_status['last_updated'] = datetime.datetime.utcnow().isoformat()
+        # These variables are only updated by the main thread #################
 
         # Exposure parameters set in prepare_for_exposure()
         etc_status['expid'] = self.current_expid
@@ -213,6 +238,8 @@ class OnlineETC():
         etc_status['img_proc'] = self.image_processing.is_set()
         etc_status['etc_proc'] = self.etc_processing.is_set()
 
+        # The remaining variables are only updated by the _etc thread #########
+
         # Counters tracked by ETCalg
         etc_status['guider_count'] = self.ETCalg.total_guider_count
         etc_status['sky_count'] = self.ETCalg.total_sky_count
@@ -230,6 +257,9 @@ class OnlineETC():
         etc_status['accum_bg'] = self.ETCalg.accumulated_background
         etc_status['accum_teff'] = self.ETCalg.accumulated_eff_time
         etc_status['accum_real'] = self.ETCalg.accumulated_real_time
+
+        # Timestamp for the last update of an ETC variable.
+        etc_status['last_updated'] = self.last_update_time.isoformat()
 
         return etc_status
 
