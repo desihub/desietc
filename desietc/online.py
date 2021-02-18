@@ -41,11 +41,14 @@ import os
 import threading
 import time
 
-from DOSlib.util import raise_error
-import DOSlib.logger as Log
-from DOSlib.PML import SUCCESS, FAILED
+try:
+    import DOSlib.logger as logging
+except ImportError:
+    # Fallback when we are not running as a DOS application.
+    import logging
 
 import desietc.etc
+import desietc.util
 
 
 class OnlineETC():
@@ -53,7 +56,7 @@ class OnlineETC():
     def __init__(self, shutdown_event, max_update_delay=30):
 
         self.shutdown = shutdown_event
-        self.max_update_delay = timedate.timedelta(seconds=max_update_delay)
+        self.max_update_delay = datetime.timedelta(seconds=max_update_delay)
 
         # callouts to ETC application
         self.call_for_sky_image = None
@@ -67,14 +70,6 @@ class OnlineETC():
         self.call_to_request_split = None
         self.call_when_about_to_split = None
         self.call_when_image_ready = None
-
-        # configuration
-        self.image_name = None
-        self.png_dir = None
-        self.use_obs_day = None
-        self.use_exp_dir = None
-        self.simulate = False
-        self.splittable = False
 
         # Initialize the ETC algorithm. This will spawn 6 parallel proccesses (one per GFA)
         # and allocated ~100Mb of shared memory. Use the shutdown() method to free these
@@ -146,7 +141,7 @@ class OnlineETC():
 
                 elif not shutter_open and self.etc_processing.is_set():
                     # Spectrograph shutter has just opened: start ETC tracking.
-                    mjd = desietc.util.date_to_mjd(self.etc_proc_start, utc_offset=0)
+                    mjd = desietc.util.date_to_mjd(self.etc_start_time, utc_offset=0)
                     self.ETCalg.start_exposure(
                         self.night, self.expid, mjd, self.target_teff,
                         self.max_exposure_time, self.cosmics_split_time, self.splittable)
@@ -156,7 +151,7 @@ class OnlineETC():
 
                     if not self.etc_processing.is_set():
                         # Shutter has just closed: get final estimates and save ETC outputs.
-                        mjd = desietc.util.date_to_mjd(self.etc_proc_stop, utc_offset=0)
+                        mjd = desietc.util.date_to_mjd(self.etc_stop_time, utc_offset=0)
                         self.ETCalg.stop_exposure(mjd)
 
                         #self.ETCalg.save_exposure(self.call_for_exp_dir())
@@ -193,7 +188,7 @@ class OnlineETC():
                     self.call_to_update_status()
 
             else:
-                Log.info('_etc (%r): Image processing complete' % self.current_expid)
+                Log.info('_etc (%r): Image processing complete' % self.expid)
                 shutter_open = False
 
             # Need some delay here to allow the main thread to run.
@@ -220,19 +215,22 @@ class OnlineETC():
         # These variables are only updated by the main thread #################
 
         # Exposure parameters set in prepare_for_exposure()
-        etc_status['expid'] = self.current_expid
+        etc_status['expid'] = self.expid
         etc_status['target_teff'] = self.target_teff
+        etc_status['target_type'] = self.target_type
         etc_status['max_exptime'] = self.max_exposure_time
         etc_status['cosmics_split'] = self.cosmics_split_time
-
-        # Exposure parameters set in start_etc()
-        etc_status['specid'] = self.current_specid
+        etc_status['max_splits'] = self.max_splits
         etc_status['splittable'] = self.splittable
 
         # Timestamps captured by start(), start_etc(), stop_etc()
-        etc_status['img_proc_start'] = self.img_proc_start
-        etc_status['etc_proc_start'] = self.etc_proc_start
-        etc_status['etc_proc_stop'] = self.etc_proc_stop
+        etc_status['img_start_time'] = self.img_start_time
+        etc_status['etc_start_time'] = self.etc_start_time
+        etc_status['etc_stop_time'] = self.etc_stop_time
+
+        # Stop sources captured by stop_etc(), stop().
+        etc_status['img_stop_src'] = self.img_stop_src
+        etc_status['etc_stop_src'] = self.etc_stop_src
 
         # Flags used to synchronize with the _etc thread.
         etc_status['img_proc'] = self.image_processing.is_set()
@@ -296,20 +294,25 @@ class OnlineETC():
             Log.info('ETC: processing thread still running')
 
         Log.info('configure: ETC is ready')
-        return SUCCESS
 
-    def prepare_for_exposure(self, expid, target_teff, max_exposure_time, cosmics_split_time = None, count=None, stars = None):
-        """
-        Prepare ETC for the next exposure
+    def prepare_for_exposure(self, expid, target_teff, target_type, max_exposure_time,
+                             cosmics_split_time, max_splits, splittable):
+        """Record the observing parameters for the next exposure, usually from NTS.
+
+        The ETC will not see these parameters until the next call to :meth:`start`.
+
+        Parameters
+        ----------
         expid:             next exposure id (int)
         target_teff:       target value of the effective exposure time in seconds (float)
+        target_type:       a string describing the type of target to assume (DARK/BRIGHT/...)
         max_exposure_time: Maximum exposure time in seconds (irrespective of accumulated SNR)
         comics_split_time: Time in second before requesting a cosmic ray split
-        stars : Numpy recarray with star information (copy of gfa_targets table from fiberassign)
-        count : number of frames to process (Guider)
+        max_splits:        Maximum number of allowed cosmic splits.
+        splittable:        Never do splits when this is False.
         """
-        assert isinstance(expid, int) and isinstance(snr, (int, float)) and isinstance(max_exposure_time, (int, float)),'Invalid arguments'
-        Log.info('ETC (%d): prepare_for_exposure called with requested SNR %f' % (expid, snr))
+        assert isinstance(expid, int),'Invalid arguments'
+        Log.info('ETC (%d): prepare_for_exposure called for expid %r' % expid)
 
         # check if _etc thread is still running
         if not self.etc_thread.is_alive():
@@ -323,76 +326,86 @@ class OnlineETC():
         # Reset status variables, keep seeing, sky level and transparency values
         self.reset(all=True, update_status = False)
 
-        # and store calling arguments
+        # Store this exposure's parameters.
+        self.expid = expid
         self.target_teff = target_teff
+        self.target_type = target_type
         self.max_exposure_time = max_exposure_time
         self.cosmics_split_time = cosmics_split_time
-        self.current_expid = expid
-        if isinstance(count, int):
-            self.max_count = count
-        else:
-            self.max_count = 999999
+        self.max_splits = max_splits
+        self.splittable = splittable
 
-        # update status
+        # Update our status.
         self.call_to_update_status()
 
-        return SUCCESS
-
     def start(self, start_time=None, **options):
+        """Start processing the exposure specified in the last call to
+        :meth:`prepare_for_exposure`.  The ETC will start looking for an
+        acquisition image once this is called.
         """
-        start etc image processing
-        """
-        self.img_proc_start = start_time or datetime.datetime.utcnow()
-        Log.info('start: start image processing at %r' % self.img_proc_start)
+        self.img_start_time = start_time or datetime.datetime.utcnow()
+        Log.info('start: start exposure at %r' % self.img_start_time)
         if options:
             Log.warn('start: ignoring extra options: %r' % options)
 
-        # Signal our worker thread that image processing should start.
+        # Signal our worker thread.
         self.image_processing.set()
 
         # Update our status.
         self.call_to_update_status()
 
-    def start_etc(self, start_time = None,  splittable = None, specid = None, **options):
+    def start_etc(self, start_time=None, **options):
+        """Signal to the ETC that the spectrograph shutters have just opened.
+
+        The ETC will accumulate effective exposure time until the next call
+        to to :meth:`stop_etc` or :meth:`stop`.
         """
-        start etc exposure time processing
-        """
-        self.etc_proc_start = start_time or datetime.datetime.utcnow()
-        self.splittable = splittable or False
-        self.current_specid = specid
-        Log.info('start_etc: start etc processing at %r with splittable=%r, specid=%r' % (
-            self.etc_proc_start, self.splittable, self.current_specid))
+        self.etc_start_time = start_time or datetime.datetime.utcnow()
+        Log.info('start_etc: shutter opened at %r' % self.etc_start_time)
         if options:
             Log.warn('start_etc: ignoring extra options: %r' % options)
 
-        # Signal our worker thread that etc processing should start.
+        # Signal our worker thread.
         self.image_processing.set()
 
         # Update our status.
         self.call_to_update_status()
 
     def stop_etc(self, source='OPERATOR', stop_time=None, **options):
+        """Signal to the ETC that the spectograph shutters have just closed.
+
+        The ETC will continue processing any new sky or guide frames until
+        :meth:`stop` is called.
         """
-        Force ETC exposure time processing to stop
-        """
-        self.etc_proc_stop = stop_time or datetime.datetime.utcnow()
-        Log.info('stop_etc: stop etc processing at %r from source %s ' % (self.etc_proc_stop, source))
+        self.etc_stop_time = stop_time or datetime.datetime.utcnow()
+        self.etc_stop_src = source
+        Log.info('stop_etc: shutter closed at %r by %s ' % (self.etc_stop_time, source))
         if options:
             Log.warn('stop_etc: ignoring extra options: %r' % options)
 
-        # Signal our worker thread that etc processing should stop.
+        # Signal our worker thread.
         self.etc_processing.clear()
 
         # Update our status.
         self.call_to_update_status()
 
-    def stop(self, source = 'OPERATOR', **options):
+    def stop(self, source='OPERATOR', stop_time=None, **options):
+        """Signal to the ETC that the current exposure has stopped.
+
+        The ETC will save its processing history for this exposure after this call.
+
+        In case stop is called while the spectrograph shutters are open,
+        log an error and clear etc_processing before clearing image_processing.
         """
-        Force ETC image processing to stop
-        """
-        Log.info('stop: stop image processing request received from source %s' % source)
+        self.img_stop_time = stop_time or datetime.datetime.utcnow()
+        self.img_stop_src = source
+        Log.info('stop: exposure stopped at %r by %s' % (self.img_stop_time, source))
         if options:
             Log.warn('stop: ignoring extra options: %r' % options)
+
+        if self.etc_processing.is_set():
+            Log.error('stop: called before stop_etc.')
+            self.etc_processing.clear()
 
         # Signal our worker thread that image processing should start.
         self.image_processing.clear()
