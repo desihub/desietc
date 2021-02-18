@@ -31,7 +31,7 @@ import desietc.plot
 # - estimate GFA thru errors
 # - implement cutoff time logic
 # - implement cosmic split logic
-# -
+# - save git hash / version to json output
 
 class ETCAlgorithm(object):
 
