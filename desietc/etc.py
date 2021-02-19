@@ -85,7 +85,6 @@ class ETCAlgorithm(object):
         self.psf_inset = slice(ntrim, ntrim + self.psf_pixels)
         self.measure = desietc.util.PSFMeasure(psf_stacksize)
         # Initialize analysis results.
-        self.night = None
         self.expid = None
         self.num_guide_frames = 0
         self.num_sky_frames = 0
@@ -188,36 +187,15 @@ class ETCAlgorithm(object):
         self.total_acq_count = 0
         self.total_sky_count = 0
 
-    def process_top_header(self, header, source, update_ok=False):
-        """Process the top-level header of an exposure.
-        The expected keywords are: NIGHT, EXPID.
-        Return True if it is possible to keep going, i.e. unless we get a
-        new value of NIGHT or EXPID and update_ok is False.
+    def check_top_header(self, header, source):
+        """Check EXPID in the top-level header of an exposure.
         """
-        if 'NIGHT' not in header:
-            logging.error(f'Missing NIGHT keyword in {source}')
-        else:
-            night = header['NIGHT']
-            if night != self.night:
-                if update_ok:
-                    logging.info(f'Setting NIGHT {night} from {source}.')
-                    self.night = night
-                else:
-                    logging.error(f'Got NIGHT {night} from {source} but expected {self.night}.')
-                    return False
         if 'EXPID' not in header:
             logging.error(f'Missing EXPID keyword in {source}')
         else:
             expid = header['EXPID']
             if expid != self.expid:
-                if update_ok:
-                    logging.info(f'Setting EXPID {expid} from {source}.')
-                    self.expid = expid
-                    self.exptag = str(self.expid).zfill(8)
-                else:
-                    logging.error(f'Got EXPID {expid} from {source} but expected {self.expid}.')
-                    return False
-        return True
+                logging.error(f'Got EXPID {expid} from {source} but expected {self.expid}.')
 
     def process_camera_header(self, header, source):
         """Check the header for a single camera.
@@ -297,9 +275,8 @@ class ETCAlgorithm(object):
         ncamera = 0
         start = time.time()
         self.total_acq_count += 1
-        if not self.process_top_header(data['header'], 'acquisition image', update_ok=True):
-            return False
-        logging.info(f'Processing acquisition image for {self.night}/{self.exptag}.')
+        logging.info(f'Processing acquisition image [{self.total_acq_count}] for {self.exptag}.')
+        self.check_top_header(data['header'], 'acquisition image')
         # Pass 1: reduce the raw GFA data and measure the PSF.
         self.acquisition_data = {}
         self.psf_stack = {}
@@ -381,7 +358,7 @@ class ETCAlgorithm(object):
         each guide frame.  These are normally calculated by PlateMaker.
         """
         if self.guide_stars is not None:
-            logging.warning(f'Overwriting previous guide stars for {self.night}/{self.exptag}.')
+            logging.warning(f'Overwriting previous guide stars for {self.exptag}.')
         max_rsq = (0.5 * fiber_diam_um / pixel_size_um) ** 2
         profile = lambda x, y: 1.0 * (x ** 2 + y ** 2 < max_rsq)
         halfsize = self.psf_pixels // 2
@@ -429,10 +406,10 @@ class ETCAlgorithm(object):
                 self.guide_stars[camera] = stars
                 self.fiber_templates[camera] = templates
         if len(self.guide_stars) == 0:
-            logging.error(f'No usable guide stars for {self.night}/{self.exptag}.')
+            logging.error(f'No usable guide stars for {self.exptag}.')
             return False
         nstars_msg = '+'.join([str(n) for n in nstars]) + '=' + str(np.sum(nstars))
-        logging.info(f'Using {nstars_msg} guide stars for {self.night}/{self.exptag}.')
+        logging.info(f'Using {nstars_msg} guide stars for {self.exptag}.')
         return True
 
     def process_guide_frame(self, data):
@@ -443,9 +420,8 @@ class ETCAlgorithm(object):
         fnum = self.num_guide_frames
         self.num_guide_frames += 1
         self.total_guider_count += 1
-        if not self.process_top_header(data['header'], f'guide[{fnum}]'):
-            return False
-        logging.info(f'Processing guide frame {fnum} for {self.night}/{self.exptag}.')
+        logging.info(f'Processing guide frame {fnum} [{self.total_guider_count}] for {self.exptag}.')
+        self.check_top_header(data['header'], f'guide[{fnum}]')
         if self.dithered_model is None:
             logging.error('Ignoring guide frame before acquisition image.')
             return False
@@ -539,9 +515,8 @@ class ETCAlgorithm(object):
         fnum = self.num_sky_frames
         self.num_sky_frames += 1
         self.total_sky_count += 1
-        if not self.process_top_header(data['header'], f'sky[{fnum}]', update_ok=True):
-            return False
-        logging.info(f'Processing sky frame {fnum} for {self.night}/{self.exptag}.')
+        logging.info(f'Processing sky frame {fnum} [{self.total_sky_count}] for {self.exptag}.')
+        self.check_top_header(data['header'], f'sky[{fnum}]')
         flux, ivar = 0, 0
         mjd_obs, exptime = [], []
         each_flux, each_dflux = np.zeros(self.nsky, np.float32), np.zeros(self.nsky, np.float32)
@@ -801,7 +776,7 @@ class ETCAlgorithm(object):
     def save_exposure(self, path):
         """
         """
-        logging.info(f'Saving ETC outputs for {self.night}/{self.exptag} to {path}')
+        logging.info(f'Saving ETC outputs for {self.exptag} to {path}')
         if not path.exists():
             logging.error(f'Non-existent path: {path}.')
             return
@@ -820,7 +795,7 @@ class ETCAlgorithm(object):
         fname = path / f'etc-{self.exptag}.json'
         with open(fname, 'w') as f:
             json.dump(save, f, cls=desietc.util.NumpyEncoder)
-            logging.info(f'Wrote {fname} for {self.night}/{self.exptag}')
+            logging.info(f'Wrote {fname} for {self.exptag}')
         # Copy the acquisition analysis summary image.
         if self.image_path is not None:
             name = f'psf-{self.exptag}.png'
