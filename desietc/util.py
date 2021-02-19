@@ -815,19 +815,19 @@ class MeasurementBuffer(object):
         return output
 
 
-def mjd_to_date(mjd, utc_offset=-7):
+def mjd_to_date(mjd, utc_offset):
     """Convert an MJD value to a datetime using the specified UTC offset in hours.
 
-    The default utc_offset of -7 corresponds to local time at Kitt Peak.
+    Use utc_offset of -7 for local time at Kitt Peak.
     Use :func:`date_to_mjd` to invert this calculation.
     """
     return datetime.datetime(2019, 1, 1) + datetime.timedelta(days=mjd - 58484.0, hours=utc_offset)
 
 
-def date_to_mjd(date, utc_offset=-7):
+def date_to_mjd(date, utc_offset):
     """Convert a datetime using the specified UTC offset in hours to an MJD value.
 
-    The default utc_offset of -7 corresponds to local time at Kitt Peak.
+    Use utc_offset of -7 for local time at Kitt Peak.
     Use :func:`mjd_to_date` to invert this calculation.
     """
     delta = date - datetime.datetime(2019, 1, 1) - datetime.timedelta(hours=utc_offset)

@@ -48,7 +48,6 @@ except ImportError:
     import logging
 
 import desietc.etc
-import desietc.util
 
 
 class OnlineETC():
@@ -125,41 +124,47 @@ class OnlineETC():
         The thread that runs this function is started in our constructor.
         """
         Log.info('ETC: processing thread starting.')
+
+        last_image_processing = last_etc_processing = False
+
         while not self.shutdown.is_set():
 
-            shutter_open = False
-
             if self.image_processing.is_set():
+                # An exposure is active.
 
                 have_new_telemetry = False
 
-                # Always process a sky frame if available.
-                sky_image = self.call_for_sky_image()
+                # Any changes of state to propagate?
+                if not last_image_processing:
+                    # A new exposure has just started.
+                    self.ETCalg.start_exposure(
+                        self.img_start_time, self.expid, self.target_teff, self.target_type,
+                        self.max_exposure_time, self.cosmics_split_time, self.max_splits, self.splittable)
+                    last_image_processing = True
+                    # Look for the acquisition image and PlateMaker guide stars next.
+                    need_acq_image = need_stars = True
+
+                elif not last_etc_processing and self.etc_processing.is_set():
+                    # Shutter just opened.
+                    self.ETCalg.open_shutter(self.etc_start_time)
+                    last_etc_processing = True
+
+                elif last_etc_processing and not self.etc_processing.is_set():
+                    # Shutter just closed.
+                    self.ETCalg.close_shutter(self.etc_stop_time)
+                    last_etc_processing = False
+                    have_new_telemetry = True
+
+                sky_image = self.call_for_sky_image(wait=None)
                 if sky_image:
+                    # Always process a sky frame if available.
                     self.ETCalg.process_sky_frame(sky_image['image'])
                     have_new_telemetry = True
 
-                elif not shutter_open and self.etc_processing.is_set():
-                    # Spectrograph shutter has just opened: start ETC tracking.
-                    mjd = desietc.util.date_to_mjd(self.etc_start_time, utc_offset=0)
-                    self.ETCalg.start_exposure(
-                        self.night, self.expid, mjd, self.target_teff,
-                        self.max_exposure_time, self.cosmics_split_time, self.splittable)
-                    need_acq_image = need_stars = shutter_open = True
+                elif last_etc_processing:
+                    # Shutter is open.
 
-                elif shutter_open:
-
-                    if not self.etc_processing.is_set():
-                        # Shutter has just closed: get final estimates and save ETC outputs.
-                        mjd = desietc.util.date_to_mjd(self.etc_stop_time, utc_offset=0)
-                        self.ETCalg.stop_exposure(mjd)
-
-                        #self.ETCalg.save_exposure(self.call_for_exp_dir())
-
-                        shutter_open = False
-                        continue
-
-                    elif need_acq_image:
+                    if need_acq_image:
                         # Process the acquisition image if available.
                         acq_image = self.call_for_acq_image(wait=None)
                         if acq_image:
@@ -169,32 +174,38 @@ class OnlineETC():
                             need_acq_image = False
 
                     elif need_stars:
-                        # Process the PlateMaker stars if available.
+                        # Process the PlateMaker guide stars if available.
                         pm_info = self.call_for_pm_info(wait=None)
                         if pm_info:
                             self.ETCalg.set_guide_stars(pm_info['guidestars'])
                             need_stars = False
 
-                    elif not (need_acq_image or need_stars):
+                    else:
                         # Process a guide frame if available.
                         gfa_image = self.call_for_gfa_image(wait=None)
                         if gfa_image:
                             self.ETCalg.process_guide_frame(gfa_image['image'])
                             have_new_telemetry = True
 
+                # Send a telemetry update if triggered above or we are overdue.
                 now = datetime.datetime.utcnow()
                 if have_new_telemetry or now > self.last_upate_time + self.max_update_delay:
                     self.last_update_time = now
                     self.call_to_update_status()
 
             else:
-                Log.info('_etc (%r): Image processing complete' % self.expid)
-                shutter_open = False
+                # No exposure is active.
+                if last_image_processing:
+                    # The previous exposure has just ended.
+                    self.ETCalg.stop_exposure(self.img_stop_time)
+                    # Save the ETC outputs for this exposure.
+                    self.ETCalg.save_exposure(self.exp_dir)
+                    last_image_processing = False
 
             # Need some delay here to allow the main thread to run.
             time.sleep(0.5)
 
-        Log.info('ETC: processing thread exiting.')
+        Log.info('ETC: processing thread exiting after shutdown.')
 
     def get_status(self):
         """Return the current ETC status.
@@ -250,7 +261,7 @@ class OnlineETC():
         etc_status['skylevel'] = self.ETCalg.skylevel
 
         # ETC effective exposure time tracking.
-        etc_status['accum_mjd'] = self.ETCalg.last_update_mjd
+        etc_status['accum_mjd'] = self.ETCalg.accumulated_mjd
         etc_status['accum_sig'] = self.ETCalg.accumulated_signal
         etc_status['accum_bg'] = self.ETCalg.accumulated_background
         etc_status['accum_teff'] = self.ETCalg.accumulated_eff_time
@@ -307,7 +318,7 @@ class OnlineETC():
         target_teff:       target value of the effective exposure time in seconds (float)
         target_type:       a string describing the type of target to assume (DARK/BRIGHT/...)
         max_exposure_time: Maximum exposure time in seconds (irrespective of accumulated SNR)
-        comics_split_time: Time in second before requesting a cosmic ray split
+        cosmics_split_time:Time in second before requesting a cosmic ray split
         max_splits:        Maximum number of allowed cosmic splits.
         splittable:        Never do splits when this is False.
         """

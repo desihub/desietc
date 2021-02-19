@@ -626,31 +626,79 @@ class ETCAlgorithm(object):
     def reset_accumulated(self):
         """
         """
-        self.last_update_mjd = self.accumulated_eff_time = self.accumulated_real_time = 0
+        self.accumulated_mjd = desietc.util.date_to_mjd(datetime.datetime.utcnow())
+        self.accumulated_eff_time = self.accumulated_real_time = 0
         self.accumulated_signal = self.accumulated_background = 0
+        self.shutter_open = []
+        self.shutter_close = []
 
-    def start_exposure(self, night, expid, mjd, teff, cutoff, cosmic, splittable=False):
+    def start_exposure(self, timestamp, expid, target_teff, target_type, max_exposure_time,
+                       cosmics_split_time, max_splits, splittable):
+        """Start a new exposure using parameters:
+        expid:              next exposure id (int)
+        target_teff:        target value of the effective exposure time in seconds (float)
+        target_type:        a string describing the type of target to assume (DARK/BRIGHT/...)
+        max_exposure_time:  Maximum exposure time in seconds (irrespective of accumulated SNR)
+        cosmics_split_time: Time in second before requesting a cosmic ray split
+        max_splits:         Maximum number of allowed cosmic splits.
+        splittable:         Never do splits when this is False.
         """
-        """
-        logging.info(f'Starting {self.night}/{self.exptag} at {mjd} with target teff={teff:.0f}s, ' +
-            f'cutoff={cutoff:.0f}s, cosmic split={cosmic:.0f}s')
+        nopen, nclose = len(self.shutter_open), len(self.shutter_close)
+        if nopen != 0 or nclose != 0:
+            logging.error(f'start_exposure called after {nopen} opens, {nclose} closes.')
         self.exp_data = dict(
             expid=expid,
-            mjd_start=mjd,
-            teff=teff,
-            cutoff=cutoff,
-            mjd_max=mjd + cutoff / self.SECS_PER_DAY,
-            cosmic=cosmic,
-            splittable=splittable,
+            target_teff=target_teff,
+            target_type=target_type,
+            max_exposure_time=max_exposure_time,
+            cosmics_split_time=cosmics_split_time,
+            max_splits=max_splits,
+            splittable=splittable
         )
+        logging.info(f'Start {self.exptag} at {timestamp} with teff={target_teff:.1f}s, type={target_type}, '
+                     + f'max={max_exposure_time:.1f}s, split={cosmics_split_time:.1f}s, '
+                     + f'maxsplit={max_splits}, splittable={splittable}.')
         self.reset_accumulated()
 
-    def stop_exposure(self, mjd):
+    def open_shutter(self, timestamp):
         """
         """
+        mjd = desietc.util.date_to_mjd(timestamp, utc_offset=0)
+        nopen, nclose = len(self.shutter_open), len(self.shutter_close)
+        if nopen != nclose:
+            logging.error(f'open_shutter called after {nopen} opens, {nclose} closes.')
+            # Reset and try to keep going...
+            self.shutter_open = []
+            self.shutter_close = []
+        if nopen == 0:
+            self.exp_data['mjd_start'] = mjd
+            self.exp_data['mjd_max'] = mjd + self.exp_data['max_exposure_time'] / self.SECS_PER_DAY
+        self.shutter_open.append(mjd)
+        logging.info(f'Shutter open[{nopen}] at {timestamp}.')
+
+    def close_shutter(self, timestamp):
+        """
+        """
+        mjd = desietc.util.date_to_mjd(timestamp, utc_offset=0)
+        nopen, nclose = len(self.shutter_open), len(self.shutter_close)
+        if nopen != nclose + 1:
+            logging.error(f'close_shutter called after {nopen} opens, {nclose} closes.')
+            # Reset and try to keep going...
+            self.shutter_open = [ mjd ]
+            self.shutter_close = []
+        self.shutter_close.append(mjd)
         self.update_accumulated(mjd)
-        logging.info(f'Ended {self.night}/{self.exptag} at {mjd} after {self.accumulated_real_time:.1f}s ' +
-            f'with actual teff={self.accumulated_eff_time:.1f}s')
+        logging.info(f'Shutter close[{nclose}] at {timestamp} after {self.accumulated_real_time:.1f}s ' +
+            f'with actual teff={self.accumulated_eff_time:.1f}s')')
+
+    def stop_exposure(self, timestamp):
+        """
+        """
+        mjd = desietc.util.date_to_mjd(timestamp, utc_offset=0)
+        nopen, nclose = len(self.shutter_open), len(self.shutter_close)
+        if nopen != nclose:
+            logging.error(f'stop_exposure called after {nopen} opens, {nclose} closes.')
+        logging.info(f'Stop {self.exptag} at {timestamp}')
 
     def exptime_factor(self, signal, background, MW_transp):
         """Calculate the ratio between effective and real exposure time using the
@@ -674,7 +722,7 @@ class ETCAlgorithm(object):
         if mjd_now <= mjd_start:
             logging.warn('update_accumulated() called with mjd_now <= exposure mjd_start.')
             return False
-        self.last_update_mjd = mjd_now
+        self.accumulated_mjd = mjd_now
         # Calculate the average signal throughput.
         _, thru_grid = self.thru_measurements.sample(mjd_start, mjd_now)
         self.accumulated_signal = np.mean(thru_grid)
