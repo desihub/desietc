@@ -16,8 +16,8 @@ import desietc.gfa
 import desietc.sky
 import desietc.plot
 
-def replay_exposure(ETC, path, expid, outpath, teff=1000, cutoff=10000, cosmic=500,
-                    overwrite=False, dry_run=False):
+def replay_exposure(ETC, path, expid, outpath, teff=1000, ttype='DARK', cutoff=10000, cosmic=500,
+                    maxsplit=3, splittable=True, overwrite=False, dry_run=False):
     """Recreate the online ETC processing of an exposure by replaying the
     FITS files stored to disk.
     """
@@ -112,6 +112,9 @@ def replay_exposure(ETC, path, expid, outpath, teff=1000, cutoff=10000, cosmic=5
     frames = sorted(frames, key=lambda frame: frame['when'])
     mjd1 = desi_mjd_obs
     mjd2 = mjd1 + desi_exptime / ETC.SECS_PER_DAY
+    # Start the exposure processing.
+    timestamp = desietc.util.mjd_to_date(gfa_info[0]['MJD-OBS'] - 1 / ETC.SECS_PER_DAY, utc_offset=0)
+    ETC.start_exposure(timestamp, expid, teff, ttype, cutoff, cosmic, maxsplit, splittable)
     # Loop over frames to replay.
     for frame in frames:
         if frame['when'] > mjd2:
@@ -119,27 +122,28 @@ def replay_exposure(ETC, path, expid, outpath, teff=1000, cutoff=10000, cosmic=5
         if frame['typ'] == 'gfa':
             data = fits_to_online(gfa_path, desietc.gfa.GFACamera.guide_names, frame['num'])
             if frame['num'] == 0:
-                # Read the fibermap.
-                ETC.read_fiberassign(fassign_path)
                 # Process the acquisition image.
                 ETC.process_acquisition(data)
+                # Read the fiber assignments for this tile.
+                ETC.read_fiberassign(fassign_path)
                 # Specify the guide stars.
                 ETC.set_guide_stars(pm_info)
-                # Start the ETC tracking of this exposure.
-                ETC.start_exposure(night, expid, desi_mjd_obs, teff, cutoff, cosmic)
+                # Signal the shutter opening.
+                timestamp = desietc.util.mjd_to_date(desi_mjd_obs, utc_offset=0)
+                ETC.open_shutter(timestamp)
             else:
                 # Process the next guide frame.
                 ETC.process_guide_frame(data)
         else: # SKY
             data = fits_to_online(sky_path, ETC.SKY.sky_names, frame['num'])
             ETC.process_sky_frame(data)
-
-    # Do a final update when the shutter closes.
-    ETC.stop_exposure(mjd2)
-
+    # Signal the shutter closing.
+    timestamp = desietc.util.mjd_to_date(desi_mjd_obs + desi_exptime / ETC.SECS_PER_DAY, utc_offset=0)
+    ETC.close_shutter(timestamp)
+    # End the exposure.
+    ETC.stop_exposure(timestamp)
     # Create the output path if necessary.
     exppath_out.mkdir(parents=False, exist_ok=True)
-
     # Save the ETC outputs for this exposure.
     ETC.save_exposure(exppath_out)
 

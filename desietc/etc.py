@@ -3,6 +3,7 @@
 import time
 import json
 import pathlib
+import datetime
 import multiprocessing
 try:
     import multiprocessing.shared_memory
@@ -28,7 +29,7 @@ import desietc.util
 import desietc.plot
 
 # TODO:
-# - estimate GFA thru errors
+# - estimate GFA thru errors & use stars from all GFAs together
 # - implement cutoff time logic
 # - implement cosmic split logic
 # - save git hash / version to json output
@@ -85,7 +86,7 @@ class ETCAlgorithm(object):
         self.psf_inset = slice(ntrim, ntrim + self.psf_pixels)
         self.measure = desietc.util.PSFMeasure(psf_stacksize)
         # Initialize analysis results.
-        self.expid = None
+        self.exp_data = {}
         self.num_guide_frames = 0
         self.num_sky_frames = 0
         self.acquisition_data = None
@@ -192,9 +193,9 @@ class ETCAlgorithm(object):
         """
         if 'EXPID' not in header:
             logging.error(f'Missing EXPID keyword in {source}')
-        else:
+        elif 'expid' in self.exp_data:
             expid = header['EXPID']
-            if expid != self.expid:
+            if expid != self.exp_data['expid']:
                 logging.error(f'Got EXPID {expid} from {source} but expected {self.expid}.')
 
     def process_camera_header(self, header, source):
@@ -347,7 +348,6 @@ class ETCAlgorithm(object):
         # Reset the guide frame counter and guide star data.
         self.num_guide_frames = 0
         self.guide_stars = None
-        self.exp_data = None
         # Report timing.
         elapsed = time.time() - start
         logging.info(f'Acquisition processing took {elapsed:.2f}s for {ncamera} cameras.')
@@ -601,7 +601,7 @@ class ETCAlgorithm(object):
     def reset_accumulated(self):
         """
         """
-        self.accumulated_mjd = desietc.util.date_to_mjd(datetime.datetime.utcnow())
+        self.accumulated_mjd = desietc.util.date_to_mjd(datetime.datetime.utcnow(), utc_offset=0)
         self.accumulated_eff_time = self.accumulated_real_time = 0
         self.accumulated_signal = self.accumulated_background = 0
         self.shutter_open = []
@@ -618,9 +618,6 @@ class ETCAlgorithm(object):
         max_splits:         Maximum number of allowed cosmic splits.
         splittable:         Never do splits when this is False.
         """
-        nopen, nclose = len(self.shutter_open), len(self.shutter_close)
-        if nopen != 0 or nclose != 0:
-            logging.error(f'start_exposure called after {nopen} opens, {nclose} closes.')
         self.exp_data = dict(
             expid=expid,
             target_teff=target_teff,
@@ -630,7 +627,9 @@ class ETCAlgorithm(object):
             max_splits=max_splits,
             splittable=splittable
         )
-        logging.info(f'Start {self.exptag} at {timestamp} with teff={target_teff:.1f}s, type={target_type}, '
+        self.exptag = str(expid).zfill(8)
+        self.night = desietc.util.mjd_to_night(desietc.util.date_to_mjd(timestamp, utc_offset=0))
+        logging.info(f'Start {self.night}/{self.exptag} at {timestamp} with teff={target_teff:.1f}s, type={target_type}, '
                      + f'max={max_exposure_time:.1f}s, split={cosmics_split_time:.1f}s, '
                      + f'maxsplit={max_splits}, splittable={splittable}.')
         self.reset_accumulated()
@@ -664,7 +663,7 @@ class ETCAlgorithm(object):
         self.shutter_close.append(mjd)
         self.update_accumulated(mjd)
         logging.info(f'Shutter close[{nclose}] at {timestamp} after {self.accumulated_real_time:.1f}s ' +
-            f'with actual teff={self.accumulated_eff_time:.1f}s')')
+            f'with actual teff={self.accumulated_eff_time:.1f}s')
 
     def stop_exposure(self, timestamp):
         """
@@ -690,8 +689,8 @@ class ETCAlgorithm(object):
         :meth:`start_exposure` then updated by calls to :meth:`process_guide_frame`
         and :meth:`process_sky`.
         """
-        if self.exp_data is None:
-            logging.warn('update_accumulated() called before start_exposure().')
+        if 'mjd_start' not in self.exp_data:
+            logging.warn('update_accumulated() called before open_shutter().')
             return False
         mjd_start, mjd_max = self.exp_data['mjd_start'], self.exp_data['mjd_max']
         if mjd_now <= mjd_start:
@@ -727,7 +726,7 @@ class ETCAlgorithm(object):
         teff_forecast = (self.accumulated_real_time + dt_forecast) * self.exptime_factor(
             sig_forecast, bg_forecast, MW_transp)
         # Do we expect to reach the target before the cutoff?
-        target = self.exp_data['teff']
+        target = self.exp_data['target_teff']
         if teff_forecast[-1] < target:
             logging.info(f'Will only reach teff = {teff_forecast[-1]:.1f}s before cutoff.')
         else:
@@ -788,6 +787,7 @@ class ETCAlgorithm(object):
             fassign=self.fassign_data,
             acquisition=self.acquisition_data,
             guide_stars=self.guide_stars,
+            shutter=dict(open=self.shutter_open, close=self.shutter_close),
             thru=self.thru_measurements.save(mjd1, mjd2),
             sky=self.sky_measurements.save(mjd1, mjd2)
         )
