@@ -834,6 +834,17 @@ def date_to_mjd(date, utc_offset):
     return 58484 + delta.days + (delta.seconds + 1e-6 * delta.microseconds) / 86400
 
 
+def mjd_to_night(mjd):
+    """Convert MJD to NIGHT for KPNO in the format YYYYMMDD.
+
+    Uses the convention that the night rollover occurs at local (UTC-7) noon.
+    """
+    date = mjd_to_date(mjd, utc_offset=-7)
+    if date.hour < 12:
+        date -= datetime.timedelta(days=1)
+    return date.strftime('%Y%m%d')
+
+
 class NumpyEncoder(json.JSONEncoder):
     """JSON encoder to use with numpy data.
     """
