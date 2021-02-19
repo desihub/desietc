@@ -57,18 +57,15 @@ class OnlineETC():
         self.shutdown = shutdown_event
         self.max_update_delay = datetime.timedelta(seconds=max_update_delay)
 
-        # callouts to ETC application
-        self.call_for_sky_image = None
-        self.call_for_gfa_image = None
+        # Callouts to the ETC application
         self.call_for_acq_image = None
         self.call_for_pm_info = None
-        self.call_for_telemetry = None
+        self.call_for_sky_image = None
+        self.call_for_gfa_image = None
         self.call_to_update_status = None
+        self.call_for_exp_dir = None
         self.call_to_request_stop = None
-        self.call_when_about_to_stop = None
         self.call_to_request_split = None
-        self.call_when_about_to_split = None
-        self.call_when_image_ready = None
 
         # Initialize the ETC algorithm. This will spawn 6 parallel proccesses (one per GFA)
         # and allocated ~100Mb of shared memory. Use the shutdown() method to free these
@@ -199,7 +196,7 @@ class OnlineETC():
                     # The previous exposure has just ended.
                     self.ETCalg.stop_exposure(self.img_stop_time)
                     # Save the ETC outputs for this exposure.
-                    self.ETCalg.save_exposure(self.exp_dir)
+                    self.ETCalg.save_exposure(self.call_for_exp_dir(self.expid))
                     last_image_processing = False
 
             # Need some delay here to allow the main thread to run.
@@ -234,8 +231,9 @@ class OnlineETC():
         etc_status['max_splits'] = self.max_splits
         etc_status['splittable'] = self.splittable
 
-        # Timestamps captured by start(), start_etc(), stop_etc()
+        # Timestamps updated when start(), stop(), start_etc(), stop_etc() is called.
         etc_status['img_start_time'] = self.img_start_time
+        etc_status['img_stop_time'] = self.img_start_time
         etc_status['etc_start_time'] = self.etc_start_time
         etc_status['etc_stop_time'] = self.etc_stop_time
 
