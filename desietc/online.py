@@ -1,39 +1,50 @@
-"""Online ETC class that intefaces with ICS via callouts implemented by ETCApp.
+"""OnlineETC class that intefaces with ICS via callouts implemented by ETCApp.
 
 Original code written by Klaus Honscheid and copied here 16-Feb-2021 from
 https://desi.lbl.gov/trac/browser/code/online/ETC/trunk/python/ETC/ETC.py
 
-ETCApp at https://desi.lbl.gov/trac/browser/code/online/ETC/trunk/python/ETC/ETCApp.py
+The ETCApp code is hosted at
+https://desi.lbl.gov/trac/browser/code/online/ETC/trunk/python/ETC/ETCApp.py
 
-5 callouts are used to interact with the ETCapp and the rest of DOS.
-The basic idea is the the etc code checks if the callout variable is callable and then executes the function at
-the appropriate time. For example, for a status update, ETCapp sets the callout:
+OnlineETC uses the following callouts to interact with the ETCApp and the rest of DOS:
 
-    self.etc.call_to_update = self._update_status
+  - call_for_acq_image
+  - call_for_pm_info
+  - call_for_sky_image
+  - call_for_gfa_image
+  - call_to_update_status
+  - call_for_png_dir
+  - call_for_exp_dir
+  - call_to_request_stop
+  - call_to_request_split
 
-and the etc class could include code like this:
+The ETCApp keeps the OnlineETC synchronized with data taking by calling the
+following methods:
 
-    if callable(self.call_to_update_status):
-        self.call_to_update_status()
+  - prepare_for_exposure: provides NTS params for the next tile to observe
 
-Arguments can be passed as needed - of course this has to be coordinated with ETCapp (the _update_status method
-in the example)
+    - start: signals that the GFA acquisition exposure has started
 
-This is the list of current call outs:
-    call_for_sky_image
-    call_for_gfa_image
-    call_for_acq_image
-    call_for_pm_info
-    call_for_telemetry
-    call_to_update_status
-    call_to_request_stop
-    call_when_about_to_stop
-    call_to_request_split
-    call_when_about_to_split
-    call_when_image_ready
+      - start_etc: the spectrograph shutters have just opened
+      - stop_etc: the spectrograph shutters have just closed
 
-After configure,  start/stop calls control image processing
-When active, i.e. processing images, exposure time processing is controlled by the start_etc/stop_etc commands
+    - stop: the current exposure has finished and the ETC should save its results
+
+The start/stop_etc methods are called for each cosmic split and the other methods are
+called exactly once for each exposure.
+
+The ETC image analysis and exposure-time calculations are handled by a separate
+class desietc.etc.ETCAlgorithm that runs in a thread managed by this class.
+Synchronization between this worker thread and the main thread that handles
+calls to the start/stop/... methods above relies on three threading Events:
+
+  - shutdown: the worker thread exits when this is cleared.
+  - image_processing: an exposure that requires ETC tracking is active.
+  - etc_processing: the spectrograph shutters are open.
+
+The get_status() method returns a snapshot of our internal attributes, which are
+divided into two groups: those updated by the main thread and those updated by
+the worker thread.  See the comments in get_status() for details.
 """
 import datetime
 import sys
@@ -63,13 +74,13 @@ class OnlineETC():
         self.call_for_sky_image = None
         self.call_for_gfa_image = None
         self.call_to_update_status = None
+        self.call_for_png_dir = None
         self.call_for_exp_dir = None
         self.call_to_request_stop = None
         self.call_to_request_split = None
 
         # Initialize the ETC algorithm. This will spawn 6 parallel proccesses (one per GFA)
-        # and allocated ~100Mb of shared memory. Use the shutdown() method to free these
-        # resources.
+        # and allocated ~100Mb of shared memory. These resources will be cleared when
         gfa_calib = os.getenv('ETC_GFA_CALIB', None)
         sky_calib = os.getenv('ETC_SKY_CALIB', None)
         if gfa_calib is None or sky_calib is None:
@@ -86,11 +97,6 @@ class OnlineETC():
         self.etc_thread.daemon = True
         self.etc_thread.start()
         Log.info('ETC: processing thread running')
-
-    def shutdown(self):
-        """Release resources allocated for the ETC algorithm in our constructor.
-        """
-        self.ETCalg.shutdown()
 
     def _etc(self):
         """This is the ETC algorithm that does the actual work.
@@ -138,6 +144,8 @@ class OnlineETC():
                         self.img_start_time, self.expid, self.target_teff, self.target_type,
                         self.max_exposure_time, self.cosmics_split_time, self.max_splits, self.splittable)
                     last_image_processing = True
+                    # Set the path where the PNG generated after the acquisition analysis will be written.
+                    self.ETCalg.set_image_path(self.call_for_png_dir(self.expid))
                     # Look for the acquisition image and PlateMaker guide stars next.
                     need_acq_image = need_stars = True
 
@@ -195,13 +203,17 @@ class OnlineETC():
                 if last_image_processing:
                     # The previous exposure has just ended.
                     self.ETCalg.stop_exposure(self.img_stop_time)
+                    last_image_processing = False
                     # Save the ETC outputs for this exposure.
                     self.ETCalg.save_exposure(self.call_for_exp_dir(self.expid))
-                    last_image_processing = False
+                    # Reset the PNG output path.
+                    self.ETCalg.set_image_path(None)
 
             # Need some delay here to allow the main thread to run.
             time.sleep(0.5)
 
+        # The shutdown event has been cleared.
+        self.ETCAlg.shutdown()
         Log.info('ETC: processing thread exiting after shutdown.')
 
     def get_status(self):
