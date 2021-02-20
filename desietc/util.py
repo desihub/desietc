@@ -748,6 +748,24 @@ class MeasurementBuffer(object):
             mask &= self.entries['mjd1'] < mjd2
         return mask
 
+    def sample_grid(self, mjd_grid):
+        """Sample measurements on a the specified MJD grid.
+
+        Use measurements that lie outside the grid up to self.padding seconds.
+        Return default_value when no measurements are available.
+        Use constant extrapolation of the first/last measurement if necessary.
+        """
+        mjd1, mjd2  = mjd_grid[0], mjd_grid[-1]
+        # Select measurements that span the padded input grid.
+        sel = self.inside(mjd1 - self.padding, mjd2 + self.padding)
+        if not np.any(sel):
+            return np.full_like(mjd_grid, self.default_value)
+        mjd_sel = 0.5 * (self.entries[sel]['mjd1'] + self.entries[sel]['mjd2'])
+        value_sel = self.entries[sel]['value']
+        iorder = np.argsort(mjd_sel)
+        # Use linear interpolation with constant extrapolation beyond the endpoints.
+        return np.interp(mjd_grid, mjd_sel[iorder], value_sel[iorder])
+
     def sample(self, mjd1, mjd2):
         """Sample measurements on a grid covering (mjd1, mjd2) using linear interpolation.
 
@@ -780,6 +798,15 @@ class MeasurementBuffer(object):
         wgt = self.entries[sel]['error'] ** -0.5
         val = self.entries[sel]['value']
         return np.sum(wgt * val) / np.sum(wgt), 0
+
+    def forecast_grid(self, mjd_grid):
+        """Forecast our trend on the specified MJD grid.
+        """
+        mjd1, mjd2  = mjd_grid[0], mjd_grid[-1]
+        # Calculate the trend at mjd1.
+        offset, slope = self.trend(mjd1)
+        # Evaluate the linear trend on our grid.
+        return offset + slope * (mjd_grid - mjd1)
 
     def forecast(self, mjd1, mjd2):
         """Forecast our trend from mjd1 to mjd2.
