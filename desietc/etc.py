@@ -112,14 +112,14 @@ class ETCAlgorithm(object):
         ]
         # Define auxiliary data to save with each GFA or SKY measurement.
         self.thru_measurements = desietc.util.MeasurementBuffer(
-            maxlen=1000, default_value=1, resolution=0.2, aux_dtype=[
+            maxlen=1000, default_value=1, aux_dtype=[
                 ('ffrac', np.float32, (self.ngfa,)),  # fiber fraction measured from single GFA
                 ('transp', np.float32, (self.ngfa,)), # transparency measured from single GFA
                 ('dx', np.float32, (self.ngfa,)),     # mean x shift of centroid from single GFA in pixels
                 ('dy', np.float32, (self.ngfa,)),     # mean y shift of centroid from single GFA in pixels
             ] + aux_dtype)
         self.sky_measurements = desietc.util.MeasurementBuffer(
-            maxlen=200, default_value=1, resolution=0.2, aux_dtype=[
+            maxlen=200, default_value=1, aux_dtype=[
                 ('flux', np.float32, (self.nsky,)),   # sky flux meausured from a single SKYCAM.
                 ('dflux', np.float32, (self.nsky,)),  # sky flux uncertainty meausured from a single SKYCAM.
                 ('ndrop', np.int32, (self.nsky,)),    # number of fibers dropped from the camera flux estimate.
@@ -674,14 +674,14 @@ class ETCAlgorithm(object):
             ngrid = int(np.ceil(delta / self.grid_resolution))
             self.mjd_grid = mjd + (np.arange(ngrid) + 0.5) * delta / ngrid
             # Initialize a shutter mask with 0=closed, 1=open.
-            self.shutter_mask = np.zeros(ngrid)
+            self.open_grid = np.zeros(ngrid)
             # Initialize signal and background rate grids.
             self.sig_grid = np.zeros_like(self.mjd_grid)
             self.bg_grid = np.zeros_like(self.mjd_grid)
             logging.debug(f'Created mjd_grid with {ngrid} values.')
         # Record this shutter opening.
         self.shutter_open.append(mjd)
-        self.shutter_mask[self.mjd_grid >= mjd] = 1
+        self.open_grid[self.mjd_grid >= mjd] = 1
         logging.info(f'Shutter open[{nopen}] at {timestamp}.')
 
     def close_shutter(self, timestamp):
@@ -699,7 +699,7 @@ class ETCAlgorithm(object):
         # Record this shutter closing.
         self.shutter_close.append(mjd)
         self.shutter_teff.append(self.accumulated_eff_time)
-        self.shutter_mask[self.mjd_grid >= mjd] = 0
+        self.open_grid[self.mjd_grid >= mjd] = 0
         logging.info(f'Shutter close[{nclose}] at {timestamp} after {self.accumulated_real_time:.1f}s ' +
             f'with actual teff={self.accumulated_eff_time:.1f}s')
 
@@ -757,7 +757,7 @@ class ETCAlgorithm(object):
         mjd_open = self.shutter_open[-1]
         iopen, inow = np.searchsorted(self.mjd_grid, [mjd_open, mjd_now])
         past, future = slice(iopen, inow + 1), slice(inow, None)
-        assert np.all(self.shutter_mask[iopen:])
+        assert np.all(self.open_grid[iopen:])
         # Tabulate the signal and background since the most recent shutter opening.
         self.sig_grid[past] = self.thru_measurements.sample_grid(self.mjd_grid[past])
         self.bg_grid[past] = self.sky_measurements.sample_grid(self.mjd_grid[past])

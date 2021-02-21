@@ -232,7 +232,7 @@ def save_acquisition_summary(
     plt.close(fig)
 
 
-def plot_measurements(buffer, mjd1, mjd2, ymin=0, label=None, ax=None):
+def plot_measurements(buffer, mjd1, mjd2, ymin=0, resolution=1, label=None, ax=None):
     """Plot measurements spanning (mjd1, mjd2) in the specified buffer.
     """
     ax = ax or plt.gca()
@@ -250,7 +250,9 @@ def plot_measurements(buffer, mjd1, mjd2, ymin=0, label=None, ax=None):
         dy = buffer.entries['error'][sel]
         ax.errorbar(minutes(x), y, xerr=dx * 720, yerr=dy, fmt='.', color=color, ms=2, lw=1)
     # Draw the linear interpolation through the selected points.
-    x_grid, y_grid = buffer.sample(mjd1, mjd2)
+    ngrid = int(np.ceil((mjd2 - mjd1) / (resolution / buffer.SECS_PER_DAY)))
+    x_grid = np.linspace(mjd1, mjd2, ngrid)
+    y_grid = buffer.sample_grid(x_grid)
     ax.fill_between(minutes(x_grid), ymin, y_grid, color='b', lw=0, alpha=0.2)
     # Highlight samples used for the trend.
     sel = buffer.inside(mjd2 - buffer.recent, mjd2)
@@ -258,7 +260,9 @@ def plot_measurements(buffer, mjd1, mjd2, ymin=0, label=None, ax=None):
     y = buffer.entries['value'][sel]
     ax.plot(minutes(x), y, 'r.', ms=4, zorder=10)
     # Extrapolate the trend.
-    x, y = buffer.forecast(mjd2, xhi)
+    offset, slope = buffer.trend(mjd2)
+    x = np.array([mjd2, xhi])
+    y = offset + slope * (x - mjd2)
     ax.fill_between(minutes(x), ymin, y, color='r', lw=0, alpha=0.2)
     # Draw vertical lines to show the (mjd1, mjd2) interval.
     for xv in (mjd1, mjd2):

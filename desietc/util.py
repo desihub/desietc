@@ -682,7 +682,7 @@ class MeasurementBuffer(object):
     """
     SECS_PER_DAY = 86400
 
-    def __init__(self, maxlen, default_value, resolution=1, padding=300, recent=300, aux_dtype=[]):
+    def __init__(self, maxlen, default_value, padding=300, recent=300, aux_dtype=[]):
         self.oldest = None
         self.len = 0
         self.full = False
@@ -693,7 +693,6 @@ class MeasurementBuffer(object):
         self._entries = np.empty(shape=maxlen, dtype=dtype)
         self.names = self._entries.dtype.names
         self.default_value = default_value
-        self.resolution = resolution / self.SECS_PER_DAY
         self.padding = padding / self.SECS_PER_DAY
         self.recent = recent / self.SECS_PER_DAY
 
@@ -766,28 +765,6 @@ class MeasurementBuffer(object):
         # Use linear interpolation with constant extrapolation beyond the endpoints.
         return np.interp(mjd_grid, mjd_sel[iorder], value_sel[iorder])
 
-    def sample(self, mjd1, mjd2):
-        """Sample measurements on a grid covering (mjd1, mjd2) using linear interpolation.
-
-        The grid spacing will be approximately resolution seconds.
-        Use measurements that lie outside the grid up to self.padding seconds.
-        Return default_value when no measurements are available.
-        Use constant extrapolation of the first/last measurement if necessary.
-        """
-        assert (mjd2 is not None) and (mjd1 < mjd2)
-        # Construct a grid of bin centers covering [mjd1,mjd2] with spacing ~ resolution.
-        ngrid = int(np.ceil((mjd2 - mjd1) / self.resolution))
-        mjd_grid = mjd1 + (np.arange(ngrid) + 0.5) * (mjd2 - mjd1) / ngrid
-        # Select measurements that span the padded input grid.
-        sel = self.inside(mjd1 - self.padding, mjd2 + self.padding)
-        if not np.any(sel):
-            return mjd_grid, np.full_like(mjd_grid, self.default_value)
-        mjd_sel = 0.5 * (self.entries[sel]['mjd1'] + self.entries[sel]['mjd2'])
-        value_sel = self.entries[sel]['value']
-        iorder = np.argsort(mjd_sel)
-        # Use linear interpolation with constant extrapolation beyond the endpoints.
-        return mjd_grid, np.interp(mjd_grid, mjd_sel[iorder], value_sel[iorder])
-
     def trend(self, mjd):
         """Return the linear trend in values over (mjd - recent, mjd).
         For now, this returns a weighted average with zero slope.
@@ -807,18 +784,6 @@ class MeasurementBuffer(object):
         offset, slope = self.trend(mjd1)
         # Evaluate the linear trend on our grid.
         return offset + slope * (mjd_grid - mjd1)
-
-    def forecast(self, mjd1, mjd2):
-        """Forecast our trend from mjd1 to mjd2.
-        """
-        assert (mjd2 is not None) and (mjd1 < mjd2)
-        # Construct a grid of bin edges covering [mjd1,mjd2] with spacing ~ resolution.
-        ngrid = int(np.ceil((mjd2 - mjd1) / self.resolution))
-        mjd_grid = np.linspace(mjd1, mjd2, ngrid + 1)
-        # Calculate the trend at mjd1.
-        offset, slope = self.trend(mjd1)
-        # Forecast the trend on our grid.
-        return mjd_grid, offset + slope * (mjd_grid - mjd1)
 
     def save(self, mjd1, mjd2):
         """Return a json suitable serialization of our entries spanning (mjd1, mjd2).
