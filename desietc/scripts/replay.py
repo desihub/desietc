@@ -88,6 +88,9 @@ def etcoffline(args):
     if not args.outpath.exists():
         print('Non-existant output path: {0}'.format(args.outpath))
         sys.exit(-2)
+    # Create the night output path if necessary.
+    args.outpath = args.outpath / str(args.night)
+    args.outpath.mkdir(exist_ok=True)
     logging.info('Output path is {0}'.format(args.outpath))
 
     # Locate the GFA calibration data.
@@ -136,7 +139,8 @@ def etcoffline(args):
         nonlocal nprocessed
         success = desietc.offline.replay_exposure(
             ETC, nightpath, expid,
-            outpath=args.outpath, dry_run=args.dry_run, overwrite=args.overwrite)
+            outpath=args.outpath, dry_run=args.dry_run, overwrite=args.overwrite,
+            only_complete=args.only_complete)
         if success:
             nprocessed += 1
 
@@ -237,6 +241,8 @@ def main():
         help='Path where outputs willl be organized under YYYYMMDD directories')
     parser.add_argument('--overwrite', action='store_true',
         help='Overwrite existing outputs')
+    parser.add_argument('--only-complete', action='store_true',
+        help='Only process exposures with all expected FITS files')
     parser.add_argument('--gfa-calib', type=str, metavar='PATH',
         help='Path to GFA calibration FITS file to use')
     parser.add_argument('--sky-calib', type=str, metavar='PATH',
