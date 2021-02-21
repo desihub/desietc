@@ -33,6 +33,9 @@ import desietc.plot
 # - implement cutoff time logic
 # - implement cosmic split logic
 # - save git hash / version to json output
+# - save grid ararys to json
+# - save cpu timing to json
+# - truncate digits for np.float json output
 
 class ETCAlgorithm(object):
 
@@ -100,6 +103,13 @@ class ETCAlgorithm(object):
         self.ngfa = len(desietc.gfa.GFACamera.guide_names)
         self.nsky = len(desietc.sky.SkyCamera.sky_names)
         # Initialize buffers to record our signal- and sky-rate measurements.
+        aux_dtype = [
+            ('sig', np.float32),                  # accumulated signal estimate
+            ('bg', np.float32),                   # accumulated background estimate
+            ('teff', np.float32),                 # accumulated effective time estimate in seconds
+            ('tproj', np.float32),                # projected real time remaining in seconds
+            ('final', np.float32),                # projected final effective time in seconds
+        ]
         # Define auxiliary data to save with each GFA or SKY measurement.
         self.thru_measurements = desietc.util.MeasurementBuffer(
             maxlen=1000, default_value=1, resolution=0.2, aux_dtype=[
@@ -107,19 +117,13 @@ class ETCAlgorithm(object):
                 ('transp', np.float32, (self.ngfa,)), # transparency measured from single GFA
                 ('dx', np.float32, (self.ngfa,)),     # mean x shift of centroid from single GFA in pixels
                 ('dy', np.float32, (self.ngfa,)),     # mean y shift of centroid from single GFA in pixels
-                ('sig', np.float32),                  # accumulated signal estimate
-                ('bg', np.float32),                   # accumulated background estimate
-                ('teff', np.float32),                 # accumulated effective time estimate
-            ])
+            ] + aux_dtype)
         self.sky_measurements = desietc.util.MeasurementBuffer(
             maxlen=200, default_value=1, resolution=0.2, aux_dtype=[
                 ('flux', np.float32, (self.nsky,)),   # sky flux meausured from a single SKYCAM.
                 ('dflux', np.float32, (self.nsky,)),  # sky flux uncertainty meausured from a single SKYCAM.
                 ('ndrop', np.int32, (self.nsky,)),    # number of fibers dropped from the camera flux estimate.
-                ('sig', np.float32),                  # accumulated signal estimate
-                ('bg', np.float32),                   # accumulated background estimate
-                ('teff', np.float32),                 # accumulated effective time estimate
-            ])
+            ] + aux_dtype)
         # Initialize the SKY camera processor.
         self.SKY = desietc.sky.SkyCamera(calib_name=sky_calib)
         # Initialize the GFA camera processor(s).
@@ -502,13 +506,15 @@ class ETCAlgorithm(object):
         # Use constant error until we have a proper estimate.
         self.thru_measurements.add(
             mjd_start, mjd_stop, thru, 0.01,
-            aux_data=(each_ffrac, each_transp, each_dx, each_dy, 0, 0, 0))
+            aux_data=(each_ffrac, each_transp, each_dx, each_dy, 0, 0, 0, 0, 0))
         # Update our accumulated signal if the shutter is open.
         nopen, nclose = len(self.shutter_open), len(self.shutter_close)
         if nopen == nclose + 1:
             self.update_accumulated(mjd_stop)
             self.thru_measurements.set_last(
-                sig=self.accumulated_signal, bg=self.accumulated_background, teff=self.accumulated_eff_time)
+                sig=self.accumulated_signal, bg=self.accumulated_background,
+                teff=self.accumulated_eff_time, tproj=self.time_remaining,
+                final=self.projected_eff_time)
         # Report timing.
         elapsed = time.time() - start
         logging.debug(f'Guide frame processing took {elapsed:.2f}s for {nstar} stars in {ncamera} cameras.')
@@ -556,13 +562,15 @@ class ETCAlgorithm(object):
         mjd_start, mjd_stop = self.get_mjd_range(mjd_obs, exptime, f'sky[{fnum}]')
         self.sky_measurements.add(
             mjd_start, mjd_stop, flux, dflux,
-            aux_data=(each_flux, each_dflux, each_ndrop, 0, 0, 0))
+            aux_data=(each_flux, each_dflux, each_ndrop, 0, 0, 0, 0, 0))
         # Update our accumulated background if the shutter is open.
         nopen, nclose = len(self.shutter_open), len(self.shutter_close)
         if nopen == nclose + 1:
             self.update_accumulated(mjd_stop)
             self.sky_measurements.set_last(
-                sig=self.accumulated_signal, bg=self.accumulated_background, teff=self.accumulated_eff_time)
+                sig=self.accumulated_signal, bg=self.accumulated_background,
+                teff=self.accumulated_eff_time, tproj=self.time_remaining,
+                final=self.projected_eff_time)
         # Profile timing.
         elapsed = time.time() - start
         logging.debug(f'Sky frame processing took {elapsed:.2f}s for {ncamera} cameras.')
@@ -740,6 +748,8 @@ class ETCAlgorithm(object):
         elif nopen != nclose + 1:
             logging.error(f'update_accumulated: invalid shutter state [{nopen},{nclose}].')
             return False
+        # Lookup the effective time accumulated on all previous splits for this exposure.
+        prev_teff = 0 if nopen == 1 else self.shutter_teff[-1]
         # --- The shutter is open and we have the NTS parameters to use -------------------------
         # Record the timestamp of this update.
         self.accumulated_mjd = mjd_now
@@ -761,7 +771,7 @@ class ETCAlgorithm(object):
         self.accumulated_eff_time = self.accumulated_real_time * self.exptime_factor(
             self.accumulated_signal, self.accumulated_background, MW_transp)
         logging.info(f'shutter[{nopen}] treal={self.accumulated_real_time:.1f}s, teff={self.accumulated_eff_time:.1f}s' +
-            f' using bg={self.accumulated_background:.3f}, sig={self.accumulated_signal:.3f}.')
+            f' [+{prev_teff:.1f}s] using bg={self.accumulated_background:.3f}, sig={self.accumulated_signal:.3f}.')
         # Forecast the future signal and background.
         self.sig_grid[future] = self.thru_measurements.forecast_grid(self.mjd_grid[future])
         self.bg_grid[future] = self.sky_measurements.forecast_grid(self.mjd_grid[future])
@@ -769,29 +779,28 @@ class ETCAlgorithm(object):
         n_grid = 1 + np.arange(len(self.mjd_grid) - iopen)
         accum_sig = np.cumsum(self.sig_grid[iopen:]) / n_grid
         accum_bg = np.cumsum(self.bg_grid[iopen:]) / n_grid
-        print('sig', accum_sig)
-        print('bg', accum_bg)
-        # Calculate the corresponding future accumualated effective exposure time in seconds.
+        # Calculate the corresponding future accumulated effective exposure time in seconds.
         accum_treal = (self.mjd_grid[iopen:] - mjd_open) * self.SECS_PER_DAY
-        print('treal', accum_treal)
         accum_teff = accum_treal * self.exptime_factor(accum_sig, accum_bg, MW_transp)
-        print('teff', accum_teff)
         # When do we expect to close the shutter.
-        if accum_teff[-1] < target:
-            # We expect to reach mjd_max before the target.
+        if self.accumulated_eff_time + prev_teff >= target:
+            # We have already reached the target.
+            istop = inow
+            logging.info(f'Target reached.')
+        elif accum_teff[-1] + prev_teff < target:
+            # We will not reach the target before the mjd_max cutoff.
             istop = len(accum_teff) - 1
             logging.warn(f'Will not reach target before max exposure time.')
         else:
-            # We expect to reach the target before mjd_max.
+            # We expect to reach the target before mjd_max but are not there yet.
             istop = np.argmax(accum_teff >= target)
         # Lookup our expected stop time and time remaining, assuming the shutter stays open.
         mjd_stop = self.mjd_grid[iopen + istop]
-        remaining = (mjd_stop - mjd_now) * self.SECS_PER_DAY
+        self.time_remaining = (mjd_stop - mjd_now) * self.SECS_PER_DAY
         # Calculate the corresponding effective time, including any previous shutters.
-        teff_stop = accum_teff[istop]
-        if nopen > 1:
-            teff_stop += self.shutter_teff[-1]
-        logging.info(f'Will stop in {remaining:.1f}s at teff={teff_stop:.1f}s (target={target:.1f}s).')
+        self.projected_eff_time = accum_teff[istop] + prev_teff
+        logging.info(f'Will stop in {self.time_remaining:.1f}s at teff={self.projected_eff_time:.1f}s' +
+            f' (target={target:.1f}s).')
 
         return True
 
