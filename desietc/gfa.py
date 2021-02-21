@@ -234,7 +234,7 @@ class GFACamera(object):
             ngood = (self.nampy - self.nrowtrim) * self.nscan
             if np.any(bad):
                 nbad = np.count_nonzero(bad)
-                logging.warning(f'Ignoring {nbad} bad overscan pixels for {name}-{amp}.')
+                logging.debug(f'Ignoring {nbad} bad overscan pixels for {name}-{amp}.')
                 overscan = np.copy(overscan)
                 overscan[bad] = 0.
                 ngood -= nbad
