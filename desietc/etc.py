@@ -293,12 +293,15 @@ class ETCAlgorithm(object):
         self.psf_stack = {}
         self.noisy_gfa = set()
         pending = []
+        acq_mjd, acq_exptime = None, None
         for camera in desietc.gfa.GFACamera.guide_names:
             if camera not in data:
                 logging.warn(f'No acquisition image for {camera}.')
                 continue
             if not self.process_camera_header(data[camera]['header'], f'{camera} acquisition image'):
                 continue
+            acq_mjd = acq_mjd or data[camera]['header']['MJD-OBS']
+            acq_exptime = acq_exptime or data[camera]['header']['EXPTIME']
             if not self.preprocess_gfa(camera, data[camera], f'{camera} acquisition image'):
                 continue
             if self.parallel:
@@ -351,7 +354,7 @@ class ETCAlgorithm(object):
         if self.image_path is not None:
             try:
                 desietc.plot.save_acquisition_summary(
-                    data['header'], psf_model, self.psf_stack, self.fwhm, self.ffrac, nstars,
+                    acq_mjd, self.exptag, psf_model, self.psf_stack, self.fwhm, self.ffrac, nstars,
                     badfit, self.noisy_gfa, self.image_path / f'etc-{self.exptag}.png')
             except Exception as e:
                 logging.error(f'Failed to save acquisition analysis summary image: {e}')

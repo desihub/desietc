@@ -130,7 +130,7 @@ def plot_data(D, W, downsampling=4, zoom=1, label=None, colorhist=False, stamps=
 
 
 def save_acquisition_summary(
-    header, psf_model, psf_stack, fwhm, ffrac, nstars, badfit, noisy, path,
+    mjd, exptag, psf_model, psf_stack, fwhm, ffrac, nstars, badfit, noisy, path,
     show_north=True, show_fiber=True, zoom=5, dpi=128, cmap='magma', masked_color='gray'):
     """
     """
@@ -196,14 +196,10 @@ def save_acquisition_summary(
     # Generate a text overlay.
     ax = plt.axes((0, 0, 1, 1))
     ax.axis('off')
-    night = header.get('NIGHT', 'YYYYMMDD')
-    exptag = str(header.get('EXPID', 0)).zfill(8)
+    night =  desietc.util.mjd_to_night(mjd)
+    localtime = desietc.util.mjd_to_date(mjd, utc_offset=-7)
     left = f'{night}/{exptag}'
-    if 'MJD-OBS' in header:
-        localtime = desietc.util.mjd_to_date(header['MJD-OBS'], utc_offset=-7)
-        center = localtime.strftime('%H:%M:%S') + ' (UTC-7)'
-    else:
-        center = ''
+    center = localtime.strftime('%H:%M:%S') + ' (UTC-7)'
     right = f'FWHM={fwhm:.2f}" ({100*ffrac:.1f}%)'
     for (x, ha, label) in zip((0, 0.5, 1), ('left', 'center', 'right'), (left, center, right)):
         text = ax.text(x, 0, label, color='w', ha=ha, va='bottom', size=10, transform=ax.transAxes)
@@ -218,14 +214,15 @@ def save_acquisition_summary(
         if nstar > 1: label += 's'
         text = ax.text(x, 0.45, label, color='w', ha='center', va='center', size=7, transform=ax.transAxes)
         text.set_path_effects(outline)
+        warn_args = dict(size=13, color='c', fontweight='bold')
         if nstar == 0:
-            text = ax.text(x, 0.92, 'NO STARS?', color='r', ha='center', va='top', size=10, transform=ax.transAxes)
+            text = ax.text(x, 0.92, 'NO STARS?', ha='center', va='top', transform=ax.transAxes, **warn_args)
             text.set_path_effects(outline)
         elif name in badfit:
-            text = ax.text(x, 0.92, 'BAD PSF?', color='r', ha='center', va='top', size=10, transform=ax.transAxes)
+            text = ax.text(x, 0.92, 'BAD PSF?', ha='center', va='top', transform=ax.transAxes, **warn_args)
             text.set_path_effects(outline)
         if name in noisy:
-            text = ax.text(x, 1, 'NOISY?', color='r', ha='center', va='top', size=10, transform=ax.transAxes)
+            text = ax.text(x, 1, 'NOISY?', ha='center', va='top', transform=ax.transAxes, **warn_args)
             text.set_path_effects(outline)
     # Save the image.
     plt.savefig(path)

@@ -32,7 +32,7 @@ def replay_exposure(ETC, path, expid, outpath, teff=1000, ttype='DARK', cutoff=1
     gfa_path = exppath / f'guide-{exptag}.fits.fz'
     sky_path = exppath / f'sky-{exptag}.fits.fz'
     desi_path = exppath / f'desi-{exptag}.fits.fz'
-    fassign_paths = list(exppath.glob('fiberassign-??????.fits.gz'))
+    fassign_paths = list(exppath.glob('fiberassign-??????.fits*'))
     missing = 0
     if not acq_path.exists():
         logging.warn(f'Missing acquisition image: {acq_path}.')
@@ -46,12 +46,12 @@ def replay_exposure(ETC, path, expid, outpath, teff=1000, ttype='DARK', cutoff=1
     if not desi_path.exists():
         logging.warn(f'Missing DESI exposure: {desi_path}.')
         missing += 1
-    if len(fassign_paths) != 0:
+    if len(fassign_paths) != 1:
         logging.warn(f'Missing fiberassign file.')
         fassign_path = exppath / '_does_not_exist_'
         missing += 1
     else:
-        fassign_path = fassign_paths[1]
+        fassign_path = fassign_paths[0]
     if only_complete and missing > 0:
         return False
     if desi_path.exists():
@@ -205,13 +205,12 @@ def fits_to_online(path, names, frame):
             if ext not in hdus or ext + 'T' not in hdus:
                 continue
             dims = hdus[ext].get_dims()
-            print('dims', dims, ('='*40))
             if len(dims) == 2:
                 if frame != 0:
                     raise ValueError(f'Requested frame {frame} when no frames present.')
                 data = hdus[ext][:,:]
             elif len(dims) == 3:
-                if frame >= dims[-1]:
+                if frame >= dims[0]:
                     raise ValueError(f'Requested non-existent frame {frame}.')
                 data = hdus[ext][frame,:,:][0]
             else:
