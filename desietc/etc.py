@@ -337,7 +337,7 @@ class ETCAlgorithm(object):
             fwhm_vec.append(camera_result.get('fwhm', np.nan))
             ffrac_vec.append(camera_result.get('ffrac', np.nan))
             gmm_params = camera_result.get('gmm', [])
-            if not gmm_params:
+            if len(gmm_params) == 0:
                 logging.warn(f'PSF measurement failed for {camera}.')
                 continue
             psf_model[camera] = self.GMM.predict(gmm_params)
