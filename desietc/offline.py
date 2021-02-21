@@ -83,40 +83,49 @@ def replay_exposure(ETC, path, expid, outpath, teff=1000, ttype='DARK', cutoff=1
     # Get the SKY exposure info for the first available camera.
     sky_info = []
     if sky_path.exists():
-        with fitsio.FITS(str(sky_path)) as hdus:
-            for camera in desietc.sky.SkyCamera.sky_names:
-                if camera+'T' not in hdus:
-                    continue
-                sky_info = hdus[camera + 'T'].read()
-                break
+        try:
+            with fitsio.FITS(str(sky_path)) as hdus:
+                for camera in desietc.sky.SkyCamera.sky_names:
+                    if camera+'T' not in hdus:
+                        continue
+                    sky_info = hdus[camera + 'T'].read()
+                    break
+        except Exception as e:
+            logging.error(f'Failed to read SKY data: {e}')
     num_sky_frames = len(sky_info)
     logging.info(f'Exposure has {num_sky_frames} SKY frames.')
     # Get the PM guide stars and GFA exposure info for the first available camera.
     gfa_info, pm_info = [], None
     if gfa_path.exists():
-        with fitsio.FITS(str(gfa_path)) as hdus:
-            # Lookup the PlateMaker guide stars.
-            if 'PMGSTARS' not in hdus:
-                logging.error(f'Missing PMGSTARS HDU: no guide stars specified.')
-                return False
-            pm_info = hdus['PMGSTARS'].read()
-            logging.info(f'Exposure has {len(pm_info[0])} guide stars.')
-            for camera in desietc.gfa.GFACamera.guide_names:
-                if camera+'T' not in hdus:
-                    continue
-                gfa_info = hdus[camera + 'T'].read()
-                break
+        try:
+            with fitsio.FITS(str(gfa_path)) as hdus:
+                # Lookup the PlateMaker guide stars.
+                if 'PMGSTARS' not in hdus:
+                    logging.error(f'Missing PMGSTARS HDU: no guide stars specified.')
+                    return False
+                pm_info = hdus['PMGSTARS'].read()
+                logging.info(f'Exposure has {len(pm_info[0])} guide stars.')
+                for camera in desietc.gfa.GFACamera.guide_names:
+                    if camera+'T' not in hdus:
+                        continue
+                    gfa_info = hdus[camera + 'T'].read()
+                    break
+        except Exception as e:
+            logging.error(f'Failed to read GFA data: {e}')
     elif acq_path.exists():
         # We have an acq image but no subsequent guider frames.
-        with fitsio.FITS(str(acq_path)) as hdus:
-            for camera in desietc.gfa.GFACamera.guide_names:
-                if camera not in hdus:
-                    continue
-                hdr = hdus[camera].read_header()
-                mjd_obs, exptime = hdr['MJD-OBS'], hdr['EXPTIME']
-                gfa_info = np.array(
-                    [(mjd_obs, exptime)], dtype=[('MJD-OBS', float), ('EXPTIME', float)])
-                break
+        try:
+            with fitsio.FITS(str(acq_path)) as hdus:
+                for camera in desietc.gfa.GFACamera.guide_names:
+                    if camera not in hdus:
+                        continue
+                    hdr = hdus[camera].read_header()
+                    mjd_obs, exptime = hdr['MJD-OBS'], hdr['EXPTIME']
+                    gfa_info = np.array(
+                        [(mjd_obs, exptime)], dtype=[('MJD-OBS', float), ('EXPTIME', float)])
+                    break
+        except Exception as e:
+            logging.error(f'Failed to read ACQ data: {e}')
     num_gfa_frames = len(gfa_info)
     logging.info(f'Exposure has {num_gfa_frames} GFA frames.')
     # Determine the order in which the combined GFA+SKY frames should be fed to the ETC.
