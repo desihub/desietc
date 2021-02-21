@@ -499,9 +499,12 @@ class ETCAlgorithm(object):
             mjd_obs.append(self.mjd_obs)
             exptime.append(self.exptime)
             ncamera += 1
+        # Did we get any useful?
+        if ncamera == 0:
+            return False
         # Combine all cameras.
-        transp = np.nanmedian(camera_transp)
-        ffrac = np.nanmedian(camera_ffrac)
+        transp = np.nanmedian(camera_transp) if np.any(np.isfinite(camera_transp)) else 0.
+        ffrac = np.nanmedian(camera_ffrac) if np.any(np.isfinite(camera_ffrac)) else 0.
         thru = transp * ffrac
         logging.info(f'Guide transp={transp:.3f}, ffrac={ffrac:.3f}, thru={thru:.3f}.')
         # Record this measurement.
