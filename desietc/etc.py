@@ -780,11 +780,11 @@ class ETCAlgorithm(object):
         # Forecast the future signal and background.
         self.sig_grid[future] = self.thru_measurements.forecast_grid(self.mjd_grid[future])
         self.bg_grid[future] = self.sky_measurements.forecast_grid(self.mjd_grid[future])
-        # Forecast the future accumulated signal and background, assuming the shutter stays open until mjd_max.
+        # Calculate accumulated signal and background, assuming the shutter stays open until mjd_max.
         n_grid = 1 + np.arange(len(self.mjd_grid) - iopen)
         accum_sig = np.cumsum(self.sig_grid[iopen:]) / n_grid
         accum_bg = np.cumsum(self.bg_grid[iopen:]) / n_grid
-        # Calculate the corresponding future accumulated effective exposure time in seconds.
+        # Calculate the corresponding accumulated effective exposure time in seconds.
         accum_treal = (self.mjd_grid[iopen:] - mjd_open) * self.SECS_PER_DAY
         accum_teff = accum_treal * self.exptime_factor(accum_sig, accum_bg, MW_transp)
         # When do we expect to close the shutter.
@@ -798,7 +798,7 @@ class ETCAlgorithm(object):
             logging.warn(f'Will not reach target before max exposure time.')
         else:
             # We expect to reach the target before mjd_max but are not there yet.
-            istop = np.argmax(accum_teff >= target)
+            istop = np.argmax(accum_teff + prev_teff >= target)
         # Lookup our expected stop time and time remaining, assuming the shutter stays open.
         mjd_stop = self.mjd_grid[iopen + istop]
         self.time_remaining = (mjd_stop - mjd_now) * self.SECS_PER_DAY
