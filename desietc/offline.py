@@ -60,7 +60,7 @@ def replay_exposure(ETC, path, expid, outpath, teff=1000, ttype='DARK', cutoff=1
         missing = 0
         for key in 'NIGHT', 'MJD-OBS', 'TILEID', 'EXPTIME':
             if key not in desi_hdr:
-                logging.error('DESI exposure missing {key}.')
+                logging.error(f'DESI exposure missing {key}.')
                 missing += 1
         if missing > 0:
             return False
