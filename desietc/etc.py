@@ -263,7 +263,7 @@ class ETCAlgorithm(object):
         camera_result['nstar'] = nstar
         T, WT =  thisGFA.psf_stack
         if T is None:
-            return camera_result
+            return camera_result, None
         # Measure the FWHM and FFRAC of the stacked PSF.
         fwhm, ffrac = measure.measure(T, WT)
         camera_result['fwhm'] = fwhm if fwhm > 0 else np.nan
@@ -351,7 +351,7 @@ class ETCAlgorithm(object):
         logging.info(f'Acquisition image quality using {nstars_tot} stars: ' +
             f'FWHM={self.fwhm:.2f}", FFRAC={self.ffrac:.3}.')
         # Generate an acquisition analysis summary image.
-        if self.image_path is not None:
+        if nstars_tot > 0 and self.image_path is not None:
             try:
                 desietc.plot.save_acquisition_summary(
                     acq_mjd, self.exptag, psf_model, self.psf_stack, self.fwhm, self.ffrac, nstars,
