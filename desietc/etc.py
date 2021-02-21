@@ -36,6 +36,7 @@ import desietc.plot
 # - save grid ararys to json
 # - save cpu timing to json
 # - truncate digits for np.float json output
+# - implement allocate / release.
 
 class ETCAlgorithm(object):
 
@@ -335,8 +336,8 @@ class ETCAlgorithm(object):
             nstars_tot += nstars[camera]
             fwhm_vec.append(camera_result.get('fwhm', np.nan))
             ffrac_vec.append(camera_result.get('ffrac', np.nan))
-            gmm_params = camera_result.get('gmm', None)
-            if gmm_params is None:
+            gmm_params = camera_result.get('gmm', [])
+            if not gmm_params:
                 logging.warn(f'PSF measurement failed for {camera}.')
                 continue
             psf_model[camera] = self.GMM.predict(gmm_params)
