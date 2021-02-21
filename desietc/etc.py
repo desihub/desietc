@@ -710,6 +710,8 @@ class ETCAlgorithm(object):
         nopen, nclose = len(self.shutter_open), len(self.shutter_close)
         if nopen != nclose:
             logging.error(f'stop_exposure called after {nopen} opens, {nclose} closes.')
+        # Record the stop index in our grid.
+        self.grid_stop = np.searchsorted(self.mjd_grid, mjd) + 1
         logging.info(f'Stop {self.exptag} at {timestamp}')
 
     def exptime_factor(self, signal, background, MW_transp):
@@ -851,6 +853,8 @@ class ETCAlgorithm(object):
             return
         # Save all measurements after mjd_start.
         mjd1, mjd2 = self.exp_data['mjd_start'], None
+        # Trim the grid to the stop time.
+
         # Build a data structure to save via json.
         save = dict(
             expinfo=self.exp_data,
@@ -858,9 +862,18 @@ class ETCAlgorithm(object):
             acquisition=self.acquisition_data,
             guide_stars=self.guide_stars,
             shutter=dict(
-                open=self.shutter_open, close=self.shutter_close, teff=self.shutter_teff),
+                open=self.shutter_open,
+                close=self.shutter_close,
+                teff=self.shutter_teff,
+            ),
             thru=self.thru_measurements.save(mjd1, mjd2),
-            sky=self.sky_measurements.save(mjd1, mjd2)
+            sky=self.sky_measurements.save(mjd1, mjd2),
+            grid=dict(
+                mjd=self.mjd_grid[:self.grid_stop],
+                sig=self.sig_grid[:self.grid_stop],
+                bg=self.bg_grid[:self.grid_stop],
+                open=self.open_grid[:self.grid_stop],
+            )
         )
         # Encode numpy types using python built-in types for serialization.
         fname = path / f'etc-{self.exptag}.json'
