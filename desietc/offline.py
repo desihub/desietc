@@ -139,7 +139,11 @@ def replay_exposure(ETC, path, expid, outpath, teff=1000, ttype='DARK', cutoff=1
         logging.error(f'No GFA or SKY frames found.')
         return False
     # Start the exposure processing.
-    timestamp = desietc.util.mjd_to_date(gfa_info[0]['MJD-OBS'] - 1 / ETC.SECS_PER_DAY, utc_offset=0)
+    if num_gfa_frames > 0:
+        mjd_first_frame = gfa_info[0]['MJD-OBS']
+    else:
+        mjd_first_frame = sky_info[0]['MJD-OBS']
+    timestamp = desietc.util.mjd_to_date(mjd_first_frame - 1 / ETC.SECS_PER_DAY, utc_offset=0)
     ETC.start_exposure(timestamp, expid, teff, ttype, cutoff, cosmic, maxsplit, splittable)
     # Loop over frames to replay.
     for frame in frames:
