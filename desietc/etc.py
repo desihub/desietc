@@ -769,9 +769,13 @@ class ETCAlgorithm(object):
         n_grid = 1 + np.arange(len(self.mjd_grid) - iopen)
         accum_sig = np.cumsum(self.sig_grid[iopen:]) / n_grid
         accum_bg = np.cumsum(self.bg_grid[iopen:]) / n_grid
+        print('sig', accum_sig)
+        print('bg', accum_bg)
         # Calculate the corresponding future accumualated effective exposure time in seconds.
         accum_treal = (self.mjd_grid[iopen:] - mjd_open) * self.SECS_PER_DAY
+        print('treal', accum_treal)
         accum_teff = accum_treal * self.exptime_factor(accum_sig, accum_bg, MW_transp)
+        print('teff', accum_teff)
         # When do we expect to close the shutter.
         if accum_teff[-1] < target:
             # We expect to reach mjd_max before the target.

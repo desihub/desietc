@@ -123,7 +123,7 @@ def etcoffline(args):
     # Initialize the global ETC algorithm.
     ETC = desietc.etc.ETCAlgorithm(
         args.sky_calib, args.gfa_calib, args.psf_pixels, args.max_dither, args.num_dither,
-        args.Ebv_coef, args.nbad_threshold, args.nll_threshold, args.parallel)
+        args.Ebv_coef, args.nbad_threshold, args.nll_threshold, args.grid_resolution, args.parallel)
 
     # Enable GMM debug messages if requested.
     if args.debug and args.gmm_debug:
@@ -195,10 +195,12 @@ def main():
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('-v', '--verbose', action='store_true',
         help='provide verbose output on progress')
+    parser.add_argument('--debug', action='store_true',
+        help='provide verbose and debugging output')
+    parser.add_argument('--traceback', action='store_true',
+        help='print traceback and enter debugger after an exception')
     parser.add_argument('--logpath', type=str, metavar='PATH',
         help='Path where logging output should be written')
-    parser.add_argument('--debug', action='store_true',
-        help='print traceback and enter debugger after an exception')
     parser.add_argument('--night', type=int, metavar='YYYYMMDD',
         help='Night of exposure to process in the format YYYYMMDD')
     parser.add_argument('--expid', type=str, metavar='N',
@@ -221,6 +223,8 @@ def main():
         help='Maximum allowed bad overscan pixels before warning')
     parser.add_argument('--nll-threshold', type=float, default=10,
         help='Maximum allowed GMM fit NLL value before warning')
+    parser.add_argument('--grid-resolution', type=float, default=0.5,
+        help='Resolution of ETC calculations in seconds')
     parser.add_argument('--gmm-debug', action='store_true',
         help='Generate debug log messages during GMM.fit')
     parser.add_argument('--dry-run', action='store_true',
@@ -258,7 +262,7 @@ def main():
         retval = etcoffline(args)
         sys.exit(retval)
     except Exception as e:
-        if args.debug:
+        if args.traceback:
             # https://stackoverflow.com/questions/242485/starting-python-debugger-automatically-on-error
             extype, value, tb = sys.exc_info()
             traceback.print_exc()
