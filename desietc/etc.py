@@ -37,6 +37,7 @@ import desietc.plot
 # - save cpu timing to json
 # - truncate digits for np.float json output
 # - implement allocate / release.
+# - warn if SNR is decreasing.
 
 class ETCAlgorithm(object):
 
@@ -110,6 +111,7 @@ class ETCAlgorithm(object):
             ('teff', np.float32),                 # accumulated effective time estimate in seconds
             ('tproj', np.float32),                # projected real time remaining in seconds
             ('final', np.float32),                # projected final effective time in seconds
+            ('split', np.float32),                # projected time until next split in seconds
         ]
         # Define auxiliary data to save with each GFA or SKY measurement.
         self.thru_measurements = desietc.util.MeasurementBuffer(
@@ -513,7 +515,7 @@ class ETCAlgorithm(object):
         # Use constant error until we have a proper estimate.
         self.thru_measurements.add(
             mjd_start, mjd_stop, thru, 0.01,
-            aux_data=(each_ffrac, each_transp, each_dx, each_dy, 0, 0, 0, 0, 0))
+            aux_data=(each_ffrac, each_transp, each_dx, each_dy, 0, 0, 0, 0, 0, 0))
         # Update our accumulated signal if the shutter is open.
         nopen, nclose = len(self.shutter_open), len(self.shutter_close)
         if nopen == nclose + 1:
@@ -521,7 +523,7 @@ class ETCAlgorithm(object):
             self.thru_measurements.set_last(
                 sig=self.accumulated_signal, bg=self.accumulated_background,
                 teff=self.accumulated_eff_time, tproj=self.time_remaining,
-                final=self.projected_eff_time)
+                final=self.projected_eff_time, split=self.split_remaining)
         # Report timing.
         elapsed = time.time() - start
         logging.debug(f'Guide frame processing took {elapsed:.2f}s for {nstar} stars in {ncamera} cameras.')
@@ -569,7 +571,7 @@ class ETCAlgorithm(object):
         mjd_start, mjd_stop = self.get_mjd_range(mjd_obs, exptime, f'sky[{fnum}]')
         self.sky_measurements.add(
             mjd_start, mjd_stop, flux, dflux,
-            aux_data=(each_flux, each_dflux, each_ndrop, 0, 0, 0, 0, 0))
+            aux_data=(each_flux, each_dflux, each_ndrop, 0, 0, 0, 0, 0, 0))
         # Update our accumulated background if the shutter is open.
         nopen, nclose = len(self.shutter_open), len(self.shutter_close)
         if nopen == nclose + 1:
@@ -577,7 +579,7 @@ class ETCAlgorithm(object):
             self.sky_measurements.set_last(
                 sig=self.accumulated_signal, bg=self.accumulated_background,
                 teff=self.accumulated_eff_time, tproj=self.time_remaining,
-                final=self.projected_eff_time)
+                final=self.projected_eff_time, split=self.split_remaining)
         # Profile timing.
         elapsed = time.time() - start
         logging.debug(f'Sky frame processing took {elapsed:.2f}s for {ncamera} cameras.')
@@ -792,9 +794,16 @@ class ETCAlgorithm(object):
         accum_treal = (self.mjd_grid[iopen:] - mjd_open) * self.SECS_PER_DAY
         accum_teff = accum_treal * self.exptime_factor(accum_sig, accum_bg, MW_transp)
         # When do we expect to close the shutter.
-        if self.accumulated_eff_time + prev_teff >= target:
+        self.action = None
+        if mjd_now >= mjd_max:
+            # We have already reached the maximum allowed exposure time.
+            istop = inow
+            self.action = ('stop', 'max exptime')
+            logging.info(f'Maximum exposure time reached.')
+        elif self.accumulated_eff_time + prev_teff >= target:
             # We have already reached the target.
             istop = inow
+            self.action = ('stop', 'target reached')
             logging.info(f'Target reached.')
         elif accum_teff[-1] + prev_teff < target:
             # We will not reach the target before the mjd_max cutoff.
@@ -810,7 +819,17 @@ class ETCAlgorithm(object):
         self.projected_eff_time = accum_teff[istop] + prev_teff
         logging.info(f'Will stop in {self.time_remaining:.1f}s at teff={self.projected_eff_time:.1f}s' +
             f' (target={target:.1f}s).')
-
+        # Calculate how many cosmic splits are remaining, for the currrent shutter.
+        nsplit_remaining = int(np.ceil((mjd_stop - mjd_open) * self.SECS_PER_DAY / cosmic_split))
+        # Calculate when the next split should be.
+        mjd_split = mjd_open + (mjd_stop - mjd_open) / nsplit_remaining
+        self.split_remaining = (mjd_split - mjd_now) * self.SECS_PER_DAY
+        logging.info(f'Next split ({nopen} of {nclose+nsplit_remaining}) in {self.split_remaining:.1f}s')
+        if (splittable and self.action is None and
+            nsplit_remaining > 1 and nopen < max_splits and self.split_remaining <= 0):
+            self.action = ('split', 'cosmic split')
+        if self.action is not None:
+            logging.info(f'Recommended action is {self.action}.')
         return True
 
     def read_fiberassign(self, fname):
