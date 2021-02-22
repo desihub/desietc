@@ -314,6 +314,10 @@ class ETCAlgorithm(object):
                 self.acquisition_data[camera], self.psf_stack[camera] = self.measure_psf(
                     self.GFAs[camera], self.GMM, self.psf_inset, self.measure)
             ncamera += 1
+        # Save the acquisition timing.
+        self.exp_data['acq_mjd'] = acq_mjd
+        self.exp_data['acq_exptime'] = acq_exptime
+        # Collect results from any parallel processes.
         for camera in pending:
             logging.info(f'Waiting for {camera}...')
             # Collect the parallel measure_psf outputs.

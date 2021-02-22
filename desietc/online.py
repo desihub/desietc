@@ -192,6 +192,13 @@ class OnlineETC():
                             self.ETCalg.process_guide_frame(gfa_image['image'])
                             have_new_telemetry = True
 
+                if have_new_telemetry and self.ETCalg.action is not None:
+                    action, cause = self.ETCalg.action
+                    if action == 'stop':
+                        self.call_to_request_stop(cause)
+                    elif action == 'split' and self.splittable:
+                        self.call_to_request_split(cause)
+
                 # Send a telemetry update if triggered above or we are overdue.
                 now = datetime.datetime.utcnow()
                 if have_new_telemetry or now > self.last_upate_time + self.max_update_delay:
