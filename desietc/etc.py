@@ -635,9 +635,9 @@ class ETCAlgorithm(object):
         """
         """
         self.accumulated_mjd = desietc.util.date_to_mjd(datetime.datetime.utcnow(), utc_offset=0)
-        self.accumulated_eff_time = self.accumulated_real_time = 0
-        self.accumulated_signal = self.accumulated_background = 0
-        self.time_remaining = self.split_remaining = 0
+        self.accumulated_eff_time = self.accumulated_real_time = 0.
+        self.accumulated_signal = self.accumulated_background = 0.
+        self.time_remaining = self.split_remaining = self.projected_eff_time = 0.
         self.shutter_open = []
         self.shutter_close = []
         self.shutter_teff = []
