@@ -510,7 +510,7 @@ class ETCAlgorithm(object):
             mjd_obs.append(self.mjd_obs)
             exptime.append(self.exptime)
             ncamera += 1
-        # Did we get any useful?
+        # Did we get any useful data?
         if ncamera == 0:
             return False
         # Combine all cameras.
@@ -637,9 +637,11 @@ class ETCAlgorithm(object):
         self.accumulated_mjd = desietc.util.date_to_mjd(datetime.datetime.utcnow(), utc_offset=0)
         self.accumulated_eff_time = self.accumulated_real_time = 0
         self.accumulated_signal = self.accumulated_background = 0
+        self.time_remaining = self.split_remaining = 0
         self.shutter_open = []
         self.shutter_close = []
         self.shutter_teff = []
+        self.action = None
 
     def start_exposure(self, timestamp, expid, target_teff, target_type, max_exposure_time,
                        cosmics_split_time, max_splits, splittable):
