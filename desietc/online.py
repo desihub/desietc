@@ -128,100 +128,104 @@ class OnlineETC():
         """
         Log.info('ETC: processing thread starting.')
 
+        self.ETCalg.start()
+
         last_image_processing = last_etc_processing = False
 
-        while not self.shutdown.is_set():
+        try:
+            while not self.shutdown.is_set():
 
-            if self.image_processing.is_set():
-                # An exposure is active.
+                if self.image_processing.is_set():
+                    # An exposure is active.
 
-                have_new_telemetry = False
+                    have_new_telemetry = False
 
-                # Any changes of state to propagate?
-                if not last_image_processing:
-                    # A new exposure has just started.
-                    self.ETCalg.start_exposure(
-                        self.img_start_time, self.expid, self.target_teff, self.target_type,
-                        self.max_exposure_time, self.cosmics_split_time, self.max_splits, self.splittable)
-                    last_image_processing = True
-                    # Set the path where the PNG generated after the acquisition analysis will be written.
-                    self.ETCalg.set_image_path(self.call_for_png_dir(self.expid))
-                    # Look for the acquisition image and PlateMaker guide stars next.
-                    need_acq_image = need_stars = True
+                    # Any changes of state to propagate?
+                    if not last_image_processing:
+                        # A new exposure has just started.
+                        self.ETCalg.start_exposure(
+                            self.img_start_time, self.expid, self.target_teff, self.target_type,
+                            self.max_exposure_time, self.cosmics_split_time, self.max_splits, self.splittable)
+                        last_image_processing = True
+                        # Set the path where the PNG generated after the acquisition analysis will be written.
+                        self.ETCalg.set_image_path(self.call_for_png_dir(self.expid))
+                        # Look for the acquisition image and PlateMaker guide stars next.
+                        need_acq_image = need_stars = True
 
-                elif not last_etc_processing and self.etc_processing.is_set():
-                    # Shutter just opened.
-                    self.ETCalg.open_shutter(self.etc_start_time)
-                    last_etc_processing = True
+                    elif not last_etc_processing and self.etc_processing.is_set():
+                        # Shutter just opened.
+                        self.ETCalg.open_shutter(self.etc_start_time)
+                        last_etc_processing = True
 
-                elif last_etc_processing and not self.etc_processing.is_set():
-                    # Shutter just closed.
-                    self.ETCalg.close_shutter(self.etc_stop_time)
-                    last_etc_processing = False
-                    have_new_telemetry = True
+                    elif last_etc_processing and not self.etc_processing.is_set():
+                        # Shutter just closed.
+                        self.ETCalg.close_shutter(self.etc_stop_time)
+                        last_etc_processing = False
+                        have_new_telemetry = True
 
-                sky_image = self.call_for_sky_image(wait=None)
-                if sky_image:
-                    # Always process a sky frame if available.
-                    self.ETCalg.process_sky_frame(sky_image['image'])
-                    have_new_telemetry = True
+                    sky_image = self.call_for_sky_image(wait=None)
+                    if sky_image:
+                        # Always process a sky frame if available.
+                        self.ETCalg.process_sky_frame(sky_image['image'])
+                        have_new_telemetry = True
 
-                elif last_etc_processing:
-                    # Shutter is open.
+                    elif last_etc_processing:
+                        # Shutter is open.
 
-                    if need_acq_image:
-                        # Process the acquisition image if available.
-                        acq_image = self.call_for_acq_image(wait=None)
-                        if acq_image:
-                            self.ETCalg.process_acquisition(acq_image['image'])
-                            self.ETCalg.read_fiberassign(acq_image['fiberassign'])
-                            have_new_telemetry = True
-                            need_acq_image = False
+                        if need_acq_image:
+                            # Process the acquisition image if available.
+                            acq_image = self.call_for_acq_image(wait=None)
+                            if acq_image:
+                                self.ETCalg.process_acquisition(acq_image['image'])
+                                self.ETCalg.read_fiberassign(acq_image['fiberassign'])
+                                have_new_telemetry = True
+                                need_acq_image = False
 
-                    elif need_stars:
-                        # Process the PlateMaker guide stars if available.
-                        pm_info = self.call_for_pm_info(wait=None)
-                        if pm_info:
-                            self.ETCalg.set_guide_stars(pm_info['guidestars'])
-                            need_stars = False
+                        elif need_stars:
+                            # Process the PlateMaker guide stars if available.
+                            pm_info = self.call_for_pm_info(wait=None)
+                            if pm_info:
+                                self.ETCalg.set_guide_stars(pm_info['guidestars'])
+                                need_stars = False
 
-                    else:
-                        # Process a guide frame if available.
-                        gfa_image = self.call_for_gfa_image(wait=None)
-                        if gfa_image:
-                            self.ETCalg.process_guide_frame(gfa_image['image'])
-                            have_new_telemetry = True
+                        else:
+                            # Process a guide frame if available.
+                            gfa_image = self.call_for_gfa_image(wait=None)
+                            if gfa_image:
+                                self.ETCalg.process_guide_frame(gfa_image['image'])
+                                have_new_telemetry = True
 
-                if have_new_telemetry and self.ETCalg.action is not None:
-                    action, cause = self.ETCalg.action
-                    if action == 'stop':
-                        self.call_to_request_stop(cause)
-                    elif action == 'split' and self.splittable:
-                        self.call_to_request_split(cause)
+                    if have_new_telemetry and self.ETCalg.action is not None:
+                        action, cause = self.ETCalg.action
+                        if action == 'stop':
+                            self.call_to_request_stop(cause)
+                        elif action == 'split' and self.splittable:
+                            self.call_to_request_split(cause)
 
-                # Send a telemetry update if triggered above or we are overdue.
-                now = datetime.datetime.utcnow()
-                if have_new_telemetry or now > self.last_upate_time + self.max_update_delay:
-                    self.last_update_time = now
-                    self.call_to_update_status()
+                    # Send a telemetry update if triggered above or we are overdue.
+                    now = datetime.datetime.utcnow()
+                    if have_new_telemetry or now > self.last_upate_time + self.max_update_delay:
+                        self.last_update_time = now
+                        self.call_to_update_status()
 
-            else:
-                # No exposure is active.
-                if last_image_processing:
-                    # The previous exposure has just ended.
-                    self.ETCalg.stop_exposure(self.img_stop_time)
-                    last_image_processing = False
-                    # Save the ETC outputs for this exposure.
-                    self.ETCalg.save_exposure(self.call_for_exp_dir(self.expid))
-                    # Reset the PNG output path.
-                    self.ETCalg.set_image_path(None)
+                else:
+                    # No exposure is active.
+                    if last_image_processing:
+                        # The previous exposure has just ended.
+                        self.ETCalg.stop_exposure(self.img_stop_time)
+                        last_image_processing = False
+                        # Save the ETC outputs for this exposure.
+                        self.ETCalg.save_exposure(self.call_for_exp_dir(self.expid))
+                        # Reset the PNG output path.
+                        self.ETCalg.set_image_path(None)
 
-            # Need some delay here to allow the main thread to run.
-            time.sleep(0.5)
+                # Need some delay here to allow the main thread to run.
+                time.sleep(0.5)
 
-        # The shutdown event has been cleared.
-        self.ETCAlg.shutdown()
-        Log.info('ETC: processing thread exiting after shutdown.')
+        finally:
+            # The shutdown event has been cleared.
+            self.ETCAlg.shutdown()
+            Log.info('ETC: processing thread exiting after shutdown.')
 
     def get_status(self):
         """Return the current ETC status.

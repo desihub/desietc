@@ -148,6 +148,7 @@ def etcoffline(args):
 
     # Wrap the processing of exposures to ensure that ETC.shutdown is always called.
     try:
+        ETC.start()
         if args.expid is not None:
             exposures = set()
             # Loop over comma-separated tokens.

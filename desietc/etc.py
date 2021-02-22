@@ -30,13 +30,9 @@ import desietc.plot
 
 # TODO:
 # - estimate GFA thru errors & use stars from all GFAs together
-# - implement cutoff time logic
-# - implement cosmic split logic
 # - save git hash / version to json output
-# - save grid ararys to json
 # - save cpu timing to json
-# - truncate digits for np.float json output
-# - implement allocate / release.
+# - truncate digits for np.float32 json output
 # - warn if SNR is decreasing.
 
 class ETCAlgorithm(object):
@@ -79,6 +75,7 @@ class ETCAlgorithm(object):
         self.nbad_threshold = nbad_threshold
         self.nll_threshold = nll_threshold
         self.grid_resolution = grid_resolution / self.SECS_PER_DAY
+        self.gfa_calib = gfa_calib
         # Initialize PSF fitting.
         if psf_pixels % 2 == 0:
             raise ValueError('psf_pixels must be odd.')
@@ -129,12 +126,19 @@ class ETCAlgorithm(object):
             ] + aux_dtype)
         # Initialize the SKY camera processor.
         self.SKY = desietc.sky.SkyCamera(calib_name=sky_calib)
-        # Initialize the GFA camera processor(s).
-        self.GFAs = {}
+        self.parallel = parallel
+        # Check that shared mem is available if we need it.
         if parallel and not shared_memory_available:
             raise RuntimeError('Python >= 3.8 required for the parallel ETC option.')
-        self.parallel = parallel
-        if parallel:
+
+    def start(self):
+        """Perform startup resource allocation. Must be paired with a call to shutdown().
+        """
+        self.shutdown()
+        logging.info('Starting up ETC...')
+        # Initialize the GFA camera processor(s).
+        self.GFAs = {}
+        if self.parallel:
             # Allocate shared-memory buffers for each guide camera's GFACamera object.
             bufsize = desietc.gfa.GFACamera.buffer_size
             self.shared_mem = {}
@@ -145,7 +149,7 @@ class ETCAlgorithm(object):
                 self.shared_mem[camera] = multiprocessing.shared_memory.SharedMemory(
                     name=bufname, size=bufsize, create=True)
                 self.GFAs[camera] = desietc.gfa.GFACamera(
-                    calib_name=gfa_calib, buffer=self.shared_mem[camera].buf)
+                    calib_name=self.gfa_calib, buffer=self.shared_mem[camera].buf)
             nbytes = bufsize * len(self.GFAs)
             logging.info(f'Allocated {nbytes/2**20:.1f}Mb of shared memory.')
             # Initialize per-GFA processes, each with its own pipe.
@@ -154,23 +158,23 @@ class ETCAlgorithm(object):
                 self.pipes[camera], child = context.Pipe()
                 self.processes[camera] = context.Process(
                     target=ETCAlgorithm.gfa_process, args=(
-                        camera, gfa_calib, self.GMM, self.psf_inset, self.measure, child))
+                        camera, self.gfa_calib, self.GMM, self.psf_inset, self.measure, child))
                 self.processes[camera].start()
             logging.info(f'Initialized {len(self.GFAs)} GFA processes.')
         else:
             # All GFAs use the same GFACamera object.
-            GFA = desietc.gfa.GFACamera(calib_name=gfa_calib)
+            GFA = desietc.gfa.GFACamera(calib_name=self.gfa_calib)
             for camera in desietc.gfa.GFACamera.guide_names:
                 self.GFAs[camera] = GFA
-        self.needs_shutdown = parallel
+        self.needs_shutdown = self.parallel
 
     def shutdown(self):
         """Release any resources allocated in our constructor.
         """
-        logging.info('Shutting down ETC...')
-        if not self.needs_shutdown:
+        if not getattr(self, 'needs_shutdown', False):
             return
-        # Shutdown our GFA process pool.
+        logging.info('Shutting down ETC...')
+        # Shutdown the process and release the shared memory allocated for each GFA.
         for camera in desietc.gfa.GFACamera.guide_names:
             logging.info(f'Releasing {camera} resources')
             self.pipes[camera].send('quit')
