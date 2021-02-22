@@ -462,7 +462,7 @@ class ETCAlgorithm(object):
                 continue
             dithered = self.dithered_model[camera]
             if camera not in self.guide_stars:
-                logging.info(f'Skipping {camera} guide frame {fnum} with no guide stars.')
+                logging.debug(f'Skipping {camera} guide frame {fnum} with no guide stars.')
                 continue
             if camera not in data:
                 logging.warning(f'Missing {camera} guide frame {fnum}.')

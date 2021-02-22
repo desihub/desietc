@@ -16,7 +16,7 @@ import desietc.gfa
 import desietc.sky
 import desietc.plot
 
-def replay_exposure(ETC, path, expid, outpath, teff=1000, ttype='DARK', cutoff=10000, cosmic=500,
+def replay_exposure(ETC, path, expid, outpath, teff=1000, ttype='DARK', cutoff=3600, cosmic=1200,
                     maxsplit=3, splittable=True, overwrite=False, dry_run=False, only_complete=True):
     """Recreate the online ETC processing of an exposure by replaying the
     FITS files stored to disk.
@@ -197,7 +197,7 @@ def replay_exposure(ETC, path, expid, outpath, teff=1000, ttype='DARK', cutoff=1
 def acq_to_online(path, names):
     online = {}
     with fitsio.FITS(str(path)) as hdus:
-        online['header']= dict(hdus[0].read_header())
+        online['header']= dict(hdus['GUIDER'].read_header())
         for ext in names:
             if ext not in hdus:
                 continue
