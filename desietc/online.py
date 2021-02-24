@@ -58,6 +58,11 @@ except ImportError:
     # Fallback when we are not running as a DOS application.
     import logging
 
+try:
+    from DOSlib.PML import SUCCESS, FAILED
+except ImportError:
+    SUCCESS, FAILED = True, False
+
 import desietc.etc
 
 
@@ -308,6 +313,9 @@ class OnlineETC():
     def reset(self, all = True, keep_accumulated = False, update_status = True):
         """
         """
+        if not etc_ready.is_set():
+            return FAILED
+
         # stop processing (if necessary)
         self.etc_processing.clear()
 
@@ -320,6 +328,8 @@ class OnlineETC():
         # update status
         if update_status == True:
             self.call_to_update_status()
+
+        return SUCCESS
 
     def shutdown(self, timeout=30):
         """Terminate our worker thread, which will release ETCalg resources.
@@ -337,10 +347,15 @@ class OnlineETC():
             self.ETCalg.shutdown(force=True)
         self.etc_ready.clear()
 
+        return SUCCESS
+
     def configure(self):
         """
         ETC configure - to be completed
         """
+        if not etc_ready.is_set():
+            return FAILED
+
         # reset internal variables
         self.reset(all=True)
 
@@ -354,6 +369,8 @@ class OnlineETC():
             logging.info('ETC: processing thread still running')
 
         logging.info('configure: ETC is ready')
+
+        return SUCCESS
 
     def prepare_for_exposure(self, expid, target_teff, target_type, max_exposure_time,
                              cosmics_split_time, max_splits, splittable):
@@ -371,6 +388,9 @@ class OnlineETC():
         max_splits:        Maximum number of allowed cosmic splits.
         splittable:        Never do splits when this is False.
         """
+        if not etc_ready.is_set():
+            return FAILED
+
         assert isinstance(expid, int),'Invalid arguments'
         logging.info('ETC (%d): prepare_for_exposure called for expid %r' % expid)
 
@@ -398,11 +418,16 @@ class OnlineETC():
         # Update our status.
         self.call_to_update_status()
 
+        return SUCCESS
+
     def start(self, start_time=None, **options):
         """Start processing the exposure specified in the last call to
         :meth:`prepare_for_exposure`.  The ETC will start looking for an
         acquisition image once this is called.
         """
+        if not etc_ready.is_set():
+            return FAILED
+
         self.img_start_time = start_time or datetime.datetime.utcnow()
         logging.info('start: start exposure at %r' % self.img_start_time)
         if options:
@@ -414,12 +439,17 @@ class OnlineETC():
         # Update our status.
         self.call_to_update_status()
 
+        return SUCCESS
+
     def start_etc(self, start_time=None, **options):
         """Signal to the ETC that the spectrograph shutters have just opened.
 
         The ETC will accumulate effective exposure time until the next call
         to to :meth:`stop_etc` or :meth:`stop`.
         """
+        if not etc_ready.is_set():
+            return FAILED
+
         self.etc_start_time = start_time or datetime.datetime.utcnow()
         logging.info('start_etc: shutter opened at %r' % self.etc_start_time)
         if options:
@@ -431,12 +461,17 @@ class OnlineETC():
         # Update our status.
         self.call_to_update_status()
 
+        return SUCCESS
+
     def stop_etc(self, source='OPERATOR', stop_time=None, **options):
         """Signal to the ETC that the spectograph shutters have just closed.
 
         The ETC will continue processing any new sky or guide frames until
         :meth:`stop` is called.
         """
+        if not etc_ready.is_set():
+            return FAILED
+
         self.etc_stop_time = stop_time or datetime.datetime.utcnow()
         self.etc_stop_src = source
         logging.info('stop_etc: shutter closed at %r by %s ' % (self.etc_stop_time, source))
@@ -449,6 +484,8 @@ class OnlineETC():
         # Update our status.
         self.call_to_update_status()
 
+        return SUCCESS
+
     def stop(self, source='OPERATOR', stop_time=None, **options):
         """Signal to the ETC that the current exposure has stopped.
 
@@ -457,6 +494,9 @@ class OnlineETC():
         In case stop is called while the spectrograph shutters are open,
         log an error and clear etc_processing before clearing image_processing.
         """
+        if not etc_ready.is_set():
+            return FAILED
+
         self.img_stop_time = stop_time or datetime.datetime.utcnow()
         self.img_stop_src = source
         logging.info('stop: exposure stopped at %r by %s' % (self.img_stop_time, source))
@@ -472,3 +512,5 @@ class OnlineETC():
 
         # Update our status.
         self.call_to_update_status()
+
+        return SUCCESS
