@@ -86,7 +86,7 @@ class OnlineETC():
         if gfa_calib is None or sky_calib is None:
             raise RuntimeError('ETC_GFA_CALIB and ETC_SKY_CALIB must be set.')
         self.ETCalg = desietc.etc.ETCAlgorithm(gfa_calib, sky_calib, parallel=True)
-        self.last_update_time = timedate.timedate.utcnow()
+        self.last_update_time = datetime.datetime.utcnow()
 
         # Start our processing thread and create the flags we use to synchronize with it.
         self.image_processing = threading.Event()
@@ -96,7 +96,7 @@ class OnlineETC():
         self.etc_thread = threading.Thread(target = self._etc)
         self.etc_thread.daemon = True
         self.etc_thread.start()
-        Log.info('ETC: processing thread running')
+        logging.info('ETC: processing thread running')
 
     def _etc(self):
         """This is the ETC algorithm that does the actual work.
@@ -126,7 +126,7 @@ class OnlineETC():
 
         The thread that runs this function is started in our constructor.
         """
-        Log.info('ETC: processing thread starting.')
+        logging.info('ETC: processing thread starting.')
 
         self.ETCalg.start()
 
@@ -225,7 +225,7 @@ class OnlineETC():
         finally:
             # The shutdown event has been cleared.
             self.ETCAlg.shutdown()
-            Log.info('ETC: processing thread exiting after shutdown.')
+            logging.info('ETC: processing thread exiting after shutdown.')
 
     def get_status(self):
         """Return the current ETC status.
@@ -242,6 +242,11 @@ class OnlineETC():
         but never both, as indicated in the comments below.
         """
         etc_status = {}
+
+        # Do we have any telemetry yet?
+        if getattr(self, 'expid', None) is None:
+            etc_status['last_updated'] = datetime.datetime.utcnow().isoformat()
+            return etc_status
 
         # These variables are only updated by the main thread #################
 
@@ -321,11 +326,11 @@ class OnlineETC():
             self.etc_thread = threading.Thread(target = self._etc)
             self.etc_thread.daemon = True
             self.etc_thread.start()
-            Log.warn('ETC: processing thread restarted')
+            logging.warn('ETC: processing thread restarted')
         else:
-            Log.info('ETC: processing thread still running')
+            logging.info('ETC: processing thread still running')
 
-        Log.info('configure: ETC is ready')
+        logging.info('configure: ETC is ready')
 
     def prepare_for_exposure(self, expid, target_teff, target_type, max_exposure_time,
                              cosmics_split_time, max_splits, splittable):
@@ -344,16 +349,16 @@ class OnlineETC():
         splittable:        Never do splits when this is False.
         """
         assert isinstance(expid, int),'Invalid arguments'
-        Log.info('ETC (%d): prepare_for_exposure called for expid %r' % expid)
+        logging.info('ETC (%d): prepare_for_exposure called for expid %r' % expid)
 
         # check if _etc thread is still running
         if not self.etc_thread.is_alive():
             self.etc_thread = threading.Thread(target = self._etc)
             self.etc_thread.daemon = True
             self.etc_thread.start()
-            Log.warn('ETC (%d): processing thread restarted' % expid)
+            logging.warn('ETC (%d): processing thread restarted' % expid)
         else:
-            Log.info('ETC (%d): processing thread still running' % expid)
+            logging.info('ETC (%d): processing thread still running' % expid)
 
         # Reset status variables, keep seeing, sky level and transparency values
         self.reset(all=True, update_status = False)
@@ -376,9 +381,9 @@ class OnlineETC():
         acquisition image once this is called.
         """
         self.img_start_time = start_time or datetime.datetime.utcnow()
-        Log.info('start: start exposure at %r' % self.img_start_time)
+        logging.info('start: start exposure at %r' % self.img_start_time)
         if options:
-            Log.warn('start: ignoring extra options: %r' % options)
+            logging.warn('start: ignoring extra options: %r' % options)
 
         # Signal our worker thread.
         self.image_processing.set()
@@ -393,9 +398,9 @@ class OnlineETC():
         to to :meth:`stop_etc` or :meth:`stop`.
         """
         self.etc_start_time = start_time or datetime.datetime.utcnow()
-        Log.info('start_etc: shutter opened at %r' % self.etc_start_time)
+        logging.info('start_etc: shutter opened at %r' % self.etc_start_time)
         if options:
-            Log.warn('start_etc: ignoring extra options: %r' % options)
+            logging.warn('start_etc: ignoring extra options: %r' % options)
 
         # Signal our worker thread.
         self.image_processing.set()
@@ -411,9 +416,9 @@ class OnlineETC():
         """
         self.etc_stop_time = stop_time or datetime.datetime.utcnow()
         self.etc_stop_src = source
-        Log.info('stop_etc: shutter closed at %r by %s ' % (self.etc_stop_time, source))
+        logging.info('stop_etc: shutter closed at %r by %s ' % (self.etc_stop_time, source))
         if options:
-            Log.warn('stop_etc: ignoring extra options: %r' % options)
+            logging.warn('stop_etc: ignoring extra options: %r' % options)
 
         # Signal our worker thread.
         self.etc_processing.clear()
@@ -431,12 +436,12 @@ class OnlineETC():
         """
         self.img_stop_time = stop_time or datetime.datetime.utcnow()
         self.img_stop_src = source
-        Log.info('stop: exposure stopped at %r by %s' % (self.img_stop_time, source))
+        logging.info('stop: exposure stopped at %r by %s' % (self.img_stop_time, source))
         if options:
-            Log.warn('stop: ignoring extra options: %r' % options)
+            logging.warn('stop: ignoring extra options: %r' % options)
 
         if self.etc_processing.is_set():
-            Log.error('stop: called before stop_etc.')
+            logging.error('stop: called before stop_etc.')
             self.etc_processing.clear()
 
         # Signal our worker thread that image processing should start.
