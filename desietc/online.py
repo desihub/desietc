@@ -224,7 +224,7 @@ class OnlineETC():
 
         finally:
             # The shutdown event has been cleared.
-            self.ETCAlg.shutdown()
+            self.ETCalg.shutdown()
             logging.info('ETC: processing thread exiting after shutdown.')
 
     def get_status(self):
@@ -313,6 +313,21 @@ class OnlineETC():
         # update status
         if update_status == True:
             self.call_to_update_status()
+
+    def shutdown(self, timeout=30):
+        """Terminate our worker thread, which will release ETCalg resources.
+
+        In case the worker thread does not exit within timeout, call ETCalg.shutdown
+        directly to force it to release any resources it has allocated.
+        """
+        logging.info('ETC: shutdown called.')
+        # Signal to the worker thread that we are shutting down.
+        self.shutdown.set()
+        if self.etc_thread.is_alive():
+            self.etc_thread.join(timeout=timeout)
+        if self.etc_thread.is_alive():
+            logging.error(f'The ETC worker thread did not exit after {timeout}s.')
+            self.ETCalg.shutdown(force=True)
 
     def configure(self):
         """
