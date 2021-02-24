@@ -65,7 +65,7 @@ class OnlineETC():
 
     def __init__(self, shutdown_event, max_update_delay=30):
 
-        self.shutdown = shutdown_event
+        self.shutdown_event = shutdown_event
         self.max_update_delay = datetime.timedelta(seconds=max_update_delay)
 
         # Callouts to the ETC application
@@ -133,7 +133,7 @@ class OnlineETC():
         last_image_processing = last_etc_processing = False
 
         try:
-            while not self.shutdown.is_set():
+            while not self.shutdown_event.is_set():
 
                 if self.image_processing.is_set():
                     # An exposure is active.
@@ -322,7 +322,7 @@ class OnlineETC():
         """
         logging.info('ETC: shutdown called.')
         # Signal to the worker thread that we are shutting down.
-        self.shutdown.set()
+        self.shutdown_event.set()
         if self.etc_thread.is_alive():
             self.etc_thread.join(timeout=timeout)
         if self.etc_thread.is_alive():
