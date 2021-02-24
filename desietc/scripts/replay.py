@@ -126,7 +126,8 @@ def etcoffline(args):
     # Initialize the global ETC algorithm.
     ETC = desietc.etc.ETCAlgorithm(
         args.sky_calib, args.gfa_calib, args.psf_pixels, args.max_dither, args.num_dither,
-        args.Ebv_coef, args.nbad_threshold, args.nll_threshold, args.grid_resolution, args.parallel)
+        args.Ebv_coef, args.ffrac_ref, args.nbad_threshold, args.nll_threshold,
+        args.grid_resolution, args.parallel)
 
     # Enable GMM debug messages if requested.
     if args.debug and args.gmm_debug:
@@ -224,6 +225,8 @@ def main():
         help='Number of dithers to use between (-max,+max)')
     parser.add_argument('--Ebv-coef', type=float, default=1,
         help='Coefficient to use for MW extinction')
+    parser.add_argument('--ffrac-ref', type=float, default=0.56,
+        help='Reference value of FFRAC that defines nominal conditions')
     parser.add_argument('--nbad-threshold', type=int, default=100,
         help='Maximum allowed bad overscan pixels before warning')
     parser.add_argument('--nll-threshold', type=float, default=10,

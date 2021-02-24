@@ -41,7 +41,8 @@ class ETCAlgorithm(object):
     BUFFER_NAME = 'ETC_{0}_buffer'
 
     def __init__(self, sky_calib, gfa_calib, psf_pixels=25, max_dither=7, num_dither=1200,
-                 Ebv_coef=2.165, nbad_threshold=100, nll_threshold=10, grid_resolution=0.5, parallel=True):
+                 Ebv_coef=2.165, ffrac_ref=0.56, nbad_threshold=100, nll_threshold=10,
+                 grid_resolution=0.5, parallel=True):
         """Initialize once per session.
 
         Parameters
@@ -72,6 +73,7 @@ class ETCAlgorithm(object):
             Process GFA images in parallel when True.
         """
         self.Ebv_coef = Ebv_coef
+        self.ffrac_ref = ffrac_ref
         self.nbad_threshold = nbad_threshold
         self.nll_threshold = nll_threshold
         self.grid_resolution = grid_resolution / self.SECS_PER_DAY
@@ -740,7 +742,7 @@ class ETCAlgorithm(object):
         values of 1 correspond to real = effective.
         """
         # Lookup the MW transparency to use, or default to 1.
-        return (MW_transp * signal) ** 2 / background
+        return (MW_transp * signal / self.ffrac_ref) ** 2 / background
 
     def update_accumulated(self, mjd_now):
         """Update our estimates of the accumulated signal, background and
