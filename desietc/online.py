@@ -313,7 +313,7 @@ class OnlineETC():
     def reset(self, all = True, keep_accumulated = False, update_status = True):
         """
         """
-        if not etc_ready.is_set():
+        if not self.etc_ready.is_set():
             return FAILED
 
         # stop processing (if necessary)
@@ -353,7 +353,7 @@ class OnlineETC():
         """
         ETC configure - to be completed
         """
-        if not etc_ready.is_set():
+        if not self.etc_ready.is_set():
             return FAILED
 
         # reset internal variables
@@ -388,7 +388,7 @@ class OnlineETC():
         max_splits:        Maximum number of allowed cosmic splits.
         splittable:        Never do splits when this is False.
         """
-        if not etc_ready.is_set():
+        if not self.etc_ready.is_set():
             return FAILED
 
         assert isinstance(expid, int),'Invalid arguments'
@@ -425,7 +425,7 @@ class OnlineETC():
         :meth:`prepare_for_exposure`.  The ETC will start looking for an
         acquisition image once this is called.
         """
-        if not etc_ready.is_set():
+        if not self.etc_ready.is_set():
             return FAILED
 
         self.img_start_time = start_time or datetime.datetime.utcnow()
@@ -447,7 +447,7 @@ class OnlineETC():
         The ETC will accumulate effective exposure time until the next call
         to to :meth:`stop_etc` or :meth:`stop`.
         """
-        if not etc_ready.is_set():
+        if not self.etc_ready.is_set():
             return FAILED
 
         self.etc_start_time = start_time or datetime.datetime.utcnow()
@@ -469,7 +469,7 @@ class OnlineETC():
         The ETC will continue processing any new sky or guide frames until
         :meth:`stop` is called.
         """
-        if not etc_ready.is_set():
+        if not self.etc_ready.is_set():
             return FAILED
 
         self.etc_stop_time = stop_time or datetime.datetime.utcnow()
@@ -494,7 +494,7 @@ class OnlineETC():
         In case stop is called while the spectrograph shutters are open,
         log an error and clear etc_processing before clearing image_processing.
         """
-        if not etc_ready.is_set():
+        if not self.etc_ready.is_set():
             return FAILED
 
         self.img_stop_time = stop_time or datetime.datetime.utcnow()
