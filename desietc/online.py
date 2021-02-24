@@ -89,6 +89,8 @@ class OnlineETC():
         self.last_update_time = datetime.datetime.utcnow()
 
         # Start our processing thread and create the flags we use to synchronize with it.
+        self.etc_ready = threading.Event()
+        self.etc_ready.clear()
         self.image_processing = threading.Event()
         self.image_processing.clear()
         self.etc_processing = threading.Event()
@@ -127,8 +129,12 @@ class OnlineETC():
         The thread that runs this function is started in our constructor.
         """
         logging.info('ETC: processing thread starting.')
-
-        self.ETCalg.start()
+        try:
+            self.ETCalg.start()
+            self.etc_ready.set()
+        except Exception as e:
+            self.etc_ready.clear()
+            logging.error(f'ETCalg.start failed with: {e}.')
 
         last_image_processing = last_etc_processing = False
 
@@ -225,6 +231,7 @@ class OnlineETC():
         finally:
             # The shutdown event has been cleared.
             self.ETCalg.shutdown()
+            self.etc_ready.clear()
             logging.info('ETC: processing thread exiting after shutdown.')
 
     def get_status(self):
@@ -328,6 +335,7 @@ class OnlineETC():
         if self.etc_thread.is_alive():
             logging.error(f'The ETC worker thread did not exit after {timeout}s.')
             self.ETCalg.shutdown(force=True)
+        self.etc_ready.clear()
 
     def configure(self):
         """
