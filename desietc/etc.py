@@ -170,19 +170,25 @@ class ETCAlgorithm(object):
                 self.GFAs[camera] = GFA
         self.needs_shutdown = self.parallel
 
-    def shutdown(self):
+    def shutdown(self, force=True):
         """Release any resources allocated in our constructor.
         """
-        if not getattr(self, 'needs_shutdown', False):
+        if not getattr(self, 'needs_shutdown', False) and not force:
             return
         logging.info('Shutting down ETC...')
         # Shutdown the process and release the shared memory allocated for each GFA.
         for camera in desietc.gfa.GFACamera.guide_names:
             logging.info(f'Releasing {camera} resources')
-            self.pipes[camera].send('quit')
-            self.processes[camera].join()
-            self.shared_mem[camera].close()
-            self.shared_mem[camera].unlink()
+            try:
+                self.pipes[camera].send('quit')
+                self.processes[camera].join()
+            except:
+                pass
+            try:
+                self.shared_mem[camera].close()
+                self.shared_mem[camera].unlink()
+            except:
+                pass
         self.needs_shutdown = False
 
     def set_image_path(self, image_path):
