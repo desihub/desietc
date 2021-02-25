@@ -6,6 +6,14 @@ https://desi.lbl.gov/trac/browser/code/online/ETC/trunk/python/ETC/ETC.py
 The ETCApp code is hosted at
 https://desi.lbl.gov/trac/browser/code/online/ETC/trunk/python/ETC/ETCApp.py
 
+When this code is run on the mountain under ICS, log messages are written to:
+
+  /data/msdos/dos_home/instances/<instance>/logs/<instance>-ETC-<timestamp>.log
+
+where <instance> is normally "desi_YYYYMMDD" and a new log identified by
+<timestamp> is started whenever ETCApp restarts.  The soft link ETC-current.log
+points to the most recent log.
+
 OnlineETC uses the following callouts to interact with the ETCApp and the rest of DOS:
 
   - call_for_acq_image
