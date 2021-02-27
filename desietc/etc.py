@@ -211,7 +211,7 @@ class ETCAlgorithm(object):
         self.total_sky_count = 0
 
     def check_top_header(self, header, source):
-        """Check EXPID in the top-level header of an exposure.
+        """Check EXPID in the top-level GUIDER or SKY header of an exposure.
         """
         if 'EXPID' not in header:
             logging.error(f'Missing EXPID keyword in {source}')
@@ -302,7 +302,7 @@ class ETCAlgorithm(object):
         start = time.time()
         self.total_acq_count += 1
         logging.info(f'Processing acquisition image [{self.total_acq_count}] for {self.exptag}.')
-        self.check_top_header(data['header'], 'acquisition image')
+        self.check_top_header(data['GUIDER']['header'], 'acquisition image')
         # Pass 1: reduce the raw GFA data and measure the PSF.
         self.acquisition_data = {}
         self.psf_stack = {}
@@ -453,7 +453,7 @@ class ETCAlgorithm(object):
         self.num_guide_frames += 1
         self.total_guider_count += 1
         logging.info(f'Processing guide frame {fnum} [{self.total_guider_count}] for {self.exptag}.')
-        self.check_top_header(data['header'], f'guide[{fnum}]')
+        self.check_top_header(data['GUIDER']['header'], f'guide[{fnum}]')
         if self.dithered_model is None:
             logging.error('Ignoring guide frame before acquisition image.')
             return False
@@ -554,7 +554,7 @@ class ETCAlgorithm(object):
         self.num_sky_frames += 1
         self.total_sky_count += 1
         logging.info(f'Processing sky frame {fnum} [{self.total_sky_count}] for {self.exptag}.')
-        self.check_top_header(data['header'], f'sky[{fnum}]')
+        self.check_top_header(data['SKY']['header'], f'sky[{fnum}]')
         flux, ivar = 0, 0
         mjd_obs, exptime = [], []
         each_flux, each_dflux = np.zeros(self.nsky, np.float32), np.zeros(self.nsky, np.float32)

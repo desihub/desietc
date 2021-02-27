@@ -197,7 +197,8 @@ def replay_exposure(ETC, path, expid, outpath, teff=1000, ttype='DARK', cutoff=3
 def acq_to_online(path, names):
     online = {}
     with fitsio.FITS(str(path)) as hdus:
-        online['header']= dict(hdus['GUIDER'].read_header())
+        online['header']= dict(hdus[0].read_header())
+        online['GUIDER']= dict(header=dict(hdus['GUIDER'].read_header()))
         for ext in names:
             if ext not in hdus:
                 continue
@@ -214,6 +215,9 @@ def fits_to_online(path, names, frame):
     online = {}
     with fitsio.FITS(str(path)) as hdus:
         online['header']= dict(hdus[0].read_header())
+        for hdrname in 'GUIDER', 'SKY':
+            if hdrname in hdus:
+                online[hdrname] = dict(header=dict(hdus[hdrname].read_header()))
         for ext in names:
             if ext not in hdus or ext + 'T' not in hdus:
                 continue
