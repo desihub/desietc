@@ -196,8 +196,11 @@ class ETCAlgorithm(object):
         """
         if image_path is not None:
             self.image_path = pathlib.Path(image_path)
-            if not self.image_path.exists():
-                logging.error(f'Non-existant image_path: {image_path}.')
+            # Try to create if necessary.
+            try:
+                self.image_path.mkdir(parents=True, exist_ok=True)
+            except OSError as e:
+                logging.error(f'Failed to create {self.image_path}: {e}')
                 self.image_path = None
             else:
                 logging.info(f'Images will be written in: {image_path}.')
@@ -891,42 +894,50 @@ class ETCAlgorithm(object):
     def save_exposure(self, path):
         """
         """
+        path = pathlib.Path(path)
         logging.info(f'Saving ETC outputs for {self.exptag} to {path}')
         if not path.exists():
             logging.error(f'Non-existent path: {path}.')
             return
         # Save all measurements after mjd_start.
-        mjd1, mjd2 = self.exp_data['mjd_start'], None
+        mjd1, mjd2 = self.exp_data.get('mjd_start', None), None
         # Trim the grid to the stop time.
 
         # Build a data structure to save via json.
-        save = dict(
-            expinfo=self.exp_data,
-            fassign=self.fassign_data,
-            acquisition=self.acquisition_data,
-            guide_stars=self.guide_stars,
-            shutter=dict(
-                open=self.shutter_open,
-                close=self.shutter_close,
-                teff=self.shutter_teff,
-            ),
-            thru=self.thru_measurements.save(mjd1, mjd2),
-            sky=self.sky_measurements.save(mjd1, mjd2),
-            grid=dict(
-                mjd=self.mjd_grid[:self.grid_stop],
-                sig=self.sig_grid[:self.grid_stop],
-                bg=self.bg_grid[:self.grid_stop],
-                open=self.open_grid[:self.grid_stop],
+        try:
+            save = dict(
+                expinfo=self.exp_data,
+                fassign=self.fassign_data,
+                acquisition=self.acquisition_data,
+                guide_stars=self.guide_stars,
+                shutter=dict(
+                    open=self.shutter_open,
+                    close=self.shutter_close,
+                    teff=self.shutter_teff,
+                ),
+                thru=self.thru_measurements.save(mjd1, mjd2),
+                sky=self.sky_measurements.save(mjd1, mjd2),
+                grid=dict(
+                    mjd=self.mjd_grid[:self.grid_stop],
+                    sig=self.sig_grid[:self.grid_stop],
+                    bg=self.bg_grid[:self.grid_stop],
+                    open=self.open_grid[:self.grid_stop],
+                )
             )
-        )
+        except Exception as e:
+            logging.error(f'save_exposure: error building output dict: {e}')
+            save = {}
         # Encode numpy types using python built-in types for serialization.
-        fname = path / f'etc-{self.exptag}.json'
-        with open(fname, 'w') as f:
-            json.dump(save, f, cls=desietc.util.NumpyEncoder)
-            logging.info(f'Wrote {fname} for {self.exptag}')
-        # Copy the acquisition analysis summary image.
-        if self.image_path is not None:
-            name = f'psf-{self.exptag}.png'
-            if (self.image_path / name).exists() and not (path / name).exists():
-                logging.info(f'Copying {name} to {path}.')
-                shutil.copy(self.image_path / name, path / name)
+        try:
+            fname = path / f'etc-{self.exptag}.json'
+            with open(fname, 'w') as f:
+                json.dump(save, f, cls=desietc.util.NumpyEncoder)
+                logging.info(f'Wrote {fname} for {self.exptag}')
+            # Copy the acquisition analysis summary image.
+            if self.image_path is not None:
+                name = f'psf-{self.exptag}.png'
+                if (self.image_path / name).exists() and not (path / name).exists():
+                    logging.info(f'Copying {name} to {path}.')
+                    shutil.copy(self.image_path / name, path / name)
+        except Exception as e:
+            logging.error(f'save_exposure: error saving json: {e}')
