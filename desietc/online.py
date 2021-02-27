@@ -101,6 +101,21 @@ class OnlineETC():
         self.ETCalg = desietc.etc.ETCAlgorithm(gfa_calib, sky_calib, parallel=True)
         self.last_update_time = datetime.datetime.utcnow()
 
+        # initialize status variables
+        self.expid = None
+        self.target_teff = None
+        self.target_type = None
+        self.max_exposure_time = None
+        self.cosmics_split_time = None
+        self.max_splits = None
+        self.splittable = None
+        self.img_start_time = None
+        self.img_start_time = None
+        self.etc_start_time = None
+        self.etc_stop_time = None
+        self.img_stop_src = None
+        self.etc_stop_src = None
+
         # Start our processing thread and create the flags we use to synchronize with it.
         self.etc_ready = threading.Event()
         self.etc_ready.clear()
@@ -243,7 +258,10 @@ class OnlineETC():
 
         finally:
             # The shutdown event has been cleared.
-            self.ETCalg.shutdown()
+            try:
+                self.ETCalg.shutdown()
+            except Exception as e:
+                logging.error(f'ETCalg.shutdown failed: {e}')
             self.etc_ready.clear()
             logging.info('ETC: processing thread exiting after shutdown.')
 
