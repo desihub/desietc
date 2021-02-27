@@ -139,68 +139,90 @@ class ETCAlgorithm(object):
             ] + aux_dtype)
         # Initialize the SKY camera processor.
         self.SKY = desietc.sky.SkyCamera(calib_name=sky_calib)
-        self.parallel = parallel
-        # Check that shared mem is available if we need it.
-        if parallel and not shared_memory_available:
-            raise RuntimeError('Python >= 3.8 required for the parallel ETC option.')
-
-    def start(self):
-        """Perform startup resource allocation. Must be paired with a call to shutdown().
-        """
-        self.shutdown()
-        logging.info('Starting up ETC...')
-        # Initialize the GFA camera processor(s).
+        # Prepare for parallel processing if necessary.
         self.GFAs = {}
-        if self.parallel:
-            # Allocate shared-memory buffers for each guide camera's GFACamera object.
-            bufsize = desietc.gfa.GFACamera.buffer_size
-            self.shared_mem = {}
-            self.pipes = {}
-            self.processes = {}
-            for camera in desietc.gfa.GFACamera.guide_names:
-                bufname = self.BUFFER_NAME.format(camera)
-                self.shared_mem[camera] = multiprocessing.shared_memory.SharedMemory(
-                    name=bufname, size=bufsize, create=True)
-                self.GFAs[camera] = desietc.gfa.GFACamera(
-                    calib_name=self.gfa_calib, buffer=self.shared_mem[camera].buf)
-            nbytes = bufsize * len(self.GFAs)
-            logging.info(f'Allocated {nbytes/2**20:.1f}Mb of shared memory.')
-            # Initialize per-GFA processes, each with its own pipe.
-            context = multiprocessing.get_context(method='spawn')
-            for camera in desietc.gfa.GFACamera.guide_names:
-                self.pipes[camera], child = context.Pipe()
-                self.processes[camera] = context.Process(
-                    target=ETCAlgorithm.gfa_process, args=(
-                        camera, self.gfa_calib, self.GMM, self.psf_inset, self.measure, child))
-                self.processes[camera].start()
-            logging.info(f'Initialized {len(self.GFAs)} GFA processes.')
+        self.parallel = parallel
+        if parallel:
+            # Check that shared mem is available.
+            if not shared_memory_available:
+               raise RuntimeError('Python >= 3.8 required for the parallel ETC option.')
+            # Initialize unallocated resources.
+            self.shared_mem = {camera: None for camera in desietc.gfa.GFACamera.guide_names}
+            self.pipes = {camera: None for camera in desietc.gfa.GFACamera.guide_names}
+            self.processes = {camera: None for camera in desietc.gfa.GFACamera.guide_names}
         else:
             # All GFAs use the same GFACamera object.
             GFA = desietc.gfa.GFACamera(calib_name=self.gfa_calib)
             for camera in desietc.gfa.GFACamera.guide_names:
                 self.GFAs[camera] = GFA
-        self.needs_shutdown = self.parallel
 
-    def shutdown(self, force=True):
+    def start(self):
+        """Perform startup resource allocation. Must be paired with a call to shutdown().
+        """
+        if not self.parallel:
+            return
+        logging.info('Starting up ETC...')
+        # Initialize the GFA camera processor(s).
+        # Allocate shared-memory buffers for each guide camera's GFACamera object.
+        bufsize = desietc.gfa.GFACamera.buffer_size
+        for camera in desietc.gfa.GFACamera.guide_names:
+            if self.shared_mem[camera] is not None:
+                logging.warn(f'Shared memory already allocated for {camera}?')
+            bufname = self.BUFFER_NAME.format(camera)
+            try:
+                self.shared_mem[camera] = multiprocessing.shared_memory.SharedMemory(
+                    name=bufname, size=bufsize, create=True)
+            except FileExistsError:
+                logging.error(f'Reconnecting to previously allocated shared memory for {camera}...')
+                self.shared_mem[camera] = multiprocessing.shared_memory.SharedMemory(
+                    name=bufname, size=bufsize, create=False)
+            self.GFAs[camera] = desietc.gfa.GFACamera(
+                calib_name=self.gfa_calib, buffer=self.shared_mem[camera].buf)
+        nbytes = bufsize * len(self.GFAs)
+        logging.info(f'Allocated {nbytes/2**20:.1f}Mb of shared memory.')
+        # Initialize per-GFA processes, each with its own pipe.
+        context = multiprocessing.get_context(method='spawn')
+        for camera in desietc.gfa.GFACamera.guide_names:
+            if self.processes[camera] is not None and self.processes[camera].is_alive():
+                logging.error(f'Process already running for {camera}')
+            self.pipes[camera], child = context.Pipe()
+            self.processes[camera] = context.Process(
+                target=ETCAlgorithm.gfa_process, daemon=True, args=(
+                    camera, self.gfa_calib, self.GMM, self.psf_inset, self.measure, child))
+            self.processes[camera].start()
+        logging.info(f'Initialized {len(self.GFAs)} GFA processes.')
+
+    def shutdown(self, timeout=5):
         """Release any resources allocated in our constructor.
         """
-        if not getattr(self, 'needs_shutdown', False) and not force:
+        if not self.parallel:
             return
         logging.info('Shutting down ETC...')
         # Shutdown the process and release the shared memory allocated for each GFA.
         for camera in desietc.gfa.GFACamera.guide_names:
             logging.info(f'Releasing {camera} resources')
             try:
-                self.pipes[camera].send('quit')
-                self.processes[camera].join()
-            except:
-                pass
+                if self.processes[camera] is not None and self.processes[camera].is_alive():
+                    self.pipes[camera].send('quit')
+                    self.processes[camera].join(timeout=timeout)
+                    logging.info(f'Shutdown pipe and process for {camera}.')
+                else:
+                    logging.warn(f'Process for {camera} is not alive.')
+            except Exception as e:
+                logging.error(f'Failed to shutdown pipe and process for {camera}: {e}')
+            self.pipes[camera] = None
+            self.processes[camera] = None
             try:
-                self.shared_mem[camera].close()
-                self.shared_mem[camera].unlink()
-            except:
-                pass
-        self.needs_shutdown = False
+                if self.shared_mem[camera] is not None:
+                    self.shared_mem[camera].close()
+                    self.shared_mem[camera].unlink()
+                    logging.info(f'Released shared memory for {camera}.')
+                else:
+                    logging.warn(f'No shared memory allocated for {camera}.')
+            except Exception as e:
+                logging.error(f'Failed to released shared memory for {camera}: {e}')
+            self.shared_mem[camera] = None
+        self.GFAs = {}
 
     def set_image_path(self, image_path):
         """Set the path where future images should be written or None to prevent saving images.

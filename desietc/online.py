@@ -370,7 +370,10 @@ class OnlineETC():
             self.etc_thread.join(timeout=timeout)
         if self.etc_thread.is_alive():
             logging.error(f'The ETC worker thread did not exit after {timeout}s.')
-            self.ETCalg.shutdown(force=True)
+            try:
+                self.ETCalg.shutdown()
+            except Exception as e:
+                logging.error(f'ETCalg.shutdown failed with {e}')
         self.etc_ready.clear()
 
         return SUCCESS
