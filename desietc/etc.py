@@ -99,7 +99,18 @@ class ETCAlgorithm(object):
         self.acquisition_data = None
         self.guide_stars = None
         self.image_path = None
+        # Initialize observing conditions updated after each GFA or SKY frame.
+        self.fwhm = None
+        self.ffrac = None
+        self.transp = None
+        self.skylevel = None
+        # Initialize the grid arrays used
+        self.mjd_grid = None
+        # Initialize call counters.
         self.reset_counts()
+        # Initialize accumulated quantities.
+        self.reset_accumulated()
+
         # How many GUIDE and SKY cameras do we expect?
         self.ngfa = len(desietc.gfa.GFACamera.guide_names)
         self.nsky = len(desietc.sky.SkyCamera.sky_names)
@@ -642,18 +653,6 @@ class ETCAlgorithm(object):
                 self.noisy_gfa.add(camera)
         return True
 
-    def reset_accumulated(self):
-        """
-        """
-        self.accumulated_mjd = desietc.util.date_to_mjd(datetime.datetime.utcnow(), utc_offset=0)
-        self.accumulated_eff_time = self.accumulated_real_time = 0.
-        self.accumulated_signal = self.accumulated_background = 0.
-        self.time_remaining = self.split_remaining = self.projected_eff_time = 0.
-        self.shutter_open = []
-        self.shutter_close = []
-        self.shutter_teff = []
-        self.action = None
-
     def start_exposure(self, timestamp, expid, target_teff, target_type, max_exposure_time,
                        cosmics_split_time, max_splits, splittable):
         """Start a new exposure using parameters:
@@ -686,7 +685,7 @@ class ETCAlgorithm(object):
         self.reset_accumulated()
 
     def open_shutter(self, timestamp):
-        """
+        """Record the shutter opening.
         """
         mjd = desietc.util.date_to_mjd(timestamp, utc_offset=0)
         nopen, nclose = len(self.shutter_open), len(self.shutter_close)
@@ -752,6 +751,18 @@ class ETCAlgorithm(object):
         """
         # Lookup the MW transparency to use, or default to 1.
         return (MW_transp * signal / self.ffrac_ref) ** 2 / background
+
+    def reset_accumulated(self):
+        """Initialize or reset all attributes calculated by :meth:`update_accumulated`.
+        """
+        self.accumulated_mjd = desietc.util.date_to_mjd(datetime.datetime.utcnow(), utc_offset=0)
+        self.accumulated_eff_time = self.accumulated_real_time = 0.
+        self.accumulated_signal = self.accumulated_background = 0.
+        self.time_remaining = self.split_remaining = self.projected_eff_time = 0.
+        self.shutter_open = []
+        self.shutter_close = []
+        self.shutter_teff = []
+        self.action = None
 
     def update_accumulated(self, mjd_now):
         """Update our estimates of the accumulated signal, background and
