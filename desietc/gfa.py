@@ -165,6 +165,8 @@ class GFACamera(object):
         # We have no centering algorithms initialized yet.
         self.psf_centering = None
         self.donut_centering = None
+        # Check for unexpected array copying.
+        self.check_for_copy = True
 
     def setraw(self, raw, name=None, overscan_correction=True, subtract_master_zero=True, apply_gain=True):
         """Initialize using the raw GFA data provided for a single exposure.
@@ -218,9 +220,21 @@ class GFACamera(object):
             'F': raw[:self.nampy, -1:-(self.nxby2+1):-1], # bottom right
             'G': raw[-1:-(self.nampy + 1):-1, -1:-(self.nxby2+1):-1], # top right
         }
-        # Verify that no data was copied.
-        raw_base = raw if raw.base is None else raw.base
-        assert all((self.amps[ampname].base is raw_base for ampname in self.amp_names))
+        if self.check_for_copy:
+            # Verify that no data was copied.
+            raw_base = raw if raw.base is None else raw.base
+            for ampname in self.amp_names:
+                amp = self.amps[ampname]
+                if amp.base is not raw_base:
+                    logging.warn(f'GFACamera.setraw: copied data for amp {ampname}: ' +
+                        f'raw.dtype={raw.dtype} amp.dtype={amp.dtype} raw.base? {raw.base is None} ' +
+                        f'amp.base? {amp.base is None}')
+                    logging.warn(f'raw.flags:\n{raw.flags}')
+                    logging.warn(f'amp.flags:\n{amp.flags}')
+                    self.check_for_copy = False
+            if not self.check_for_copy:
+                logging.warn('Will not repeat this warning.')
+            ##assert all((self.amps[ampname].base is raw_base for ampname in self.amp_names))
         # Calculate bias as mean overscan, ignoring the first nrowtrim rows
         # (in readout order) and any values > maxdelta from the per-exposure median overscan.
         # Since we use a mean rather than median, subtracting this bias changes the dtype from
