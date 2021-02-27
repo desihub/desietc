@@ -223,7 +223,7 @@ class OnlineETC():
 
                     # Send a telemetry update if triggered above or we are overdue.
                     now = datetime.datetime.utcnow()
-                    if have_new_telemetry or now > self.last_upate_time + self.max_update_delay:
+                    if have_new_telemetry or now > self.last_update_time + self.max_update_delay:
                         self.last_update_time = now
                         self.call_to_update_status()
 
@@ -400,7 +400,7 @@ class OnlineETC():
             return FAILED
 
         assert isinstance(expid, int),'Invalid arguments'
-        logging.info('ETC (%d): prepare_for_exposure called for expid %r' % expid)
+        logging.info('ETC (%d): prepare_for_exposure called' % expid)
 
         # check if _etc thread is still running
         if not self.etc_thread.is_alive():
@@ -464,7 +464,7 @@ class OnlineETC():
             logging.warn('start_etc: ignoring extra options: %r' % options)
 
         # Signal our worker thread.
-        self.image_processing.set()
+        self.etc_processing.set()
 
         # Update our status.
         self.call_to_update_status()
