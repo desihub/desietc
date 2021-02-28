@@ -103,12 +103,10 @@ class OnlineETC():
 
         # initialize status variables
         self.expid = None
-        self.target_teff = None
-        self.target_type = None
+        self.requested_teff = None
+        self.sbprofile = None
         self.max_exposure_time = None
         self.cosmics_split_time = None
-        self.max_splits = None
-        self.splittable = None
         self.img_start_time = None
         self.img_start_time = None
         self.etc_start_time = None
@@ -198,8 +196,8 @@ class OnlineETC():
                     if not last_image_processing:
                         # A new exposure is starting: pass through prepare_for_exposure args now.
                         self.ETCalg.start_exposure(
-                            self.img_start_time, self.expid, self.target_teff, self.target_type,
-                            self.max_exposure_time, self.cosmics_split_time, self.max_splits, self.splittable)
+                            self.img_start_time, self.expid, self.requested_teff, self.sbprofile,
+                            self.max_exposure_time, self.cosmics_split_time)
                         last_image_processing = True
                         # Set the path where the PNG generated after the acquisition analysis will be written.
                         self.ETCalg.set_image_path(self.call_for_png_dir(self.expid))
@@ -256,7 +254,8 @@ class OnlineETC():
 
                     # Send a telemetry update if flagged above or if we are overdue.
                     now = datetime.datetime.utcnow()
-                    if have_new_telemetry or now > self.last_update_time + self.max_update_delay:
+                    ##logging.info(f'now {now} last {self.last_update_time} next {self.last_update_time + self.max_update_delay}')
+                    if have_new_telemetry or (now > self.last_update_time + self.max_update_delay):
                         self.last_update_time = now
                         self.call_to_update_status()
 
@@ -308,12 +307,10 @@ class OnlineETC():
 
         # Exposure parameters set in prepare_for_exposure()
         etc_status['expid'] = self.expid
-        etc_status['target_teff'] = self.target_teff
-        etc_status['target_type'] = self.target_type
+        etc_status['req_teff'] = self.requested_teff
+        etc_status['sbprofile'] = self.sbprofile
         etc_status['max_exptime'] = self.max_exposure_time
         etc_status['cosmics_split'] = self.cosmics_split_time
-        etc_status['max_splits'] = self.max_splits
-        etc_status['splittable'] = self.splittable
 
         # Timestamps updated when start(), stop(), start_etc(), stop_etc() is called.
         etc_status['img_start_time'] = self.img_start_time
@@ -392,21 +389,18 @@ class OnlineETC():
 
         return SUCCESS
 
-    def prepare_for_exposure(self, expid, target_teff, target_type, max_exposure_time,
-                             cosmics_split_time, max_splits, splittable):
+    def prepare_for_exposure(self, expid, requested_teff, sbprofile, max_exposure_time, cosmics_split_time):
         """Record the observing parameters for the next exposure, usually from NTS.
 
         The ETC will not see these parameters until the next call to :meth:`start`.
 
         Parameters
         ----------
-        expid:             next exposure id (int)
-        target_teff:       target value of the effective exposure time in seconds (float)
-        target_type:       a string describing the type of target to assume (DARK/BRIGHT/...)
-        max_exposure_time: Maximum exposure time in seconds (irrespective of accumulated SNR)
-        cosmics_split_time:Time in second before requesting a cosmic ray split
-        max_splits:        Maximum number of allowed cosmic splits.
-        splittable:        Never do splits when this is False.
+        expid:              next exposure id (int)
+        requested_teff:     target value of the effective exposure time in seconds (float)
+        sbprofile:          a string describing the surface profile type to use for FFRAC calculations
+        max_exposure_time:  Maximum exposure time in seconds (irrespective of accumulated SNR)
+        cosmics_split_time: Time in second before requesting a cosmic ray split
         """
         logging.info('OnlineETC.prepare_for_exposure')
         # Check that the ETC thread is still running and ready.
@@ -415,16 +409,14 @@ class OnlineETC():
             return FAILED
 
         # Reset status variables, keep seeing, sky level and transparency values
-        self.reset(all=True, update_status = False)
+        self.reset(all=True, update_status=False)
 
         # Store this exposure's parameters.
         self.expid = expid
-        self.target_teff = target_teff
-        self.target_type = target_type
+        self.requested_teff = requested_teff
+        self.sbprofile = sbprofile
         self.max_exposure_time = max_exposure_time
         self.cosmics_split_time = cosmics_split_time
-        self.max_splits = max_splits
-        self.splittable = splittable
 
         # Update our status.
         self.call_to_update_status()

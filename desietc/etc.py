@@ -676,12 +676,12 @@ class ETCAlgorithm(object):
                 self.noisy_gfa.add(camera)
         return True
 
-    def start_exposure(self, timestamp, expid, target_teff, target_type, max_exposure_time,
+    def start_exposure(self, timestamp, expid, requested_teff, sbprofile, max_exposure_time,
                        cosmics_split_time, max_splits, splittable):
         """Start a new exposure using parameters:
         expid:              next exposure id (int)
-        target_teff:        target value of the effective exposure time in seconds (float)
-        target_type:        a string describing the type of target to assume (DARK/BRIGHT/...)
+        requested_teff:        target value of the effective exposure time in seconds (float)
+        sbprofile:        a string describing the type of target to assume (DARK/BRIGHT/...)
         max_exposure_time:  Maximum exposure time in seconds (irrespective of accumulated SNR)
         cosmics_split_time: Time in second before requesting a cosmic ray split
         max_splits:         Maximum number of allowed cosmic splits.
@@ -693,8 +693,8 @@ class ETCAlgorithm(object):
             max_exposure_time = max_hours * 3600
         self.exp_data = dict(
             expid=expid,
-            target_teff=target_teff,
-            target_type=target_type,
+            requested_teff=requested_teff,
+            sbprofile=sbprofile,
             max_exposure_time=max_exposure_time,
             cosmics_split_time=cosmics_split_time,
             max_splits=max_splits,
@@ -702,7 +702,7 @@ class ETCAlgorithm(object):
         )
         self.exptag = str(expid).zfill(8)
         self.night = desietc.util.mjd_to_night(desietc.util.date_to_mjd(timestamp, utc_offset=0))
-        logging.info(f'Start {self.night}/{self.exptag} at {timestamp} with teff={target_teff:.1f}s, type={target_type}, '
+        logging.info(f'Start {self.night}/{self.exptag} at {timestamp} with teff={requested_teff:.1f}s, type={sbprofile}, '
                      + f'max={max_exposure_time:.1f}s, split={cosmics_split_time:.1f}s, '
                      + f'maxsplit={max_splits}, splittable={splittable}.')
         self.reset_accumulated()
@@ -795,7 +795,7 @@ class ETCAlgorithm(object):
         :meth:`process_guide_frame` or :meth:`process_sky`.
         """
         # Check that we have the NTS parameters for this exposure.
-        for key in 'mjd_start', 'mjd_max', 'target_teff', 'cosmics_split_time', 'max_splits', 'splittable':
+        for key in 'mjd_start', 'mjd_max', 'requested_teff', 'cosmics_split_time', 'max_splits', 'splittable':
             if key not in self.exp_data:
                 logging.error('update_accumulated: missing required NTS parameter "{key}".')
                 return False
@@ -803,7 +803,7 @@ class ETCAlgorithm(object):
         if mjd_now < mjd_start:
             logging.error('update_accumulated() called with mjd_now < mjd_start.')
             return False
-        target = self.exp_data['target_teff']
+        target = self.exp_data['requested_teff']
         cosmic_split = self.exp_data['cosmics_split_time']
         max_splits = self.exp_data['max_splits']
         splittable = self.exp_data['splittable']
