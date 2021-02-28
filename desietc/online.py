@@ -98,7 +98,7 @@ class OnlineETC():
         sky_calib = os.getenv('ETC_SKY_CALIB', None)
         if gfa_calib is None or sky_calib is None:
             raise RuntimeError('ETC_GFA_CALIB and ETC_SKY_CALIB must be set.')
-        self.ETCalg = desietc.etc.ETCAlgorithm(gfa_calib, sky_calib, parallel=True)
+        self.ETCalg = desietc.etc.ETCAlgorithm(sky_calib, gfa_calib, parallel=True)
         self.last_update_time = datetime.datetime.utcnow()
 
         # initialize status variables
@@ -219,7 +219,7 @@ class OnlineETC():
                             self.ETCalg.set_guide_stars(pm_info['guidestars'])
                             need_stars = False
 
-                    if not need acq_image and not need_stars:
+                    if not need_acq_image and not need_stars:
                         # We have PSF models and guide stars: process a guide frame if available.
                         gfa_image = self.call_for_gfa_image(wait=None)
                         if gfa_image:
@@ -328,6 +328,9 @@ class OnlineETC():
         etc_status['accum_bg'] = self.ETCalg.accumulated_background
         etc_status['accum_teff'] = self.ETCalg.accumulated_eff_time
         etc_status['accum_real'] = self.ETCalg.accumulated_real_time
+        etc_status['accum_tproj'] = self.ETCalg.time_remaining
+        etc_status['accum_final'] = self.ETCalg.projected_eff_time
+        etc_status['accum_split'] = self.ETCalg.split_remaining
 
         # Timestamp for the last update of an ETC variable.
         etc_status['last_updated'] = self.last_update_time.isoformat()
