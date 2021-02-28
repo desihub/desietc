@@ -183,13 +183,14 @@ class ETCAlgorithm(object):
         # Initialize per-GFA processes, each with its own pipe.
         context = multiprocessing.get_context(method='spawn')
         for camera in desietc.gfa.GFACamera.guide_names:
-            if self.processes[camera] is not None and self.processes[camera].is_alive():
-                logging.error(f'Process already running for {camera}')
-            self.pipes[camera], child = context.Pipe()
-            self.processes[camera] = context.Process(
-                target=ETCAlgorithm.gfa_process, daemon=True, args=(
-                    camera, self.gfa_calib, self.GMM, self.psf_inset, self.measure, child))
-            self.processes[camera].start()
+            if self.pipes[camera] is not None and self.processes[camera] is not None and self.processes[camera].is_alive():
+                logging.error(f'Process already running for {camera}. Will not restart...')
+            else:
+                self.pipes[camera], child = context.Pipe()
+                self.processes[camera] = context.Process(
+                    target=ETCAlgorithm.gfa_process, daemon=True, args=(
+                        camera, self.gfa_calib, self.GMM, self.psf_inset, self.measure, child))
+                self.processes[camera].start()
         logging.info(f'Initialized {len(self.GFAs)} GFA processes.')
 
     def shutdown(self, timeout=5):
