@@ -176,7 +176,7 @@ class OnlineETC():
 
                     # Any changes of state to propagate?
                     if not last_image_processing:
-                        # A new exposure has just started.
+                        # A new exposure is starting: pass through prepare_for_exposure args now.
                         self.ETCalg.start_exposure(
                             self.img_start_time, self.expid, self.target_teff, self.target_type,
                             self.max_exposure_time, self.cosmics_split_time, self.max_splits, self.splittable)
@@ -197,38 +197,36 @@ class OnlineETC():
                         last_etc_processing = False
                         have_new_telemetry = True
 
+                    # Process a sky frame if available.
                     sky_image = self.call_for_sky_image(wait=None)
                     if sky_image:
-                        # Always process a sky frame if available.
                         self.ETCalg.process_sky_frame(sky_image['image'])
                         have_new_telemetry = True
 
-                    elif last_etc_processing:
-                        # Shutter is open.
+                    if need_acq_image:
+                        # Process the acquisition image if available.
+                        acq_image = self.call_for_acq_image(wait=None)
+                        if acq_image:
+                            self.ETCalg.process_acquisition(acq_image['image'])
+                            self.ETCalg.read_fiberassign(acq_image['fiberassign'])
+                            have_new_telemetry = True
+                            need_acq_image = False
 
-                        if need_acq_image:
-                            # Process the acquisition image if available.
-                            acq_image = self.call_for_acq_image(wait=None)
-                            if acq_image:
-                                self.ETCalg.process_acquisition(acq_image['image'])
-                                self.ETCalg.read_fiberassign(acq_image['fiberassign'])
-                                have_new_telemetry = True
-                                need_acq_image = False
+                    if need_stars:
+                        # Process the PlateMaker guide stars if available.
+                        pm_info = self.call_for_pm_info(wait=None)
+                        if pm_info:
+                            self.ETCalg.set_guide_stars(pm_info['guidestars'])
+                            need_stars = False
 
-                        elif need_stars:
-                            # Process the PlateMaker guide stars if available.
-                            pm_info = self.call_for_pm_info(wait=None)
-                            if pm_info:
-                                self.ETCalg.set_guide_stars(pm_info['guidestars'])
-                                need_stars = False
+                    if not need acq_image and not need_stars:
+                        # We have PSF models and guide stars: process a guide frame if available.
+                        gfa_image = self.call_for_gfa_image(wait=None)
+                        if gfa_image:
+                            self.ETCalg.process_guide_frame(gfa_image['image'])
+                            have_new_telemetry = True
 
-                        else:
-                            # Process a guide frame if available.
-                            gfa_image = self.call_for_gfa_image(wait=None)
-                            if gfa_image:
-                                self.ETCalg.process_guide_frame(gfa_image['image'])
-                                have_new_telemetry = True
-
+                    # Is there an action to take associated with new telemetry?
                     if have_new_telemetry and self.ETCalg.action is not None:
                         action, cause = self.ETCalg.action
                         if action == 'stop':
@@ -236,7 +234,7 @@ class OnlineETC():
                         elif action == 'split' and self.splittable:
                             self.call_to_request_split(cause)
 
-                    # Send a telemetry update if triggered above or we are overdue.
+                    # Send a telemetry update if flagged above or if we are overdue.
                     now = datetime.datetime.utcnow()
                     if have_new_telemetry or now > self.last_update_time + self.max_update_delay:
                         self.last_update_time = now
