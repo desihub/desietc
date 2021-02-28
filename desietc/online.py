@@ -116,17 +116,37 @@ class OnlineETC():
         self.img_stop_src = None
         self.etc_stop_src = None
 
-        # Start our processing thread and create the flags we use to synchronize with it.
+        # Create the flags we use to synchronize with the worker thread.
         self.etc_ready = threading.Event()
         self.etc_ready.clear()
         self.image_processing = threading.Event()
         self.image_processing.clear()
         self.etc_processing = threading.Event()
         self.etc_processing.clear()
+
+        # Start the worker thread.
+        self.etc_thread = None
+        self.start_thread()
+
+    def start_thread(self, max_startup_time=10):
+        """Start or restart the ETC worker thread.
+        """
+        if self.etc_thread is not None and self.etc_thread.is_alive():
+            return
+        if self.etc_thread is not None:
+            logging.error('ETC thread has died so restarting now...')
         self.etc_thread = threading.Thread(target = self._etc)
         self.etc_thread.daemon = True
         self.etc_thread.start()
-        logging.info('ETC: processing thread running')
+        # Wait for the ETCAlgorithm to finish its startup.
+        elapsed = 0
+        while not self.etc_ready.is_set():
+            elapsed += 1
+            if elapsed ==  max_startup_time:
+                raise RuntimeError(f'ETC did not start up after {max_startup_time}s.')
+            logging.info(f'[{elapsed}/{max_startup_time}] Waiting for ETC startup...')
+            time.sleep(1)
+        logging.info('ETCAlgorithm is ready.')
 
     def _etc(self):
         """This is the ETC algorithm that does the actual work.
@@ -156,13 +176,13 @@ class OnlineETC():
 
         The thread that runs this function is started in our constructor.
         """
-        logging.info('ETC: processing thread starting.')
+        logging.info('ETCAlgorithm thread starting.')
         try:
             self.ETCalg.start()
             self.etc_ready.set()
         except Exception as e:
             self.etc_ready.clear()
-            logging.error(f'ETCalg.start failed with: {e}.')
+            logging.error(f'ETCAlgorithm.start failed with: {e}.')
 
         last_image_processing = last_etc_processing = False
 
@@ -340,6 +360,8 @@ class OnlineETC():
     def reset(self, all = True, keep_accumulated = False, update_status = True):
         """
         """
+        # Check that the ETC thread is still running and ready.
+        self.start_thread()
         if not self.etc_ready.is_set():
             return FAILED
 
@@ -358,45 +380,17 @@ class OnlineETC():
 
         return SUCCESS
 
-    def shutdown(self, timeout=30):
-        """Terminate our worker thread, which will release ETCalg resources.
-
-        In case the worker thread does not exit within timeout, call ETCalg.shutdown
-        directly to force it to release any resources it has allocated.
-        """
-        logging.info('ETC: shutdown called.')
-        # Signal to the worker thread that we are shutting down.
-        self.shutdown_event.set()
-        if self.etc_thread.is_alive():
-            self.etc_thread.join(timeout=timeout)
-        if self.etc_thread.is_alive():
-            logging.error(f'The ETC worker thread did not exit after {timeout}s.')
-            try:
-                self.ETCalg.shutdown()
-            except Exception as e:
-                logging.error(f'ETCalg.shutdown failed with {e}')
-        self.etc_ready.clear()
-
-        return SUCCESS
-
     def configure(self):
         """
         ETC configure - to be completed
         """
+        # Check that the ETC thread is still running and ready.
+        self.start_thread()
         if not self.etc_ready.is_set():
             return FAILED
 
         # reset internal variables
         self.reset(all=True)
-
-        # check if _etc thread is still running
-        if not self.etc_thread.is_alive():
-            self.etc_thread = threading.Thread(target = self._etc)
-            self.etc_thread.daemon = True
-            self.etc_thread.start()
-            logging.warn('ETC: processing thread restarted')
-        else:
-            logging.info('ETC: processing thread still running')
 
         logging.info('configure: ETC is ready')
 
@@ -418,6 +412,8 @@ class OnlineETC():
         max_splits:        Maximum number of allowed cosmic splits.
         splittable:        Never do splits when this is False.
         """
+        # Check that the ETC thread is still running and ready.
+        self.start_thread()
         if not self.etc_ready.is_set():
             return FAILED
 
@@ -455,6 +451,8 @@ class OnlineETC():
         :meth:`prepare_for_exposure`.  The ETC will start looking for an
         acquisition image once this is called.
         """
+        # Check that the ETC thread is still running and ready.
+        self.start_thread()
         if not self.etc_ready.is_set():
             return FAILED
 
@@ -477,6 +475,8 @@ class OnlineETC():
         The ETC will accumulate effective exposure time until the next call
         to to :meth:`stop_etc` or :meth:`stop`.
         """
+        # Check that the ETC thread is still running and ready.
+        self.start_thread()
         if not self.etc_ready.is_set():
             return FAILED
 
@@ -499,6 +499,8 @@ class OnlineETC():
         The ETC will continue processing any new sky or guide frames until
         :meth:`stop` is called.
         """
+        # Check that the ETC thread is still running and ready.
+        self.start_thread()
         if not self.etc_ready.is_set():
             return FAILED
 
@@ -524,6 +526,8 @@ class OnlineETC():
         In case stop is called while the spectrograph shutters are open,
         log an error and clear etc_processing before clearing image_processing.
         """
+        # Check that the ETC thread is still running and ready.
+        self.start_thread()
         if not self.etc_ready.is_set():
             return FAILED
 
@@ -543,4 +547,25 @@ class OnlineETC():
         # Update our status.
         self.call_to_update_status()
 
+        return SUCCESS
+
+    def shutdown(self, timeout=30):
+        """Terminate our worker thread, which will release ETCalg resources.
+
+        In case the worker thread does not exit within timeout, call ETCalg.shutdown
+        directly to force it to release any resources it has allocated.
+        """
+        logging.info('ETC: shutdown called.')
+        # Signal to the worker thread that we are shutting down.
+        self.shutdown_event.set()
+        if self.etc_thread.is_alive():
+            self.etc_thread.join(timeout=timeout)
+        if self.etc_thread.is_alive():
+            logging.error(f'The ETC worker thread did not exit after {timeout}s.')
+            try:
+                self.ETCalg.shutdown()
+            except Exception as e:
+                logging.error(f'ETCalg.shutdown failed with {e}')
+        self.etc_ready.clear()
+        self.etc_thread = None
         return SUCCESS
