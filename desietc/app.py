@@ -27,6 +27,7 @@ class OfflineETCApp:
         self.etc.call_to_update_status = self.call_to_update_status
         self.etc.call_for_acq_image = self.call_for_acq_image
         self.etc.call_for_pm_info = self.call_for_pm_info
+        self.etc.call_when_image_ready = self.call_when_image_ready
         self.etc.call_for_sky_image = lambda wait: self.call_for_frame('sky', wait)
         self.etc.call_for_gfa_image = lambda wait: self.call_for_frame('gfa', wait)
         self.expdir = pathlib.Path('expdir')
@@ -41,6 +42,9 @@ class OfflineETCApp:
         logging.info(f'get_status: {status}')
         self.status_updates.append(status)
 
+    def call_when_image_ready(self, path, expid, frame=0):
+        print('Image ready for {expid}[{frame}] at {path}')
+
     def get(self, key):
         return None if self.assets is None else self.assets.get(key, None)
 
@@ -52,6 +56,16 @@ class OfflineETCApp:
         self.etc.prepare_for_exposure(self.expid, requested_teff, sbprofile, max_exposure_time, cosmics_split_time)
         (pathlib.Path('expdir') / f'{self.expid:08d}').mkdir(parents=True, exist_ok=True)
         return self.etc.start(start_time=self.get('start_time'))
+
+    def open_shutter(self, splittable=False):
+        start_mjd = self.get('frames')[self.last_frame]['when']
+        start_time = desietc.util.mjd_to_date(start_mjd, utc_offset=0)
+        self.etc.start_etc(start_time=start_time, splittable=splittable)
+
+    def close_shutter(self, source='unknown'):
+        stop_mjd = self.get('frames')[self.last_frame]['when']
+        stop_time = desietc.util.mjd_to_date(stop_mjd, utc_offset=0)
+        self.etc.stop_etc(source=source, stop_time=stop_time)
 
     def call_for_acq_image(self, wait=None):
         if self.get('acq_path') is not None:
@@ -87,7 +101,7 @@ def main():
     print('OfflineETCApp is running.')
     options = dict(requested_teff=1000, sbprofile='PSF', max_exposure_time=2000, cosmics_split_time=1200)
     while True:
-        print('Enter a command: s(tart) f(rame) q(uit)')
+        print('Enter a command: s(tart) f(rame) o(pen) c(lose) q(uit)')
         cmd = input('# ')
         if cmd == 'q':
             print('Shutting down...')
@@ -102,6 +116,10 @@ def main():
             assets = desietc.offline.fetch_exposure(path, expid, only_complete=True)
             nframes = len(assets['frames'])
             print(app.start_exposure(assets, **options))
+        elif cmd == 'o':
+            print(app.open_shutter())
+        elif cmd == 'c':
+            print(app.close_shutter())
         elif cmd == 'f':
             if app.next_frame < nframes - 1:
                 app.next_frame += 1

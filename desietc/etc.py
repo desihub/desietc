@@ -704,7 +704,7 @@ class ETCAlgorithm(object):
                      + f'max={max_exposure_time:.1f}s, split={cosmics_split_time:.1f}s')
         self.reset_accumulated()
 
-    def open_shutter(self, timestamp):
+    def open_shutter(self, timestamp, splittable):
         """Record the shutter opening.
         """
         mjd = desietc.util.date_to_mjd(timestamp, utc_offset=0)
@@ -729,6 +729,7 @@ class ETCAlgorithm(object):
             self.bg_grid = np.zeros_like(self.mjd_grid)
             logging.debug(f'Created mjd_grid with {ngrid} values.')
         # Record this shutter opening.
+        self.splittable = splittable
         self.shutter_open.append(mjd)
         self.open_grid[self.mjd_grid >= mjd] = 1
         logging.info(f'Shutter open[{nopen}] at {timestamp}.')
@@ -792,9 +793,9 @@ class ETCAlgorithm(object):
         :meth:`process_guide_frame` or :meth:`process_sky`.
         """
         # Check that we have the NTS parameters for this exposure.
-        for key in 'mjd_start', 'mjd_max', 'requested_teff', 'cosmics_split_time', 'max_splits', 'splittable':
+        for key in 'mjd_start', 'mjd_max', 'requested_teff', 'cosmics_split_time':
             if key not in self.exp_data:
-                logging.error('update_accumulated: missing required NTS parameter "{key}".')
+                logging.error(f'update_accumulated: missing required NTS parameter "{key}".')
                 return False
         mjd_start, mjd_max = self.exp_data['mjd_start'], self.exp_data['mjd_max']
         if mjd_now < mjd_start:
@@ -802,8 +803,7 @@ class ETCAlgorithm(object):
             return False
         target = self.exp_data['requested_teff']
         cosmic_split = self.exp_data['cosmics_split_time']
-        max_splits = self.exp_data['max_splits']
-        splittable = self.exp_data['splittable']
+        splittable = self.splittable
         # Check the state of the shutter.
         nopen, nclose = len(self.shutter_open), len(self.shutter_close)
         if nopen == nclose:

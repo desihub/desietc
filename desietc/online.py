@@ -206,7 +206,7 @@ class OnlineETC():
 
                     elif not last_etc_processing and self.etc_processing.is_set():
                         # Shutter just opened.
-                        self.ETCalg.open_shutter(self.etc_start_time)
+                        self.ETCalg.open_shutter(self.etc_start_time, self.splittable)
                         last_etc_processing = True
 
                     elif last_etc_processing and not self.etc_processing.is_set():
@@ -226,6 +226,9 @@ class OnlineETC():
                         acq_image = self.call_for_acq_image(wait=None)
                         if acq_image:
                             self.ETCalg.process_acquisition(acq_image['image'])
+                            img_path = self.ETCalg.image_path / f'etc-{self.expid:08d}.png'
+                            if img_path.exists():
+                                self.call_when_image_ready(str(img_path), self.expid)
                             self.ETCalg.read_fiberassign(acq_image['fiberassign'])
                             have_new_telemetry = True
                             need_acq_image = False
@@ -446,7 +449,7 @@ class OnlineETC():
 
         return SUCCESS
 
-    def start_etc(self, start_time=None, **options):
+    def start_etc(self, start_time=None, splittable=False, **options):
         """Signal to the ETC that the spectrograph shutters have just opened.
 
         The ETC will accumulate effective exposure time until the next call
@@ -459,7 +462,7 @@ class OnlineETC():
             return FAILED
 
         self.etc_start_time = start_time or datetime.datetime.utcnow()
-        logging.info('start_etc: shutter opened at %r' % self.etc_start_time)
+        self.splittable = splittable
         if options:
             logging.warn('start_etc: ignoring extra options: %r' % options)
 
