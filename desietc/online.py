@@ -299,12 +299,12 @@ class OnlineETC():
         """
         etc_status = {}
 
-        # Do we have any telemetry yet?
-        if getattr(self, 'expid', None) is None:
-            etc_status['last_updated'] = datetime.datetime.utcnow().isoformat()
-            return etc_status
-
         # These variables are only updated by the main thread #################
+
+        # Flags used to synchronize with the _etc thread.
+        etc_status['img_proc'] = self.image_processing.is_set()
+        etc_status['etc_proc'] = self.etc_processing.is_set()
+        etc_status['etc_ready'] =  self.etc_ready.is_set()
 
         # Exposure parameters set in prepare_for_exposure()
         etc_status['expid'] = self.expid
@@ -324,10 +324,6 @@ class OnlineETC():
         # Stop sources captured by stop_etc(), stop().
         etc_status['img_stop_src'] = self.img_stop_src
         etc_status['etc_stop_src'] = self.etc_stop_src
-
-        # Flags used to synchronize with the _etc thread.
-        etc_status['img_proc'] = self.image_processing.is_set()
-        etc_status['etc_proc'] = self.etc_processing.is_set()
 
         # The remaining variables are only updated by the _etc thread #########
 
@@ -360,6 +356,7 @@ class OnlineETC():
     def reset(self, all = True, keep_accumulated = False, update_status = True):
         """
         """
+        logging.info('OnlineETC.reset')
         # Check that the ETC thread is still running and ready.
         self.start_thread()
         if not self.etc_ready.is_set():
@@ -384,6 +381,7 @@ class OnlineETC():
         """
         ETC configure - to be completed
         """
+        logging.info('OnlineETC.configure')
         # Check that the ETC thread is still running and ready.
         self.start_thread()
         if not self.etc_ready.is_set():
@@ -391,8 +389,6 @@ class OnlineETC():
 
         # reset internal variables
         self.reset(all=True)
-
-        logging.info('configure: ETC is ready')
 
         return SUCCESS
 
@@ -412,22 +408,11 @@ class OnlineETC():
         max_splits:        Maximum number of allowed cosmic splits.
         splittable:        Never do splits when this is False.
         """
+        logging.info('OnlineETC.prepare_for_exposure')
         # Check that the ETC thread is still running and ready.
         self.start_thread()
         if not self.etc_ready.is_set():
             return FAILED
-
-        assert isinstance(expid, int),'Invalid arguments'
-        logging.info('ETC (%d): prepare_for_exposure called' % expid)
-
-        # check if _etc thread is still running
-        if not self.etc_thread.is_alive():
-            self.etc_thread = threading.Thread(target = self._etc)
-            self.etc_thread.daemon = True
-            self.etc_thread.start()
-            logging.warn('ETC (%d): processing thread restarted' % expid)
-        else:
-            logging.info('ETC (%d): processing thread still running' % expid)
 
         # Reset status variables, keep seeing, sky level and transparency values
         self.reset(all=True, update_status = False)
@@ -451,6 +436,7 @@ class OnlineETC():
         :meth:`prepare_for_exposure`.  The ETC will start looking for an
         acquisition image once this is called.
         """
+        logging.info('OnlineETC.start')
         # Check that the ETC thread is still running and ready.
         self.start_thread()
         if not self.etc_ready.is_set():
@@ -475,6 +461,7 @@ class OnlineETC():
         The ETC will accumulate effective exposure time until the next call
         to to :meth:`stop_etc` or :meth:`stop`.
         """
+        logging.info('OnlineETC.start_etc')
         # Check that the ETC thread is still running and ready.
         self.start_thread()
         if not self.etc_ready.is_set():
@@ -499,6 +486,7 @@ class OnlineETC():
         The ETC will continue processing any new sky or guide frames until
         :meth:`stop` is called.
         """
+        logging.info('OnlineETC.stop_etc')
         # Check that the ETC thread is still running and ready.
         self.start_thread()
         if not self.etc_ready.is_set():
@@ -526,6 +514,7 @@ class OnlineETC():
         In case stop is called while the spectrograph shutters are open,
         log an error and clear etc_processing before clearing image_processing.
         """
+        logging.info('OnlineETC.stop')
         # Check that the ETC thread is still running and ready.
         self.start_thread()
         if not self.etc_ready.is_set():

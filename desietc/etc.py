@@ -778,6 +778,7 @@ class ETCAlgorithm(object):
     def reset_accumulated(self):
         """Initialize or reset all attributes calculated by :meth:`update_accumulated`.
         """
+        logging.info('Resetting acummulated data.')
         self.accumulated_mjd = desietc.util.date_to_mjd(datetime.datetime.utcnow(), utc_offset=0)
         self.accumulated_eff_time = self.accumulated_real_time = 0.
         self.accumulated_signal = self.accumulated_background = 0.
