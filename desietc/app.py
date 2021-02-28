@@ -27,7 +27,8 @@ class OfflineETCApp:
         self.etc.call_to_update_status = self.call_to_update_status
         self.etc.call_for_acq_image = self.call_for_acq_image
         self.etc.call_for_pm_info = self.call_for_pm_info
-        self.etc.call_for_sky_image = self.call_for_sky_image
+        self.etc.call_for_sky_image = lambda wait: self.call_for_frame('sky', wait)
+        self.etc.call_for_gfa_image = lambda wait: self.call_for_frame('gfa', wait)
         self.expdir = pathlib.Path('expdir')
         self.etc.call_for_exp_dir = lambda expid: str(self.expdir / f'{expid:08d}')
         self.status_updates = []
@@ -45,13 +46,16 @@ class OfflineETCApp:
 
     def start_exposure(self, assets, requested_teff, sbprofile, max_exposure_time, cosmics_split_time):
         self.assets = assets
-        expid = self.get('expid')
-        self.etc.prepare_for_exposure(expid, requested_teff, sbprofile, max_exposure_time, cosmics_split_time)
-        (pathlib.Path('expdir') / f'{expid:08d}').mkdir(parents=True, exist_ok=True)
+        self.expid = self.get('expid')
+        self.next_frame = 0
+        self.last_frame = 0
+        self.etc.prepare_for_exposure(self.expid, requested_teff, sbprofile, max_exposure_time, cosmics_split_time)
+        (pathlib.Path('expdir') / f'{self.expid:08d}').mkdir(parents=True, exist_ok=True)
         return self.etc.start(start_time=self.get('start_time'))
 
     def call_for_acq_image(self, wait=None):
         if self.get('acq_path') is not None:
+            assert self.get('frames')[0]['typ'] == 'gfa'
             return dict(
                 image=desietc.offline.acq_to_online(self.get('acq_path'), desietc.gfa.GFACamera.guide_names),
                 fiberassign=self.get('fassign_path'))
@@ -60,13 +64,21 @@ class OfflineETCApp:
             return None
 
     def call_for_pm_info(self, wait=None):
-        if wait: time.sleep(wait)
-        return None
+        if self.get('pm_info') is not None:
+            return dict(guidestars=self.get('pm_info'))
+        else:
+            if wait: time.sleep(wait)
+            return None
 
-    def call_for_sky_image(self, wait=None):
-        if wait: time.sleep(wait)
-        return None
-
+    def call_for_frame(self, ftype, wait=None):
+        if self.get('frames') is not None and (self.next_frame > self.last_frame) and (self.get('frames')[self.next_frame]['typ'] == ftype):
+            path = self.get(f'{ftype}_path')
+            names = desietc.sky.SkyCamera.sky_names if ftype == 'sky' else desietc.gfa.GFACamera.guide_names
+            self.last_frame += 1
+            return dict(image=desietc.offline.fits_to_online(path, names, self.next_frame))
+        else:
+            if wait: time.sleep(wait)
+            return None
 
 
 def main():
@@ -75,7 +87,7 @@ def main():
     print('OfflineETCApp is running.')
     options = dict(requested_teff=1000, sbprofile='PSF', max_exposure_time=2000, cosmics_split_time=1200)
     while True:
-        print('Enter a command: s(tart) q(uit)')
+        print('Enter a command: s(tart) f(rame) q(uit)')
         cmd = input('# ')
         if cmd == 'q':
             print('Shutting down...')
@@ -88,7 +100,11 @@ def main():
             path = pathlib.Path('/Users/david/Data/DESI/20201218/')
             expid = 68630
             assets = desietc.offline.fetch_exposure(path, expid, only_complete=True)
+            nframes = len(assets['frames'])
             print(app.start_exposure(assets, **options))
+        elif cmd == 'f':
+            if app.next_frame < nframes - 1:
+                app.next_frame += 1
         else:
             if cmd:
                 print(f'Ignoring unrecognized input "{cmd}".')

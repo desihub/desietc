@@ -563,6 +563,8 @@ class ETCAlgorithm(object):
         ffrac = np.nanmedian(camera_ffrac) if np.any(np.isfinite(camera_ffrac)) else 0.
         thru = transp * ffrac
         logging.info(f'Guide transp={transp:.3f}, ffrac={ffrac:.3f}, thru={thru:.3f}.')
+        self.transp = transp
+        self.ffrac = ffrac
         # Record this measurement.
         mjd_start, mjd_stop = self.get_mjd_range(mjd_obs, exptime, f'guide[{fnum}]')
         # Use constant error until we have a proper estimate.
@@ -620,6 +622,7 @@ class ETCAlgorithm(object):
         flux /= ivar
         dflux = ivar ** -0.5
         logging.info(f'SKY flux = {flux:.2f} +/- {dflux:.2f}.')
+        self.skylevel = flux
         # Record this measurement.
         mjd_start, mjd_stop = self.get_mjd_range(mjd_obs, exptime, f'sky[{fnum}]')
         self.sky_measurements.add(
