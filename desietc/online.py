@@ -108,7 +108,7 @@ class OnlineETC():
         self.max_exposure_time = None
         self.cosmics_split_time = None
         self.img_start_time = None
-        self.img_start_time = None
+        self.img_stop_time = None
         self.etc_start_time = None
         self.etc_stop_time = None
         self.img_stop_src = None
@@ -200,7 +200,7 @@ class OnlineETC():
                             self.max_exposure_time, self.cosmics_split_time)
                         last_image_processing = True
                         # Set the path where the PNG generated after the acquisition analysis will be written.
-                        self.ETCalg.set_image_path(self.call_for_png_dir(self.expid))
+                        self.ETCalg.set_image_path(self.call_for_exp_dir(self.expid))
                         # Look for the acquisition image and PlateMaker guide stars next.
                         need_acq_image = need_stars = True
 
@@ -313,10 +313,10 @@ class OnlineETC():
         etc_status['cosmics_split'] = self.cosmics_split_time
 
         # Timestamps updated when start(), stop(), start_etc(), stop_etc() is called.
-        etc_status['img_start_time'] = self.img_start_time
-        etc_status['img_stop_time'] = self.img_start_time
-        etc_status['etc_start_time'] = self.etc_start_time
-        etc_status['etc_stop_time'] = self.etc_stop_time
+        etc_status['img_start_time'] = self.img_start_time.isoformat() if self.img_start_time else None
+        etc_status['img_stop_time'] = self.img_stop_time.isoformat() if self.img_stop_time else None
+        etc_status['etc_start_time'] = self.etc_start_time.isoformat() if self.etc_start_time else None
+        etc_status['etc_stop_time'] = self.etc_stop_time.isoformat() if self.etc_stop_time else None
 
         # Stop sources captured by stop_etc(), stop().
         etc_status['img_stop_src'] = self.img_stop_src
@@ -376,7 +376,6 @@ class OnlineETC():
 
     def configure(self):
         """
-        ETC configure - to be completed
         """
         logging.info('OnlineETC.configure')
         # Check that the ETC thread is still running and ready.

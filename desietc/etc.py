@@ -676,16 +676,13 @@ class ETCAlgorithm(object):
                 self.noisy_gfa.add(camera)
         return True
 
-    def start_exposure(self, timestamp, expid, requested_teff, sbprofile, max_exposure_time,
-                       cosmics_split_time, max_splits, splittable):
+    def start_exposure(self, timestamp, expid, requested_teff, sbprofile, max_exposure_time, cosmics_split_time):
         """Start a new exposure using parameters:
         expid:              next exposure id (int)
         requested_teff:        target value of the effective exposure time in seconds (float)
         sbprofile:        a string describing the type of target to assume (DARK/BRIGHT/...)
         max_exposure_time:  Maximum exposure time in seconds (irrespective of accumulated SNR)
         cosmics_split_time: Time in second before requesting a cosmic ray split
-        max_splits:         Maximum number of allowed cosmic splits.
-        splittable:         Never do splits when this is False.
         """
         max_hours = 6
         if max_exposure_time <= 0 or max_exposure_time > max_hours * 3600:
@@ -697,14 +694,11 @@ class ETCAlgorithm(object):
             sbprofile=sbprofile,
             max_exposure_time=max_exposure_time,
             cosmics_split_time=cosmics_split_time,
-            max_splits=max_splits,
-            splittable=splittable
         )
         self.exptag = str(expid).zfill(8)
         self.night = desietc.util.mjd_to_night(desietc.util.date_to_mjd(timestamp, utc_offset=0))
         logging.info(f'Start {self.night}/{self.exptag} at {timestamp} with teff={requested_teff:.1f}s, type={sbprofile}, '
-                     + f'max={max_exposure_time:.1f}s, split={cosmics_split_time:.1f}s, '
-                     + f'maxsplit={max_splits}, splittable={splittable}.')
+                     + f'max={max_exposure_time:.1f}s, split={cosmics_split_time:.1f}s')
         self.reset_accumulated()
 
     def open_shutter(self, timestamp):
@@ -968,11 +962,5 @@ class ETCAlgorithm(object):
             with open(fname, 'w') as f:
                 json.dump(save, f, cls=desietc.util.NumpyEncoder)
                 logging.info(f'Wrote {fname} for {self.exptag}')
-            # Copy the acquisition analysis summary image.
-            if self.image_path is not None:
-                name = f'psf-{self.exptag}.png'
-                if (self.image_path / name).exists() and not (path / name).exists():
-                    logging.info(f'Copying {name} to {path}.')
-                    shutil.copy(self.image_path / name, path / name)
         except Exception as e:
             logging.error(f'save_exposure: error saving json: {e}')
