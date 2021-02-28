@@ -16,17 +16,14 @@ import desietc.gfa
 import desietc.sky
 import desietc.plot
 
-def replay_exposure(ETC, path, expid, outpath, teff=1000, ttype='DARK', cutoff=3600, cosmic=1200,
-                    maxsplit=3, splittable=True, overwrite=False, dry_run=False, only_complete=True):
-    """Recreate the online ETC processing of an exposure by replaying the
-    FITS files stored to disk.
+def fetch_exposure(path, expid, only_complete=True):
     """
-    logging.info(f'Replaying expid {expid} in {path}...')
+    """
     exptag = str(int(expid)).zfill(8)
     exppath = path / exptag
     if not exppath.exists():
         logging.error(f'No exposure directory found.')
-        return False
+        return None
     # What data is available for this exposure?
     acq_path = exppath / f'guide-{exptag}-0000.fits.fz'
     gfa_path = exppath / f'guide-{exptag}.fits.fz'
@@ -53,7 +50,7 @@ def replay_exposure(ETC, path, expid, outpath, teff=1000, ttype='DARK', cutoff=3
     else:
         fassign_path = fassign_paths[0]
     if only_complete and missing > 0:
-        return False
+        return None
     if desi_path.exists():
         # Get the spectrograph info for this exposure.
         desi_hdr = fitsio.read_header(str(desi_path), ext='SPEC')
@@ -63,23 +60,11 @@ def replay_exposure(ETC, path, expid, outpath, teff=1000, ttype='DARK', cutoff=3
                 logging.error(f'DESI exposure missing {key}.')
                 missing += 1
         if missing > 0:
-            return False
+            return None
         night = desi_hdr['NIGHT']
         desi_mjd_obs = desi_hdr['MJD-OBS']
         desi_exptime = desi_hdr['EXPTIME']
         desi_tileid = desi_hdr['TILEID']
-    # If this is a dry run, stop now.
-    if dry_run:
-        return True
-    # If the output directory exists, can we overwrite its contents?
-    exppath_out = outpath / exptag
-    if not overwrite and exppath_out.exists():
-        logging.info(f'Will not overwrite ETC outputs for {expid}.')
-        return False
-    # Create the output exposure directory if necessary.
-    exppath_out.mkdir(parents=False, exist_ok=True)
-    # Save images with the per-exposure outputs.
-    ETC.set_image_path(exppath_out)
     # Get the SKY exposure info for the first available camera.
     sky_info = []
     if sky_path.exists():
@@ -102,7 +87,7 @@ def replay_exposure(ETC, path, expid, outpath, teff=1000, ttype='DARK', cutoff=3
                 # Lookup the PlateMaker guide stars.
                 if 'PMGSTARS' not in hdus:
                     logging.error(f'Missing PMGSTARS HDU: no guide stars specified.')
-                    return False
+                    return None
                 pm_info = hdus['PMGSTARS'].read()
                 logging.info(f'Exposure has {len(pm_info[0])} guide stars.')
                 for camera in desietc.gfa.GFACamera.guide_names:
@@ -130,58 +115,100 @@ def replay_exposure(ETC, path, expid, outpath, teff=1000, ttype='DARK', cutoff=3
     logging.info(f'Exposure has {num_gfa_frames} GFA frames.')
     # Determine the order in which the combined GFA+SKY frames should be fed to the ETC.
     frames = (
-        [ dict(typ='gfa', num=n, when=gfa_info[n]['MJD-OBS']+gfa_info[n]['EXPTIME']/ETC.SECS_PER_DAY)
+        [ dict(typ='gfa', num=n, when=gfa_info[n]['MJD-OBS']+gfa_info[n]['EXPTIME'] / 86400)
           for n in range(num_gfa_frames) ] +
-        [ dict(typ='sky', num=n, when=sky_info[n]['MJD-OBS']+sky_info[n]['EXPTIME']/ETC.SECS_PER_DAY)
+        [ dict(typ='sky', num=n, when=sky_info[n]['MJD-OBS']+sky_info[n]['EXPTIME'] / 86400)
           for n in range(num_sky_frames) ])
     frames = sorted(frames, key=lambda frame: frame['when'])
     if len(frames) == 0:
         logging.error(f'No GFA or SKY frames found.')
+        return None
+    # If we get this far, return a dictionary of the fetched results.
+    return dict(
+        expid=expid,
+        exptag=exptag,
+        desi_path=desi_path,
+        desi_mjd_obs=desi_mjd_obs,
+        desi_exptime=desi_exptime,
+        fassign_path=fassign_path,
+        pm_info=pm_info,
+        acq_path=acq_path,
+        gfa_path=gfa_path,
+        sky_path=sky_path,
+        gfa_info=gfa_info,
+        sky_info=sky_info,
+        frames=frames,
+    )
+
+
+def replay_exposure(ETC, path, expid, outpath, teff=1000, ttype='DARK', cutoff=3600, cosmic=1200,
+                    maxsplit=3, splittable=True, overwrite=False, dry_run=False, only_complete=True):
+    """Recreate the online ETC processing of an exposure by replaying the
+    FITS files stored to disk.
+    """
+    logging.info(f'Replaying expid {expid} in {path}...')
+
+    F = fetch_exposure(path, expid, only_complete)
+    if F is None:
         return False
+
+    # If this is a dry run, stop now.
+    if dry_run:
+        return True
+    # If the output directory exists, can we overwrite its contents?
+    exppath_out = outpath / F['exptag']
+    if not overwrite and exppath_out.exists():
+        logging.info(f'Will not overwrite ETC outputs for {expid}.')
+        return False
+    # Create the output exposure directory if necessary.
+    exppath_out.mkdir(parents=False, exist_ok=True)
+    # Save images with the per-exposure outputs.
+    ETC.set_image_path(exppath_out)
     # Start the exposure processing.
-    if num_gfa_frames > 0:
-        mjd_first_frame = gfa_info[0]['MJD-OBS']
+    if len(F['gfa_info']) > 0:
+        mjd_first_frame = F['gfa_info'][0]['MJD-OBS']
     else:
-        mjd_first_frame = sky_info[0]['MJD-OBS']
+        mjd_first_frame = F['sky_info'][0]['MJD-OBS']
     timestamp = desietc.util.mjd_to_date(mjd_first_frame - 1 / ETC.SECS_PER_DAY, utc_offset=0)
     ETC.start_exposure(timestamp, expid, teff, ttype, cutoff, cosmic, maxsplit, splittable)
     # Loop over frames to replay.
-    for frame in frames:
+    for frame in F['frames']:
         if frame['typ'] == 'gfa':
-            if frame['num'] == 0 and acq_path.exists():
-                data = acq_to_online(acq_path, desietc.gfa.GFACamera.guide_names)
+            if frame['num'] == 0 and F['acq_path'].exists():
+                data = acq_to_online(F['acq_path'], desietc.gfa.GFACamera.guide_names)
             else:
-                data = fits_to_online(gfa_path, desietc.gfa.GFACamera.guide_names, frame['num'])
+                data = fits_to_online(F['gfa_path'], desietc.gfa.GFACamera.guide_names, frame['num'])
             if frame['num'] == 0:
                 # Process the acquisition image.
                 ETC.process_acquisition(data)
-                if fassign_path.exists():
+                if F['fassign_path'].exists():
                     # Read the fiber assignments for this tile.
-                    ETC.read_fiberassign(fassign_path)
-                if pm_info is not None:
+                    ETC.read_fiberassign(F['fassign_path'])
+                if F['pm_info'] is not None:
                     # Specify the guide stars.
-                    ETC.set_guide_stars(pm_info)
-                if desi_path.exists():
+                    ETC.set_guide_stars(F['pm_info'])
+                if F['desi_path'].exists():
                     # Signal the shutter opening.
-                    timestamp = desietc.util.mjd_to_date(desi_mjd_obs, utc_offset=0)
+                    timestamp = desietc.util.mjd_to_date(F['desi_mjd_obs'], utc_offset=0)
                     ETC.open_shutter(timestamp)
             else:
                 # Process the next guide frame.
                 ETC.process_guide_frame(data)
         else: # SKY
-            data = fits_to_online(sky_path, ETC.SKY.sky_names, frame['num'])
+            data = fits_to_online(F['sky_path'], ETC.SKY.sky_names, frame['num'])
             ETC.process_sky_frame(data)
-    if desi_path.exists():
+    if F['desi_path'].exists():
         # Signal the shutter closing.
-        timestamp = desietc.util.mjd_to_date(desi_mjd_obs + desi_exptime / ETC.SECS_PER_DAY, utc_offset=0)
+        timestamp = desietc.util.mjd_to_date(
+            F['desi_mjd_obs'] + F['desi_exptime'] / ETC.SECS_PER_DAY, utc_offset=0)
         ETC.close_shutter(timestamp)
         # End the exposure.
         ETC.stop_exposure(timestamp)
         # Save the ETC outputs for this exposure.
         ETC.save_exposure(exppath_out)
         # Plot the signal and background measurement buffers spanning this exposure.
-        mjd1 = desi_mjd_obs
-        mjd2 = mjd1 + desi_exptime / ETC.SECS_PER_DAY
+        mjd1 = F['desi_mjd_obs']
+        mjd2 = mjd1 + F['desi_exptime'] / ETC.SECS_PER_DAY
         fig, ax = plt.subplots(2, 1, figsize=(9, 9))
         fig.suptitle(f'ETC Analysis for {ETC.night}/{ETC.exptag}')
         desietc.plot.plot_measurements(
