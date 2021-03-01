@@ -206,7 +206,7 @@ class OnlineETC():
 
                     elif not last_etc_processing and self.etc_processing.is_set():
                         # Shutter just opened.
-                        self.ETCalg.open_shutter(self.etc_start_time, self.splittable)
+                        self.ETCalg.open_shutter(self.expid, self.etc_start_time, self.splittable)
                         last_etc_processing = True
 
                     elif last_etc_processing and not self.etc_processing.is_set():
@@ -214,6 +214,10 @@ class OnlineETC():
                         self.ETCalg.close_shutter(self.etc_stop_time)
                         last_etc_processing = False
                         have_new_telemetry = True
+                        # Save the ETC outputs for this shutter.
+                        self.ETCalg.save_exposure(self.call_for_exp_dir(self.expid))
+                        # Reset the PNG output path.
+                        self.ETCalg.set_image_path(None)
 
                     # Process a sky frame if available.
                     sky_image = self.call_for_sky_image(wait=None)
@@ -266,12 +270,23 @@ class OnlineETC():
                     # No exposure is active.
                     if last_image_processing:
                         # The previous exposure has just ended.
+                        if last_etc_processing and not self.etc_processing.is_set():
+                            # The shutter just closed for the last time, but we didn't catch it above
+                            # because stop() was called too soon after stop_etc().
+                            # Do the same shutter-closed processing here as above.
+                            logging.warn('Got stop_etc() and stop() in rapid fire: ' +
+                                f'{self.img_stop_time - self.etc_stop_time}')
+                            self.ETCalg.close_shutter(self.etc_stop_time)
+                            last_etc_processing = False
+                            have_new_telemetry = True
+                            # Save the ETC outputs for this shutter.
+                            self.ETCalg.save_exposure(self.call_for_exp_dir(self.expid))
+                            # Reset the PNG output path.
+                            self.ETCalg.set_image_path(None)
+                            last_etc_processing = False
+                        # Stop this exposure.
                         self.ETCalg.stop_exposure(self.img_stop_time)
                         last_image_processing = False
-                        # Save the ETC outputs for this exposure.
-                        self.ETCalg.save_exposure(self.call_for_exp_dir(self.expid))
-                        # Reset the PNG output path.
-                        self.ETCalg.set_image_path(None)
 
                 # Need some delay here to allow the main thread to run.
                 time.sleep(0.5)
@@ -347,6 +362,7 @@ class OnlineETC():
         etc_status['accum_tproj'] = self.ETCalg.time_remaining
         etc_status['accum_final'] = self.ETCalg.projected_eff_time
         etc_status['accum_split'] = self.ETCalg.split_remaining
+        etc_status['splittable'] = self.ETCalg.splittable
 
         # Timestamp for the last update of an ETC variable.
         etc_status['last_updated'] = self.last_update_time.isoformat()
@@ -449,7 +465,7 @@ class OnlineETC():
 
         return SUCCESS
 
-    def start_etc(self, start_time=None, splittable=False, **options):
+    def start_etc(self, expid=None, start_time=None, splittable=False, **options):
         """Signal to the ETC that the spectrograph shutters have just opened.
 
         The ETC will accumulate effective exposure time until the next call
@@ -461,6 +477,7 @@ class OnlineETC():
         if not self.etc_ready.is_set():
             return FAILED
 
+        self.expid = expid
         self.etc_start_time = start_time or datetime.datetime.utcnow()
         self.splittable = splittable
         if options:

@@ -696,7 +696,7 @@ class ETCAlgorithm(object):
             logging.warn(f'max_exposure_time={max_exposure_time} looks fishy: using {max_hours} hours.')
             max_exposure_time = max_hours * 3600
         self.exp_data = dict(
-            expid=expid,
+            expid=expid, # This is the initial expid in case there are cosmic splits.
             requested_teff=requested_teff,
             sbprofile=sbprofile,
             max_exposure_time=max_exposure_time,
@@ -708,7 +708,7 @@ class ETCAlgorithm(object):
                      + f'max={max_exposure_time:.1f}s, split={cosmics_split_time:.1f}s')
         self.reset_accumulated()
 
-    def open_shutter(self, timestamp, splittable):
+    def open_shutter(self, expid, timestamp, splittable):
         """Record the shutter opening.
         """
         mjd = desietc.util.date_to_mjd(timestamp, utc_offset=0)
@@ -732,7 +732,7 @@ class ETCAlgorithm(object):
         # Record this shutter opening.
         self.splittable = splittable
         self.shutter_open.append(mjd)
-        logging.info(f'Shutter open[{nopen}] at {timestamp}.')
+        logging.info(f'Shutter open[{nopen}] for expid {expid} at {timestamp}.')
 
     def close_shutter(self, timestamp):
         """
@@ -780,6 +780,7 @@ class ETCAlgorithm(object):
         self.shutter_open = []
         self.shutter_close = []
         self.shutter_teff = []
+        self.splittable = False
         self.action = None
 
     def update_accumulated(self, mjd_now):
@@ -799,7 +800,6 @@ class ETCAlgorithm(object):
             return False
         target = self.exp_data['requested_teff']
         cosmic_split = self.exp_data['cosmics_split_time']
-        splittable = self.splittable
         # Check the state of the shutter.
         nopen, nclose = len(self.shutter_open), len(self.shutter_close)
         if nopen == nclose:
@@ -831,6 +831,16 @@ class ETCAlgorithm(object):
             self.accumulated_signal, self.accumulated_background, MW_transp)
         logging.info(f'shutter[{nopen}] treal={self.accumulated_real_time:.1f}s, teff={self.accumulated_eff_time:.1f}s' +
             f' [+{prev_teff:.1f}s] using bg={self.accumulated_background:.3f}, sig={self.accumulated_signal:.3f}.')
+        # Have we reached the cutoff time?
+        if mjd_now >= mjd_max:
+            # We have already reached the maximum allowed exposure time.
+            istop = inow
+            self.action = ('stop', 'max exptime')
+            logging.info(f'Maximum exposure time reached.')
+            self.projected_eff_time = self.accumulated_eff_time + prev_teff
+            self.time_remaining = 0.
+            self.split_remaining = 0.
+            return True
         # Forecast the future signal and background.
         self.sig_grid[future] = self.thru_measurements.forecast_grid(self.mjd_grid[future])
         self.bg_grid[future] = self.sky_measurements.forecast_grid(self.mjd_grid[future])
@@ -873,7 +883,7 @@ class ETCAlgorithm(object):
         mjd_split = mjd_open + (mjd_stop - mjd_open) / nsplit_remaining
         self.split_remaining = (mjd_split - mjd_now) * self.SECS_PER_DAY
         logging.info(f'Next split ({nopen} of {nclose+nsplit_remaining}) in {self.split_remaining:.1f}s')
-        if (splittable and self.action is None and
+        if (self.splittable and self.action is None and
             nsplit_remaining > 1 and self.split_remaining <= 0):
             self.action = ('split', 'cosmic split')
         if self.action is not None:
