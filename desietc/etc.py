@@ -258,8 +258,9 @@ class ETCAlgorithm(object):
             logging.error(f'Missing EXPID keyword in {source}')
         elif 'expid' in self.exp_data:
             expid = header['EXPID']
-            if expid != self.exp_data['expid']:
-                logging.error(f'Got EXPID {expid} from {source} but expected {self.expid}.')
+            expected = self.exp_data['expid']
+            if expid != expected:
+                logging.error(f'Got EXPID {expid} from {source} but expected {expected}.')
 
     def process_camera_header(self, header, source):
         """Check the header for a single camera.
@@ -721,6 +722,9 @@ class ETCAlgorithm(object):
             self.exp_data['mjd_start'] = mjd
             delta = self.exp_data['max_exposure_time'] / self.SECS_PER_DAY
             self.exp_data['mjd_max'] = mjd + delta
+        # Save the current expid.
+        self.exp_data[expid] = expid
+        self.exptag = str(expid).zfill(8)
         # Initialize a MJD grid to use for SNR calculations during this shutter.
         # Grid values are bin centers, with spacing ~ grid_resolution.
         delta = self.exp_data['mjd_max'] - mjd
@@ -744,6 +748,8 @@ class ETCAlgorithm(object):
             return
         # Update our SNR.
         self.update_accumulated(mjd)
+        # Ignore any requested action now that the shutter is already closed.
+        self.action = None
         # Record this shutter closing.
         self.shutter_close.append(mjd)
         self.shutter_teff.append(self.accumulated_eff_time)

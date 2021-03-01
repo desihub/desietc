@@ -56,7 +56,6 @@ class OfflineETCApp:
         logging.info(f'request_split: cause={cause}')
         self.close_shutter()
         self.expid += 1
-        self.open_shutter()
 
     def get(self, key):
         return None if self.assets is None else self.assets.get(key, None)
@@ -117,7 +116,7 @@ def main():
     app = OfflineETCApp()
     print('OfflineETCApp is running.')
     #options = dict(requested_teff=1000, sbprofile='PSF', max_exposure_time=2000, cosmics_split_time=1200)
-    options = dict(requested_teff=1000, sbprofile='PSF', max_exposure_time=30, cosmics_split_time=1200)
+    options = dict(requested_teff=1000, sbprofile='PSF', max_exposure_time=2000, cosmics_split_time=30)
     while True:
         print('Enter a command: s(tart) f(rame) o(pen) c(lose) (s)t(op) q(uit)')
         cmd = input('# ')
