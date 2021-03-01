@@ -126,7 +126,7 @@ class OnlineETC():
         self.etc_thread = None
         self.start_thread()
 
-    def start_thread(self, max_startup_time=10):
+    def start_thread(self, max_startup_time=60):
         """Start or restart the ETC worker thread.
         """
         if self.etc_thread is not None and self.etc_thread.is_alive():
@@ -232,7 +232,7 @@ class OnlineETC():
                             self.ETCalg.process_acquisition(acq_image['image'])
                             img_path = self.ETCalg.image_path / f'etc-{self.expid:08d}.png'
                             if img_path.exists():
-                                self.call_when_image_ready(str(img_path), self.expid)
+                                self.call_when_image_ready(self.expid, filename=str(img_path))
                             self.ETCalg.read_fiberassign(acq_image['fiberassign'])
                             have_new_telemetry = True
                             need_acq_image = False
