@@ -488,7 +488,6 @@ class OnlineETC():
 
         self.etc_stop_time = stop_time or datetime.datetime.utcnow()
         self.etc_stop_src = source
-        logging.info('stop_etc: shutter closed at %r by %s ' % (self.etc_stop_time, source))
         if options:
             logging.warn('stop_etc: ignoring extra options: %r' % options)
 
@@ -516,7 +515,6 @@ class OnlineETC():
 
         self.img_stop_time = stop_time or datetime.datetime.utcnow()
         self.img_stop_src = source
-        logging.info('stop: exposure stopped at %r by %s' % (self.img_stop_time, source))
         if options:
             logging.warn('stop: ignoring extra options: %r' % options)
 

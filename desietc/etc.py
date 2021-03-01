@@ -223,19 +223,25 @@ class ETCAlgorithm(object):
             self.shared_mem[camera] = None
         self.GFAs = {}
 
-    def set_image_path(self, image_path):
+    def set_image_path(self, image_path, create=False):
         """Set the path where future images should be written or None to prevent saving images.
         """
         if image_path is not None:
             self.image_path = pathlib.Path(image_path)
-            # Try to create if necessary.
-            try:
-                self.image_path.mkdir(parents=True, exist_ok=True)
-            except OSError as e:
-                logging.error(f'Failed to create {self.image_path}: {e}')
-                self.image_path = None
+            # Try to create if requested and necessary.
+            if create:
+                try:
+                    self.image_path.mkdir(parents=True, exist_ok=True)
+                except OSError as e:
+                    logging.error(f'Failed to create {self.image_path}: {e}')
+                    self.image_path = None
+                    return False
             else:
-                logging.info(f'Images will be written in: {image_path}.')
+                if not self.image_path.exists():
+                    logging.error(f'Non-existent image path: {self.image_path}')
+                    self.image_path = None
+                    return False
+            logging.info(f'Images will be written in: {image_path}.')
         else:
             logging.info('Images will no longer be written.')
             self.image_path = None
@@ -750,9 +756,8 @@ class ETCAlgorithm(object):
         mjd = desietc.util.date_to_mjd(timestamp, utc_offset=0)
         nopen, nclose = len(self.shutter_open), len(self.shutter_close)
         if nopen != nclose:
-            logging.error(f'stop_exposure called after {nopen} opens, {nclose} closes.')
-        # Record the stop index in our grid.
-        self.grid_stop = np.searchsorted(self.mjd_grid, mjd) + 1
+            logging.error(f'stop_exposure called after {nopen} opens, {nclose} closes: will ignore it.')
+            return
         logging.info(f'Stop {self.exptag} at {timestamp}')
 
     def exptime_factor(self, signal, background, MW_transp):
