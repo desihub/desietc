@@ -104,8 +104,6 @@ class ETCAlgorithm(object):
         self.ffrac = None
         self.transp = None
         self.skylevel = None
-        # Initialize the grid arrays used
-        self.mjd_grid = None
         # Initialize call counters.
         self.reset_counts()
         # Initialize accumulated quantities.
