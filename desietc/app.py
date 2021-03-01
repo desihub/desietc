@@ -24,6 +24,8 @@ class OfflineETCApp:
         self.shutdown_event.clear()
         self.etc = desietc.online.OnlineETC(self.shutdown_event)
         # Prepare to handle callouts.
+        self.etc.request_stop = self.request_stop
+        self.etc.request_split = self.request_split
         self.etc.call_to_update_status = self.call_to_update_status
         self.etc.call_for_acq_image = self.call_for_acq_image
         self.etc.call_for_pm_info = self.call_for_pm_info
@@ -43,7 +45,16 @@ class OfflineETCApp:
         self.status_updates.append(status)
 
     def call_when_image_ready(self, path, expid, frame=0):
-        print('Image ready for {expid}[{frame}] at {path}')
+        print(f'Image ready for {expid}[{frame}] at {path}')
+
+    def request_stop(self):
+        logging.info('request_split')
+        self.stop()
+
+    def request_split(self):
+        logging.info('request_split')
+        self.close_shutter()
+        self.open_shutter()
 
     def get(self, key):
         return None if self.assets is None else self.assets.get(key, None)
@@ -57,7 +68,7 @@ class OfflineETCApp:
         (pathlib.Path('expdir') / f'{self.expid:08d}').mkdir(parents=True, exist_ok=True)
         return self.etc.start(start_time=self.get('start_time'))
 
-    def open_shutter(self, splittable=False):
+    def open_shutter(self, splittable=True):
         start_mjd = self.get('frames')[self.last_frame]['when']
         start_time = desietc.util.mjd_to_date(start_mjd, utc_offset=0)
         return self.etc.start_etc(start_time=start_time, splittable=splittable)
