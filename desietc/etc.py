@@ -710,28 +710,24 @@ class ETCAlgorithm(object):
         mjd = desietc.util.date_to_mjd(timestamp, utc_offset=0)
         nopen, nclose = len(self.shutter_open), len(self.shutter_close)
         if nopen != nclose:
-            logging.error(f'open_shutter called after {nopen} opens, {nclose} closes.')
-            # Reset and try to keep going...
-            self.shutter_open = []
-            self.shutter_close = []
+            logging.error(f'open_shutter called after {nopen} opens, {nclose} closes: will ignore it.')
+            return
         if nopen == 0:
+            # If this the first shutter opening, calculate and record the MJD cutoff.
             self.exp_data['mjd_start'] = mjd
             delta = self.exp_data['max_exposure_time'] / self.SECS_PER_DAY
             self.exp_data['mjd_max'] = mjd + delta
-            # Initialize a MJD grid to use for SNR calculations.
-            # Grid values are bin centers, with spacing ~ grid_resolution.
-            ngrid = int(np.ceil(delta / self.grid_resolution))
-            self.mjd_grid = mjd + (np.arange(ngrid) + 0.5) * delta / ngrid
-            # Initialize a shutter mask with 0=closed, 1=open.
-            self.open_grid = np.zeros(ngrid)
-            # Initialize signal and background rate grids.
-            self.sig_grid = np.zeros_like(self.mjd_grid)
-            self.bg_grid = np.zeros_like(self.mjd_grid)
-            logging.debug(f'Created mjd_grid with {ngrid} values.')
+        # Initialize a MJD grid to use for SNR calculations during this shutter.
+        # Grid values are bin centers, with spacing ~ grid_resolution.
+        delta = self.exp_data['mjd_max'] - mjd
+        ngrid = int(np.ceil(delta / self.grid_resolution))
+        self.mjd_grid = mjd + (np.arange(ngrid) + 0.5) * delta / ngrid
+        # Initialize signal and background rate grids.
+        self.sig_grid = np.zeros_like(self.mjd_grid)
+        self.bg_grid = np.zeros_like(self.mjd_grid)
         # Record this shutter opening.
         self.splittable = splittable
         self.shutter_open.append(mjd)
-        self.open_grid[self.mjd_grid >= mjd] = 1
         logging.info(f'Shutter open[{nopen}] at {timestamp}.')
 
     def close_shutter(self, timestamp):
@@ -740,16 +736,13 @@ class ETCAlgorithm(object):
         mjd = desietc.util.date_to_mjd(timestamp, utc_offset=0)
         nopen, nclose = len(self.shutter_open), len(self.shutter_close)
         if nopen != nclose + 1:
-            logging.error(f'close_shutter called after {nopen} opens, {nclose} closes.')
-            # Reset and try to keep going...
-            self.shutter_open = [ mjd ]
-            self.shutter_close = []
+            logging.error(f'close_shutter called after {nopen} opens, {nclose} closes: will ignore it.')
+            return
         # Update our SNR.
         self.update_accumulated(mjd)
         # Record this shutter closing.
         self.shutter_close.append(mjd)
         self.shutter_teff.append(self.accumulated_eff_time)
-        self.open_grid[self.mjd_grid >= mjd] = 0
         logging.info(f'Shutter close[{nclose}] at {timestamp} after {self.accumulated_real_time:.1f}s ' +
             f'with actual teff={self.accumulated_eff_time:.1f}s')
 
@@ -819,9 +812,8 @@ class ETCAlgorithm(object):
         self.accumulated_mjd = mjd_now
         # Get grid indices coresponding to the most recent shutter opening and now.
         mjd_open = self.shutter_open[-1]
-        iopen, inow = np.searchsorted(self.mjd_grid, [mjd_open, mjd_now])
-        past, future = slice(iopen, inow + 1), slice(inow, None)
-        assert np.all(self.open_grid[iopen:])
+        inow = np.searchsorted(self.mjd_grid, mjd_now)
+        past, future = slice(0, inow + 1), slice(inow, None)
         # Tabulate the signal and background since the most recent shutter opening.
         self.sig_grid[past] = self.thru_measurements.sample_grid(self.mjd_grid[past])
         self.bg_grid[past] = self.sky_measurements.sample_grid(self.mjd_grid[past])
@@ -840,11 +832,11 @@ class ETCAlgorithm(object):
         self.sig_grid[future] = self.thru_measurements.forecast_grid(self.mjd_grid[future])
         self.bg_grid[future] = self.sky_measurements.forecast_grid(self.mjd_grid[future])
         # Calculate accumulated signal and background, assuming the shutter stays open until mjd_max.
-        n_grid = 1 + np.arange(len(self.mjd_grid) - iopen)
-        accum_sig = np.cumsum(self.sig_grid[iopen:]) / n_grid
-        accum_bg = np.cumsum(self.bg_grid[iopen:]) / n_grid
+        n_grid = 1 + np.arange(len(self.mjd_grid))
+        accum_sig = np.cumsum(self.sig_grid) / n_grid
+        accum_bg = np.cumsum(self.bg_grid) / n_grid
         # Calculate the corresponding accumulated effective exposure time in seconds.
-        accum_treal = (self.mjd_grid[iopen:] - mjd_open) * self.SECS_PER_DAY
+        accum_treal = (self.mjd_grid - mjd_open) * self.SECS_PER_DAY
         accum_teff = accum_treal * self.exptime_factor(accum_sig, accum_bg, MW_transp)
         # When do we expect to close the shutter.
         self.action = None
@@ -866,7 +858,7 @@ class ETCAlgorithm(object):
             # We expect to reach the target before mjd_max but are not there yet.
             istop = np.argmax(accum_teff + prev_teff >= target)
         # Lookup our expected stop time and time remaining, assuming the shutter stays open.
-        mjd_stop = self.mjd_grid[iopen + istop]
+        mjd_stop = self.mjd_grid[istop]
         self.time_remaining = (mjd_stop - mjd_now) * self.SECS_PER_DAY
         # Calculate the corresponding effective time, including any previous shutters.
         self.projected_eff_time = accum_teff[istop] + prev_teff
@@ -879,7 +871,7 @@ class ETCAlgorithm(object):
         self.split_remaining = (mjd_split - mjd_now) * self.SECS_PER_DAY
         logging.info(f'Next split ({nopen} of {nclose+nsplit_remaining}) in {self.split_remaining:.1f}s')
         if (splittable and self.action is None and
-            nsplit_remaining > 1 and nopen < max_splits and self.split_remaining <= 0):
+            nsplit_remaining > 1 and self.split_remaining <= 0):
             self.action = ('split', 'cosmic split')
         if self.action is not None:
             logging.info(f'Recommended action is {self.action}.')
@@ -949,12 +941,6 @@ class ETCAlgorithm(object):
                 ),
                 thru=self.thru_measurements.save(mjd1, mjd2),
                 sky=self.sky_measurements.save(mjd1, mjd2),
-                grid=dict(
-                    mjd=self.mjd_grid[:self.grid_stop],
-                    sig=self.sig_grid[:self.grid_stop],
-                    bg=self.bg_grid[:self.grid_stop],
-                    open=self.open_grid[:self.grid_stop],
-                )
             )
         except Exception as e:
             logging.error(f'save_exposure: error building output dict: {e}')

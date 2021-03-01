@@ -60,12 +60,15 @@ class OfflineETCApp:
     def open_shutter(self, splittable=False):
         start_mjd = self.get('frames')[self.last_frame]['when']
         start_time = desietc.util.mjd_to_date(start_mjd, utc_offset=0)
-        self.etc.start_etc(start_time=start_time, splittable=splittable)
+        return self.etc.start_etc(start_time=start_time, splittable=splittable)
 
     def close_shutter(self, source='unknown'):
         stop_mjd = self.get('frames')[self.last_frame]['when']
         stop_time = desietc.util.mjd_to_date(stop_mjd, utc_offset=0)
-        self.etc.stop_etc(source=source, stop_time=stop_time)
+        return self.etc.stop_etc(source=source, stop_time=stop_time)
+
+    def stop(self, source='unknown'):
+        return self.etc.stop(source=source)
 
     def call_for_acq_image(self, wait=None):
         if self.get('acq_path') is not None:
@@ -88,8 +91,9 @@ class OfflineETCApp:
         if self.get('frames') is not None and (self.next_frame > self.last_frame) and (self.get('frames')[self.next_frame]['typ'] == ftype):
             path = self.get(f'{ftype}_path')
             names = desietc.sky.SkyCamera.sky_names if ftype == 'sky' else desietc.gfa.GFACamera.guide_names
+            fnum = self.get('frames')[self.next_frame]['num']
             self.last_frame += 1
-            return dict(image=desietc.offline.fits_to_online(path, names, self.next_frame))
+            return dict(image=desietc.offline.fits_to_online(path, names, fnum))
         else:
             if wait: time.sleep(wait)
             return None
@@ -101,7 +105,7 @@ def main():
     print('OfflineETCApp is running.')
     options = dict(requested_teff=1000, sbprofile='PSF', max_exposure_time=2000, cosmics_split_time=1200)
     while True:
-        print('Enter a command: s(tart) f(rame) o(pen) c(lose) q(uit)')
+        print('Enter a command: s(tart) f(rame) o(pen) c(lose) (s)t(op) q(uit)')
         cmd = input('# ')
         if cmd == 'q':
             print('Shutting down...')
@@ -120,6 +124,8 @@ def main():
             print(app.open_shutter())
         elif cmd == 'c':
             print(app.close_shutter())
+        elif cmd == 't':
+            print(app.stop())
         elif cmd == 'f':
             if app.next_frame < nframes - 1:
                 app.next_frame += 1
