@@ -392,7 +392,7 @@ class OnlineETC():
         # accumulated values:
         if keep_accumulated == False or all == True:
             self.ETCalg.reset_counts()
-            self.ETCalg.reset_accumulated()
+            self.ETCalg.accum.reset()
             self.image_processing.clear()
 
         # update status

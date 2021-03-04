@@ -1,3 +1,11 @@
+import datetime
+
+try:
+    import DOSlib.logger as logging
+except ImportError:
+    # Fallback when we are not running as a DOS application.
+    import logging
+
 import numpy as np
 
 import desietc.util
@@ -5,7 +13,9 @@ import desietc.util
 
 class Accumulator(object):
 
-    def __init__(self, sig_buffer, bg_buffer):
+    SECS_PER_DAY = 86400
+
+    def __init__(self, sig_buffer, bg_buffer, grid_resolution):
         """Initialize an effective exposure time accumulator.
 
         Parameters
@@ -17,14 +27,27 @@ class Accumulator(object):
         """
         self.sig_buffer = sig_buffer
         self.bg_buffer = bg_buffer
+        self.grid_resolution = grid_resolution
         self.reset()
 
     def reset(self):
         """Reset accumulated quantities.
         """
-        pass
+        self.accumulated_mjd = desietc.util.date_to_mjd(datetime.datetime.utcnow(), utc_offset=0)
+        self.accumulated_eff_time = self.accumulated_real_time = 0.
+        self.accumulated_signal = self.accumulated_background = 0.
+        self.time_remaining = self.split_remaining = self.projected_eff_time = 0.
+        self.nopen = self.nclose = 0
+        self.shutter_is_open = False
+        self.shutter_open = []
+        self.shutter_close = []
+        self.shutter_teff = []
+        self.shutter_treal = []
+        self.splittable = False
+        self.action = None
+        self.mjd_grid = None
 
-    def setup(self, req_efftime, max_exposure_time, cosmics_split_time, maxsplit):
+    def setup(self, req_efftime, max_exposure_time, cosmics_split_time, maxsplit, sig_nominal, bg_nominal):
         """Setup a new sequence of cosmic splits.
 
         Parameters
@@ -38,14 +61,21 @@ class Accumulator(object):
             The maximum exposure time in seconds for a single exposure.
         maxsplit : int
             The maximum number of exposures reserved by ICS for this tile.
+        sig_nominal : float
+            Signal rate in nominal conditions.
+        bg_nominal : float
+            Background rate in nominal conditions.
         """
-        self.mjd_grid = None
         self.req_efftime = req_efftime
         self.max_exposure_time = max_exposure_time
         self.cosmics_split_time = cosmics_split_time
         self.maxsplit = maxsplit
+        self.sig_nominal = sig_nominal
+        self.bg_nominal = bg_nominal
+        self.MW_transp = 1.
+        self.reset()
 
-    def open(self, timestamp, splittable, max_shutter_time):
+    def open(self, timestamp, splittable, max_shutter_time, MW_transp):
         """Open the shutter.
 
         Parameters
@@ -56,8 +86,42 @@ class Accumulator(object):
             True if this exposure can be split for cosmics.
         max_shutter_time : float
             The maximum time in seconds that the spectrograph shutters will remain open.
+        MW_transp : float
+            Transparency factor for Milky Way dust extinction to use for accumulating
+            effective exposure time.
+
+        Returns
+        -------
+        bool
+            True if successful, or False if we do not know the state of the shutter.
         """
-        pass
+        self.nopen, self.nclose = len(self.shutter_open), len(self.shutter_close)
+        if self.nopen != self.nclose:
+            # We do not have a consistent shutter state.
+            logging.error(f'open_shutter called after {self.nopen} opens, {self.nclose} closes: will ignore it.')
+            return False
+        self.splittable = splittable
+        self.max_shutter_time = max_shutter_time
+        self.MW_transp = MW_transp
+        # Initialize a MJD grid to use for SNR calculations during this shutter.
+        # Grid values are bin centers, with spacing fixed at grid_resolution.
+        # The grid covers from now up to the maximum allowed exposure time.
+        self.max_remaining = self.max_exposure_time
+        if self.nopen > 0:
+            self.max_remaining -= self.shutter_treal[-1]
+        ngrid = int(np.ceil(self.max_remaining / self.grid_resolution))
+        mjd = desietc.util.date_to_mjd(timestamp, utc_offset=0)
+        self.mjd_grid = mjd + (np.arange(ngrid) + 0.5) * self.grid_resolution / self.SECS_PER_DAY
+        # Initialize signal and background rate grids.
+        self.sig_grid = np.zeros_like(self.mjd_grid)
+        self.bg_grid = np.zeros_like(self.mjd_grid)
+        # Record this shutter opening.
+        self.shutter_open.append(mjd)
+        self.nopen += 1
+        self.shutter_is_open = True
+        logging.info(f'Initialized accumulation with max remaining time of {self.max_remaining:.1f}s ' +
+            f'and MW transp {self.MW_transp:.4f}.')
+        return True
 
     def close(self, timestamp):
         """Close the shutter.
@@ -66,8 +130,29 @@ class Accumulator(object):
         ----------
         timestamp : datetime.datetime
             The UTC timestamp for this shutter closing.
+
+        Returns
+        -------
+        bool
+            True if successful, or False if we do not know the state of the shutter.
         """
-        pass
+        self.nopen, self.nclose = len(self.shutter_open), len(self.shutter_close)
+        if self.nopen != self.nclose + 1:
+            # We do not have a consistent shutter state.
+            logging.error(f'close_shutter called after {self.nopen} opens, {self.nclose} closes: will ignore it.')
+            return False
+        # Update accumulated quantities.
+        mjd = desietc.util.date_to_mjd(timestamp, utc_offset=0)
+        self.update(mjd)
+        # Ignore any requested action now that the shutter is already closed.
+        self.action = None
+        # Record this shutter closing.
+        self.shutter_close.append(mjd)
+        self.shutter_teff.append(self.accumulated_eff_time)
+        self.shutter_treal.append((mjd - self.shutter_open[-1]) * self.SECS_PER_DAY)
+        self.nclose += 1
+        self.shutter_is_open = False
+        return True
 
     def update(self, mjd_now):
         """Update acumulated quantities.
@@ -76,5 +161,98 @@ class Accumulator(object):
         ----------
         mjd_now : float
             The MJD time of this update.
+
+        Returns
+        -------
+        bool
+            True if the update was successful.
         """
-        pass
+        # Check the state of the shutter.
+        if not self.shutter_is_open:
+            logging.error(f'update: called with shutter closed [{self.nopen},{self.nclose}].')
+            return False
+        elif self.nopen != self.nclose + 1:
+            logging.error(f'update: invalid shutter state [{self.nopen},{self.nclose}].')
+            return False
+        # Lookup the real and effective time accumulated on all previous splits for this exposure.
+        prev_teff = 0. if self.nopen == 1 else self.shutter_teff[-1]
+        prev_treal = 0. if self.nopen == 1 else self.shutter_treal[-1]
+        # --- The shutter is open and we have the NTS parameters to use -------------------------
+        # Record the timestamp of this update.
+        self.accumulated_mjd = mjd_now
+        # Get grid indices coresponding to the most recent shutter opening and now.
+        mjd_open = self.shutter_open[-1]
+        inow = np.searchsorted(self.mjd_grid, mjd_now)
+        past, future = slice(0, inow + 1), slice(inow, None)
+        # Tabulate the signal and background since the most recent shutter opening.
+        self.sig_grid[past] = self.sig_buffer.sample_grid(self.mjd_grid[past])
+        self.bg_grid[past] = self.bg_buffer.sample_grid(self.mjd_grid[past])
+        # Calculate the mean signal and background during this shutter open period.
+        self.accumulated_signal = np.mean(self.sig_grid[past])
+        self.accumulated_background = np.mean(self.bg_grid[past])
+        # Calculate the accumulated effective exposure time for this shutter opening in seconds.
+        self.accumulated_real_time = (mjd_now - mjd_open) * self.SECS_PER_DAY
+        self.accumulated_eff_time = self.accumulated_real_time * self.exptime_factor(
+            self.accumulated_signal, self.accumulated_background)
+        logging.info(f'shutter[{self.nopen}] treal={self.accumulated_real_time:.1f}s, teff={self.accumulated_eff_time:.1f}s' +
+            f' [+{prev_teff:.1f}s] using bg={self.accumulated_background:.3f}, sig={self.accumulated_signal:.3f}.')
+        # Have we reached the cutoff time?
+        if self.accumulated_real_time >= self.max_remaining:
+            # We have already reached the maximum allowed exposure time.
+            self.action = ('stop', 'max_exposure_time reached')
+            logging.info(f'Maximum exposure time of {self.max_exposure_time:.1f}s reached.')
+            self.projected_eff_time = self.accumulated_eff_time + prev_teff
+            self.time_remaining = 0.
+            self.split_remaining = 0.
+            return True
+        # Forecast the future signal and background.
+        self.sig_grid[future] = self.sig_buffer.forecast_grid(self.mjd_grid[future])
+        self.bg_grid[future] = self.bg_buffer.forecast_grid(self.mjd_grid[future])
+        # Calculate accumulated signal and background, assuming the shutter stays open until until max_exposure_time.
+        n_grid = 1 + np.arange(len(self.mjd_grid))
+        accum_sig = np.cumsum(self.sig_grid) / n_grid
+        accum_bg = np.cumsum(self.bg_grid) / n_grid
+        # Calculate the corresponding accumulated effective exposure time in seconds.
+        accum_treal = (self.mjd_grid - mjd_open) * self.SECS_PER_DAY
+        accum_teff = accum_treal * self.exptime_factor(accum_sig, accum_bg)
+        # When do we expect to close the shutter.
+        self.action = None
+        if self.accumulated_eff_time + prev_teff >= self.req_efftime:
+            # We have already reached the target.
+            istop = inow
+            self.action = ('stop', 'target reached')
+            logging.info(f'Target reached.')
+        elif accum_teff[-1] + prev_teff < self.req_efftime:
+            # We will not reach the target before max_exposure_time.
+            istop = len(accum_teff) - 1
+            logging.warn('Will probably not reach requested SNR before max exposure time.')
+        else:
+            # We expect to reach the target before mjd_max but are not there yet.
+            istop = np.argmax(accum_teff + prev_teff >= self.req_efftime)
+        # Lookup our expected stop time and time remaining, assuming the shutter stays open.
+        mjd_stop = self.mjd_grid[istop]
+        self.time_remaining = (mjd_stop - mjd_now) * self.SECS_PER_DAY
+        # Calculate the corresponding effective time, including any previous shutters.
+        self.projected_eff_time = accum_teff[istop] + prev_teff
+        logging.info(f'Will stop in {self.time_remaining:.1f}s at teff={self.projected_eff_time:.1f}s' +
+            f' (target={self.req_efftime:.1f}s).')
+        # Calculate how many cosmic splits are remaining if none exceeds the split maximum.
+        nsplit_remaining = int(np.ceil((mjd_stop - mjd_open) * self.SECS_PER_DAY / self.cosmics_split_time))
+        # Calculate when the next split should be.
+        mjd_split = mjd_open + (mjd_stop - mjd_open) / nsplit_remaining
+        self.split_remaining = (mjd_split - mjd_now) * self.SECS_PER_DAY
+        logging.info(f'Next split ({self.nopen} of {self.nclose+nsplit_remaining}) in {self.split_remaining:.1f}s')
+        if (self.splittable and self.action is None and
+            nsplit_remaining > 1 and self.split_remaining <= 0):
+            self.action = ('split', 'cosmic split')
+        if self.action is not None:
+            logging.info(f'Recommended action is {self.action}.')
+        return True
+
+    def exptime_factor(self, signal, background):
+        """Calculate the ratio between effective and real exposure time using the
+        specified accumulated signal and background rates, and their nominal values
+        and MW transparency specified in the last call to :meth:`setup_exposure`.
+        A returned value of one corresponds to real time = effective time.
+        """
+        return (self.MW_transp * signal / self.sig_nominal) ** 2 / (background / self.bg_nominal)

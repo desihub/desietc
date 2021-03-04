@@ -63,6 +63,8 @@ class ETCAlgorithm(object):
         Ebv_coef : float
             Coefficient to use for converting Ebv into an equivalent MW
             transparency via 10 ** (-coef * Ebv / 2.5)
+        ffrac_ref : float
+            Reference value of the fiber fraction that defines nominal conditions.
         nbad_threshold : int
             Maximum number of allowed bad overscan pixel values before a GFA is
             flagged as noisy.
@@ -78,7 +80,6 @@ class ETCAlgorithm(object):
         self.ffrac_ref = ffrac_ref
         self.nbad_threshold = nbad_threshold
         self.nll_threshold = nll_threshold
-        self.grid_resolution = grid_resolution
         self.gfa_calib = gfa_calib
         # Initialize PSF fitting.
         if psf_pixels % 2 == 0:
@@ -108,8 +109,6 @@ class ETCAlgorithm(object):
         self.skylevel = None
         # Initialize call counters.
         self.reset_counts()
-        # Initialize accumulated quantities.
-        self.reset_accumulated()
 
         # How many GUIDE and SKY cameras do we expect?
         self.ngfa = len(desietc.gfa.GFACamera.guide_names)
@@ -138,7 +137,7 @@ class ETCAlgorithm(object):
                 ('ndrop', np.int32, (self.nsky,)),    # number of fibers dropped from the camera flux estimate.
             ] + aux_dtype)
         # Initialize exposure accumulator.
-        self.accum = desietc.accum.Accumulator(self.thru_measurements, self.sky_measurements)
+        self.accum = desietc.accum.Accumulator(self.thru_measurements, self.sky_measurements, grid_resolution)
         # Initialize the SKY camera processor.
         self.SKY = desietc.sky.SkyCamera(calib_name=sky_calib)
         # Prepare for parallel processing if necessary.
@@ -581,13 +580,12 @@ class ETCAlgorithm(object):
             mjd_start, mjd_stop, thru, 0.01,
             aux_data=(each_ffrac, each_transp, each_dx, each_dy, 0, 0, 0, 0, 0, 0))
         # Update our accumulated signal if the shutter is open.
-        nopen, nclose = len(self.shutter_open), len(self.shutter_close)
-        if nopen == nclose + 1:
-            self.update_accumulated(mjd_stop)
-            self.thru_measurements.set_last(
-                sig=self.accumulated_signal, bg=self.accumulated_background,
-                teff=self.accumulated_eff_time, tproj=self.time_remaining,
-                final=self.projected_eff_time, split=self.split_remaining)
+        if self.accum.shutter_is_open:
+            if self.accum.update(mjd_stop):
+                self.thru_measurements.set_last(
+                    sig=self.accum.accumulated_signal, bg=self.accum.accumulated_background,
+                    teff=self.accum.accumulated_eff_time, tproj=self.accum.time_remaining,
+                    final=self.accum.projected_eff_time, split=self.accum.split_remaining)
         # Report timing.
         elapsed = time.time() - start
         logging.debug(f'Guide frame processing took {elapsed:.2f}s for {nstar} stars in {ncamera} cameras.')
@@ -638,13 +636,12 @@ class ETCAlgorithm(object):
             mjd_start, mjd_stop, flux, dflux,
             aux_data=(each_flux, each_dflux, each_ndrop, 0, 0, 0, 0, 0, 0))
         # Update our accumulated background if the shutter is open.
-        nopen, nclose = len(self.shutter_open), len(self.shutter_close)
-        if nopen == nclose + 1:
-            self.update_accumulated(mjd_stop)
-            self.sky_measurements.set_last(
-                sig=self.accumulated_signal, bg=self.accumulated_background,
-                teff=self.accumulated_eff_time, tproj=self.time_remaining,
-                final=self.projected_eff_time, split=self.split_remaining)
+        if self.accum.shutter_is_open:
+            if self.accum.update(mjd_stop):
+                self.sky_measurements.set_last(
+                    sig=self.accum.accumulated_signal, bg=self.accum.accumulated_background,
+                    teff=self.accum.accumulated_eff_time, tproj=self.accum.time_remaining,
+                    final=self.accum.projected_eff_time, split=self.accum.split_remaining)
         # Profile timing.
         elapsed = time.time() - start
         logging.debug(f'Sky frame processing took {elapsed:.2f}s for {ncamera} cameras.')
@@ -732,7 +729,10 @@ class ETCAlgorithm(object):
         self.night = desietc.util.mjd_to_night(desietc.util.date_to_mjd(timestamp, utc_offset=0))
         logging.info(f'Start {self.night}/{self.exptag} at {timestamp} with req_efftime={req_efftime:.1f}s, sbprof={sbprof}, '
                      + f'max_exposure_time={max_exposure_time:.1f}s, cosmics_split_time={cosmics_split_time:.1f}s, maxsplit={maxsplit}.')
-        self.reset_accumulated()
+        # Initialize accumulation for the upcoming sequence of cosmic splits.
+        self.accum.setup(
+            req_efftime, max_exposure_time, cosmics_split_time, maxsplit,
+            sig_nominal=self.ffrac_ref, bg_nominal=1.)
 
     def open_shutter(self, expid, timestamp, splittable, max_shutter_time):
         """Record the shutter opening.
@@ -748,189 +748,30 @@ class ETCAlgorithm(object):
         max_shutter_time : float
             The maximum time in seconds that the spectrograph shutters will remain open.
         """
-        mjd = desietc.util.date_to_mjd(timestamp, utc_offset=0)
-        nopen, nclose = len(self.shutter_open), len(self.shutter_close)
-        if nopen != nclose:
-            logging.error(f'open_shutter called after {nopen} opens, {nclose} closes: will ignore it.')
+        # Lookup the MW transparency to use, or default to 1.
+        MW_transp = self.fassign_data.get('MW_transp', 1.)
+        # Start accumulating.
+        if not self.accum.open(timestamp, splittable, max_shutter_time, MW_transp):
             return
-        if nopen == 0:
-            # If this the first shutter opening, calculate and record the MJD cutoff.
-            self.exp_data['mjd_start'] = mjd
-            delta = self.exp_data['max_exposure_time'] / self.SECS_PER_DAY
-            self.exp_data['mjd_max'] = mjd + delta
-        # Save the current expid.
-        self.exp_data[expid] = expid
+        # Save the current expid and timestamp.
+        self.exp_data['expid'] = expid
         self.exptag = str(expid).zfill(8)
-        # Initialize a MJD grid to use for SNR calculations during this shutter.
-        # Grid values are bin centers, with spacing fixed at grid_resolution.
-        ngrid = int(np.ceil(max_shutter_time / self.grid_resolution))
-        self.mjd_grid = mjd + (np.arange(ngrid) + 0.5) * self.grid_resolution / self.SECS_PER_DAY
-        # Initialize signal and background rate grids.
-        self.sig_grid = np.zeros_like(self.mjd_grid)
-        self.bg_grid = np.zeros_like(self.mjd_grid)
-        # Record this shutter opening.
-        self.splittable = splittable
-        self.shutter_open.append(mjd)
-        logging.info(f'Shutter open[{nopen}] for expid {expid} at {timestamp}.')
+        self.exp_data['open'] = desietc.util.date_to_mjd(timestamp, utc_offset=0)
+        logging.info(f'Shutter open[{self.accum.nopen}] for expid {expid} at {timestamp}.')
 
     def close_shutter(self, timestamp):
         """
         """
-        mjd = desietc.util.date_to_mjd(timestamp, utc_offset=0)
-        nopen, nclose = len(self.shutter_open), len(self.shutter_close)
-        if nopen != nclose + 1:
-            logging.error(f'close_shutter called after {nopen} opens, {nclose} closes: will ignore it.')
+        if not self.accum.close(timestamp):
             return
-        # Update our SNR.
-        self.update_accumulated(mjd)
-        # Ignore any requested action now that the shutter is already closed.
-        self.action = None
-        # Record this shutter closing.
-        self.shutter_close.append(mjd)
-        self.shutter_teff.append(self.accumulated_eff_time)
-        logging.info(f'Shutter close[{nclose}] at {timestamp} after {self.accumulated_real_time:.1f}s ' +
-            f'with actual teff={self.accumulated_eff_time:.1f}s')
+        self.exp_data['close'] = desietc.util.date_to_mjd(timestamp, utc_offset=0)
+        logging.info(f'Shutter close[{self.accum.nclose}] at {timestamp} after {self.accum.accumulated_real_time:.1f}s ' +
+            f'with actual teff={self.accum.accumulated_eff_time:.1f}s')
 
     def stop_exposure(self, timestamp):
         """
         """
-        mjd = desietc.util.date_to_mjd(timestamp, utc_offset=0)
-        nopen, nclose = len(self.shutter_open), len(self.shutter_close)
-        if nopen != nclose:
-            logging.error(f'stop_exposure called after {nopen} opens, {nclose} closes: will ignore it.')
-            return
         logging.info(f'Stop {self.exptag} at {timestamp}')
-
-    def exptime_factor(self, signal, background, MW_transp):
-        """Calculate the ratio between effective and real exposure time using the
-        specified (relative) accumulated signal and background rates, and MW
-        transparency of the current tile.  These inputs are normalized so that
-        values of 1 correspond to real = effective.
-        """
-        # Lookup the MW transparency to use, or default to 1.
-        return (MW_transp * signal / self.ffrac_ref) ** 2 / background
-
-    def reset_accumulated(self):
-        """Initialize or reset all attributes calculated by :meth:`update_accumulated`.
-        """
-        logging.info('Resetting acummulated data.')
-        self.accumulated_mjd = desietc.util.date_to_mjd(datetime.datetime.utcnow(), utc_offset=0)
-        self.accumulated_eff_time = self.accumulated_real_time = 0.
-        self.accumulated_signal = self.accumulated_background = 0.
-        self.time_remaining = self.split_remaining = self.projected_eff_time = 0.
-        self.shutter_open = []
-        self.shutter_close = []
-        self.shutter_teff = []
-        self.splittable = False
-        self.action = None
-
-    def update_accumulated(self, mjd_now):
-        """Update our estimates of the accumulated signal, background and
-        effective exposure time.  These values are reset to 0 by
-        :meth:`start_exposure` then updated by each subsequent call to
-        :meth:`process_guide_frame` or :meth:`process_sky`.
-        """
-        # Check that we have the NTS parameters for this exposure.
-        for key in 'mjd_start', 'mjd_max', 'req_efftime', 'cosmics_split_time', 'maxsplit':
-            if key not in self.exp_data:
-                logging.error(f'update_accumulated: missing required NTS parameter "{key}".')
-                return False
-        mjd_start, mjd_max = self.exp_data['mjd_start'], self.exp_data['mjd_max']
-        if mjd_now < mjd_start:
-            logging.error('update_accumulated() called with mjd_now < mjd_start.')
-            return False
-        target = self.exp_data['req_efftime']
-        cosmic_split = self.exp_data['cosmics_split_time']
-        maxsplit = self.exp_data['maxsplit']
-        # Check the state of the shutter.
-        nopen, nclose = len(self.shutter_open), len(self.shutter_close)
-        if nopen == nclose:
-            logging.error(f'update_accumulated: called with shutter closed [{nopen},{nclose}].')
-            return False
-        elif nopen != nclose + 1:
-            logging.error(f'update_accumulated: invalid shutter state [{nopen},{nclose}].')
-            return False
-        # Lookup the effective time accumulated on all previous splits for this exposure.
-        prev_teff = 0 if nopen == 1 else self.shutter_teff[-1]
-        # --- The shutter is open and we have the NTS parameters to use -------------------------
-        # Record the timestamp of this update.
-        self.accumulated_mjd = mjd_now
-        # Get grid indices coresponding to the most recent shutter opening and now.
-        mjd_open = self.shutter_open[-1]
-        inow = np.searchsorted(self.mjd_grid, mjd_now)
-        past, future = slice(0, inow + 1), slice(inow, None)
-        # Tabulate the signal and background since the most recent shutter opening.
-        self.sig_grid[past] = self.thru_measurements.sample_grid(self.mjd_grid[past])
-        self.bg_grid[past] = self.sky_measurements.sample_grid(self.mjd_grid[past])
-        # Calculate the mean signal and background during this shutter open period.
-        self.accumulated_signal = np.mean(self.sig_grid[past])
-        self.accumulated_background = np.mean(self.bg_grid[past])
-        # Lookup the MW transparency to use, or default to 1.
-        MW_transp = self.fassign_data.get('MW_transp', 1.)
-        # Calculate the accumulated effective exposure time for this shutter opening in seconds.
-        self.accumulated_real_time = (mjd_now - mjd_open) * self.SECS_PER_DAY
-        self.accumulated_eff_time = self.accumulated_real_time * self.exptime_factor(
-            self.accumulated_signal, self.accumulated_background, MW_transp)
-        logging.info(f'shutter[{nopen}] treal={self.accumulated_real_time:.1f}s, teff={self.accumulated_eff_time:.1f}s' +
-            f' [+{prev_teff:.1f}s] using bg={self.accumulated_background:.3f}, sig={self.accumulated_signal:.3f}.')
-        # Have we reached the cutoff time?
-        if mjd_now >= self.mjd_grid[-1]:
-            # We have already reached the maximum allowed exposure time.
-            istop = inow
-            self.action = ('stop', 'max_shutter_time reached')
-            logging.info(f'Maximum shutter time reached.')
-            self.projected_eff_time = self.accumulated_eff_time + prev_teff
-            self.time_remaining = 0.
-            self.split_remaining = 0.
-            return True
-        # Forecast the future signal and background.
-        self.sig_grid[future] = self.thru_measurements.forecast_grid(self.mjd_grid[future])
-        self.bg_grid[future] = self.sky_measurements.forecast_grid(self.mjd_grid[future])
-        # Calculate accumulated signal and background, assuming the shutter stays open until mjd_max.
-        n_grid = 1 + np.arange(len(self.mjd_grid))
-        accum_sig = np.cumsum(self.sig_grid) / n_grid
-        accum_bg = np.cumsum(self.bg_grid) / n_grid
-        # Calculate the corresponding accumulated effective exposure time in seconds.
-        accum_treal = (self.mjd_grid - mjd_open) * self.SECS_PER_DAY
-        accum_teff = accum_treal * self.exptime_factor(accum_sig, accum_bg, MW_transp)
-        # When do we expect to close the shutter.
-        self.action = None
-        if mjd_now >= mjd_max:
-            # We have already reached the maximum allowed exposure time.
-            istop = inow
-            self.action = ('stop', 'max exptime')
-            logging.info(f'Maximum exposure time reached.')
-        elif self.accumulated_eff_time + prev_teff >= target:
-            # We have already reached the target.
-            istop = inow
-            self.action = ('stop', 'target reached')
-            logging.info(f'Target reached.')
-        elif accum_teff[-1] + prev_teff < target:
-            # We will not reach the target before the mjd_max cutoff.
-            istop = len(accum_teff) - 1
-            logging.warn(f'Will not reach target before max exposure time.')
-        else:
-            # We expect to reach the target before mjd_max but are not there yet.
-            istop = np.argmax(accum_teff + prev_teff >= target)
-        # Lookup our expected stop time and time remaining, assuming the shutter stays open.
-        mjd_stop = self.mjd_grid[istop]
-        self.time_remaining = (mjd_stop - mjd_now) * self.SECS_PER_DAY
-        # Calculate the corresponding effective time, including any previous shutters.
-        self.projected_eff_time = accum_teff[istop] + prev_teff
-        logging.info(f'Will stop in {self.time_remaining:.1f}s at teff={self.projected_eff_time:.1f}s' +
-            f' (target={target:.1f}s).')
-        # Calculate how many cosmic splits are remaining, for the currrent shutter.
-        nsplit_remaining = int(np.ceil((mjd_stop - mjd_open) * self.SECS_PER_DAY / cosmic_split))
-        # Calculate when the next split should be.
-        mjd_split = mjd_open + (mjd_stop - mjd_open) / nsplit_remaining
-        self.split_remaining = (mjd_split - mjd_now) * self.SECS_PER_DAY
-        logging.info(f'Next split ({nopen} of {nclose+nsplit_remaining}) in {self.split_remaining:.1f}s')
-        if (self.splittable and self.action is None and
-            nsplit_remaining > 1 and self.split_remaining <= 0):
-            self.action = ('split', 'cosmic split')
-        if self.action is not None:
-            logging.info(f'Recommended action is {self.action}.')
-        return True
 
     def read_fiberassign(self, fname):
         """
@@ -978,10 +819,8 @@ class ETCAlgorithm(object):
         if not path.exists():
             logging.error(f'Non-existent path: {path}.')
             return
-        # Save all measurements after mjd_start.
-        mjd1, mjd2 = self.exp_data.get('mjd_start', None), None
-        # Trim the grid to the stop time.
-
+        # Save all measurements recorded so far, starting 5 minutes before the shutter opens.
+        mjd = self.exp_data.get('open') - 5 * 60 / self.SECS_PER_DAY
         # Build a data structure to save via json.
         try:
             save = dict(
@@ -990,12 +829,13 @@ class ETCAlgorithm(object):
                 acquisition=self.acquisition_data,
                 guide_stars=self.guide_stars,
                 shutter=dict(
-                    open=self.shutter_open,
-                    close=self.shutter_close,
-                    teff=self.shutter_teff,
+                    open=self.accum.shutter_open,
+                    close=self.accum.shutter_close,
+                    teff=self.accum.shutter_teff,
+                    treal=self.accum.shutter_treal,
                 ),
-                thru=self.thru_measurements.save(mjd1, mjd2),
-                sky=self.sky_measurements.save(mjd1, mjd2),
+                thru=self.thru_measurements.save(mjd, None),
+                sky=self.sky_measurements.save(mjd, None),
             )
         except Exception as e:
             logging.error(f'save_exposure: error building output dict: {e}')
