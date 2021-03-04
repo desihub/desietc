@@ -60,12 +60,14 @@ class OfflineETCApp:
     def get(self, key):
         return None if self.assets is None else self.assets.get(key, None)
 
-    def start_exposure(self, assets, requested_teff, sbprofile, max_exposure_time, cosmics_split_time):
+    def start_exposure(self, assets, req_efftime, sbprof, max_exposure_time, cosmics_split_time, maxsplit):
         self.assets = assets
         self.expid = self.get('expid')
         self.next_frame = 0
         self.last_frame = 0
-        self.etc.prepare_for_exposure(self.expid, requested_teff, sbprofile, max_exposure_time, cosmics_split_time)
+        self.etc.prepare_for_exposure(expid=self.expid, req_efftime=req_efftime, sbprof=sbprof,
+                                      max_exposure_time=max_exposure_time,
+                                      cosmics_split_time=cosmics_split_time, maxsplit=maxsplit)
         (pathlib.Path('expdir') / f'{self.expid:08d}').mkdir(parents=True, exist_ok=True)
         return self.etc.start(start_time=self.get('start_time'))
 
@@ -117,8 +119,8 @@ def main():
 
     app = OfflineETCApp()
     print('OfflineETCApp is running.')
-    options = dict(requested_teff=1000, sbprofile='ELG', max_exposure_time=2000, cosmics_split_time=1200)
-    #options = dict(requested_teff=1000, sbprofile='ELG', max_exposure_time=2000, cosmics_split_time=30)
+    options = dict(req_efftime=1000, sbprof='ELG', max_exposure_time=2000, cosmics_split_time=1200, maxsplit=4)
+    #options = dict(req_efftime=1000, sbprof='ELG', max_exposure_time=2000, cosmics_split_time=30, maxsplit=4)
     while True:
         print('Enter a command: s(tart) f(rame) o(pen) c(lose) (s)t(op) q(uit)')
         cmd = input('# ')

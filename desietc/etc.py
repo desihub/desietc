@@ -684,35 +684,50 @@ class ETCAlgorithm(object):
                 self.noisy_gfa.add(camera)
         return True
 
-    def start_exposure(self, timestamp, expid, req_efftime, sbprofile, max_exposure_time, cosmics_split_time):
+    def start_exposure(self, timestamp, expid, req_efftime, sbprof, max_exposure_time, cosmics_split_time, maxsplit):
         """Start a new exposure using parameters:
-        expid:              next exposure id (int)
-        req_efftime:        target value of the effective exposure time in seconds (float)
-        sbprofile:        a string describing the type of target to assume (DARK/BRIGHT/...)
-        max_exposure_time:  Maximum exposure time in seconds (irrespective of accumulated SNR)
-        cosmics_split_time: Time in second before requesting a cosmic ray split
+
+        Parameters
+        ----------
+        timestamp : datetime.datetime
+            UTC timestamp for when the exposure sequence started.
+        expid : int
+            The exposure id reserved for the first shutter opening of this tile.
+        req_efftime : float
+            The requested target value of the effective exposure time in seconds.
+        sbprof : string
+            The surface brightness profile to use for FFRAC calculations. Must be one of
+            PSF, ELG, BGS, FLT.
+        max_exposure_time : float
+            The maximum cummulative exposure time in seconds to allow for this tile,
+            summed over all cosmic splits.
+        cosmics_split_time : float
+            The maximum exposure time in seconds for a single exposure.
+        maxsplit : int
+            The maximum number of exposures reserved by ICS for this tile.
         """
         max_hours = 6
         if max_exposure_time <= 0 or max_exposure_time > max_hours * 3600:
             logging.warn(f'max_exposure_time={max_exposure_time} looks fishy: using {max_hours} hours.')
             max_exposure_time = max_hours * 3600
-        if sbprofile not in ('PSF', 'ELG', 'BGS', 'FLT'):
-            logging.error(f'Got invalid sbprofile "{sbprofile}" so defaulting to "ELG".')
-            sbprofile = 'ELG'
-        if sbprofile != 'PSF':
-            logging.warn(f'{sbprofile} profile not implemented yet so using PSF.')
-            sbprofile = 'PSF'
+        if sbprof not in ('PSF', 'ELG', 'BGS', 'FLT'):
+            logging.error(f'Got invalid sbprof "{sbprof}" so defaulting to "ELG".')
+            sbprof = 'ELG'
+        if sbprof != 'PSF':
+            logging.warn(f'{sbprof} profile not implemented yet so using PSF.')
+            sbprof = 'PSF'
         self.exp_data = dict(
             expid=expid, # This is the initial expid in case there are cosmic splits.
             req_efftime=req_efftime,
-            sbprofile=sbprofile,
+            sbprof=sbprof,
             max_exposure_time=max_exposure_time,
             cosmics_split_time=cosmics_split_time,
+            maxsplit=maxsplit,
         )
         self.exptag = str(expid).zfill(8)
         self.night = desietc.util.mjd_to_night(desietc.util.date_to_mjd(timestamp, utc_offset=0))
-        logging.info(f'Start {self.night}/{self.exptag} at {timestamp} with teff={req_efftime:.1f}s, type={sbprofile}, '
-                     + f'max={max_exposure_time:.1f}s, split={cosmics_split_time:.1f}s')
+        logging.info(f'Start {self.night}/{self.exptag} at {timestamp} with req_efftime={req_efftime:.1f}s, sbprof={sbprof}, '
+                     + f'max_exposure_time={max_exposure_time:.1f}s, cosmics_split_time={cosmics_split_time:.1f}s, maxsplit={maxsplit}.')
         self.reset_accumulated()
 
     def open_shutter(self, expid, timestamp, splittable):
@@ -802,7 +817,7 @@ class ETCAlgorithm(object):
         :meth:`process_guide_frame` or :meth:`process_sky`.
         """
         # Check that we have the NTS parameters for this exposure.
-        for key in 'mjd_start', 'mjd_max', 'req_efftime', 'cosmics_split_time':
+        for key in 'mjd_start', 'mjd_max', 'req_efftime', 'cosmics_split_time', 'maxsplit':
             if key not in self.exp_data:
                 logging.error(f'update_accumulated: missing required NTS parameter "{key}".')
                 return False
@@ -812,6 +827,7 @@ class ETCAlgorithm(object):
             return False
         target = self.exp_data['req_efftime']
         cosmic_split = self.exp_data['cosmics_split_time']
+        maxsplit = self.exp_data['maxsplit']
         # Check the state of the shutter.
         nopen, nclose = len(self.shutter_open), len(self.shutter_close)
         if nopen == nclose:

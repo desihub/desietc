@@ -104,9 +104,10 @@ class OnlineETC():
         # initialize status variables
         self.expid = None
         self.req_efftime = None
-        self.sbprofile = None
+        self.sbprof = None
         self.max_exposure_time = None
         self.cosmics_split_time = None
+        self.maxsplit = None
         self.img_start_time = None
         self.img_stop_time = None
         self.etc_start_time = None
@@ -196,8 +197,8 @@ class OnlineETC():
                     if not last_image_processing:
                         # A new exposure is starting: pass through prepare_for_exposure args now.
                         self.ETCalg.start_exposure(
-                            self.img_start_time, self.expid, self.req_efftime, self.sbprofile,
-                            self.max_exposure_time, self.cosmics_split_time)
+                            self.img_start_time, self.expid, self.req_efftime, self.sbprof,
+                            self.max_exposure_time, self.cosmics_split_time, self.maxsplit)
                         last_image_processing = True
                         # Set the path where the PNG generated after the acquisition analysis will be written.
                         self.ETCalg.set_image_path(self.call_for_exp_dir(self.expid))
@@ -331,9 +332,10 @@ class OnlineETC():
         # Exposure parameters set in prepare_for_exposure()
         etc_status['expid'] = self.expid
         etc_status['req_efftime'] = self.req_efftime
-        etc_status['sbprofile'] = self.sbprofile
+        etc_status['sbprof'] = self.sbprof
         etc_status['max_exptime'] = self.max_exposure_time
         etc_status['cosmics_split'] = self.cosmics_split_time
+        etc_status['maxsplit'] = self.maxsplit
 
         # Timestamps updated when start(), stop(), start_etc(), stop_etc() is called.
         etc_status['img_start_time'] = self.img_start_time.isoformat() if self.img_start_time else None
@@ -412,18 +414,32 @@ class OnlineETC():
 
         return SUCCESS
 
-    def prepare_for_exposure(self, expid, req_efftime, sbprofile, max_exposure_time, cosmics_split_time):
+    def prepare_for_exposure(self, expid, req_efftime, sbprof, max_exposure_time,
+                             cosmics_split_time, maxsplit):
         """Record the observing parameters for the next exposure, usually from NTS.
 
         The ETC will not see these parameters until the next call to :meth:`start`.
 
         Parameters
         ----------
-        expid:              next exposure id (int)
-        req_efftime:        target value of the effective exposure time in seconds (float)
-        sbprofile:          a string describing the surface profile type to use for FFRAC calculations
-        max_exposure_time:  Maximum exposure time in seconds (irrespective of accumulated SNR)
-        cosmics_split_time: Time in second before requesting a cosmic ray split
+        expid : int
+            The exposure id reserved for the first shutter opening of this tile.
+        req_efftime : float
+            The requested target value of the effective exposure time in seconds.
+        sbprof : string
+            The surface brightness profile to use for FFRAC calculations. Must be one of
+            PSF, ELG, BGS, FLT.
+        max_exposure_time : float
+            The maximum cummulative exposure time in seconds to allow for this tile,
+            summed over all cosmic splits.
+        cosmics_split_time : float
+            The maximum exposure time in seconds for a single exposure.
+        maxsplit : int
+            The maximum number of exposures reserved by ICS for this tile.
+
+        Returns
+        -------
+        SUCCESS or FAILED
         """
         logging.info('OnlineETC.prepare_for_exposure')
         # Check that the ETC thread is still running and ready.
@@ -437,9 +453,10 @@ class OnlineETC():
         # Store this exposure's parameters.
         self.expid = expid
         self.req_efftime = req_efftime
-        self.sbprofile = sbprofile
+        self.sbprof = sbprof
         self.max_exposure_time = max_exposure_time
         self.cosmics_split_time = cosmics_split_time
+        self.maxsplit
 
         # Update our status.
         self.call_to_update_status()
