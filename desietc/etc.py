@@ -25,11 +25,13 @@ import fitsio
 import desietc.sky
 import desietc.gfa
 import desietc.gmm
+import desietc.accum
 import desietc.util
 import desietc.plot
 
 # TODO:
 # - estimate GFA thru errors & use stars from all GFAs together
+# - ignore GFAs with flagged issues (noise, ...)?
 # - save git hash / version to json output
 # - save cpu timing to json
 # - truncate digits for np.float32 json output
@@ -112,7 +114,7 @@ class ETCAlgorithm(object):
         # How many GUIDE and SKY cameras do we expect?
         self.ngfa = len(desietc.gfa.GFACamera.guide_names)
         self.nsky = len(desietc.sky.SkyCamera.sky_names)
-        # Initialize buffers to record our signal- and sky-rate measurements.
+        # Define auxiliary data to save with each GFA or SKY measurement.
         aux_dtype = [
             ('sig', np.float32),                  # accumulated signal estimate
             ('bg', np.float32),                   # accumulated background estimate
@@ -121,7 +123,7 @@ class ETCAlgorithm(object):
             ('final', np.float32),                # projected final effective time in seconds
             ('split', np.float32),                # projected time until next split in seconds
         ]
-        # Define auxiliary data to save with each GFA or SKY measurement.
+        # Initialize buffers to record our signal- and sky-rate measurements.
         self.thru_measurements = desietc.util.MeasurementBuffer(
             maxlen=1000, default_value=1, aux_dtype=[
                 ('ffrac', np.float32, (self.ngfa,)),  # fiber fraction measured from single GFA
@@ -135,6 +137,8 @@ class ETCAlgorithm(object):
                 ('dflux', np.float32, (self.nsky,)),  # sky flux uncertainty meausured from a single SKYCAM.
                 ('ndrop', np.int32, (self.nsky,)),    # number of fibers dropped from the camera flux estimate.
             ] + aux_dtype)
+        # Initialize exposure accumulator.
+        self.accum = desietc.accum.Accumulator(self.thru_measurements, self.sky_measurements)
         # Initialize the SKY camera processor.
         self.SKY = desietc.sky.SkyCamera(calib_name=sky_calib)
         # Prepare for parallel processing if necessary.
