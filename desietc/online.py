@@ -207,7 +207,8 @@ class OnlineETC():
 
                     elif not last_etc_processing and self.etc_processing.is_set():
                         # Shutter just opened.
-                        self.ETCalg.open_shutter(self.expid, self.etc_start_time, self.splittable)
+                        self.ETCalg.open_shutter(
+                            self.expid, self.etc_start_time, self.splittable, self.max_shutter_time)
                         last_etc_processing = True
 
                     elif last_etc_processing and not self.etc_processing.is_set():
@@ -496,23 +497,32 @@ class OnlineETC():
 
         return SUCCESS
 
-    def start_etc(self, expid=None, start_time=None, splittable=False, **options):
+    def start_etc(self, expid, start_time, splittable, max_shutter_time):
         """Signal to the ETC that the spectrograph shutters have just opened.
 
         The ETC will accumulate effective exposure time until the next call
         to to :meth:`stop_etc` or :meth:`stop`.
         """
-        logging.info('OnlineETC.start_etc')
+        logging.info('OnlineETC.start_etc at {start_time}')
         # Check that the ETC thread is still running and ready.
         self.start_thread()
         if not self.etc_ready.is_set():
             return FAILED
 
+        # Check parameters.
+        if not isinstance(expid, int):
+            logging.error(f'Invalid expid (should be int): {expid}.')
+            return FAILED
+        if not desietc.util.is_datetime(start_time):
+            logging.error(f'Invalid start_time (should be datetime): {start_time}.')
+            return FAILED
+        if max_shutter_time <= 0 or max_shutter_time > 6 * 3600:
+            logging.error(f'Invalid max_shutter_time: {max_shutter_time}.')
+            return FAILED
         self.expid = expid
-        self.etc_start_time = start_time or datetime.datetime.utcnow()
+        self.etc_start_time = start_time
         self.splittable = splittable
-        if options:
-            logging.warn('start_etc: ignoring extra options: %r' % options)
+        self.max_shutter_time = max_shutter_time
 
         # Signal our worker thread.
         self.etc_processing.set()

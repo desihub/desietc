@@ -76,7 +76,7 @@ class ETCAlgorithm(object):
         self.ffrac_ref = ffrac_ref
         self.nbad_threshold = nbad_threshold
         self.nll_threshold = nll_threshold
-        self.grid_resolution = grid_resolution / self.SECS_PER_DAY
+        self.grid_resolution = grid_resolution
         self.gfa_calib = gfa_calib
         # Initialize PSF fitting.
         if psf_pixels % 2 == 0:
@@ -730,8 +730,19 @@ class ETCAlgorithm(object):
                      + f'max_exposure_time={max_exposure_time:.1f}s, cosmics_split_time={cosmics_split_time:.1f}s, maxsplit={maxsplit}.')
         self.reset_accumulated()
 
-    def open_shutter(self, expid, timestamp, splittable):
+    def open_shutter(self, expid, timestamp, splittable, max_shutter_time):
         """Record the shutter opening.
+
+        Parameters
+        ----------
+        expid : int
+            The exposure id for this shutter opening.
+        timestamp : datetime.datetime
+            The UTC timestamp for this shutter opening.
+        splittable : bool
+            True if this exposure can be split for cosmics.
+        max_shutter_time : float
+            The maximum time in seconds that the spectrograph shutters will remain open.
         """
         mjd = desietc.util.date_to_mjd(timestamp, utc_offset=0)
         nopen, nclose = len(self.shutter_open), len(self.shutter_close)
@@ -747,10 +758,9 @@ class ETCAlgorithm(object):
         self.exp_data[expid] = expid
         self.exptag = str(expid).zfill(8)
         # Initialize a MJD grid to use for SNR calculations during this shutter.
-        # Grid values are bin centers, with spacing ~ grid_resolution.
-        delta = self.exp_data['mjd_max'] - mjd
-        ngrid = int(np.ceil(delta / self.grid_resolution))
-        self.mjd_grid = mjd + (np.arange(ngrid) + 0.5) * delta / ngrid
+        # Grid values are bin centers, with spacing fixed at grid_resolution.
+        ngrid = int(np.ceil(max_shutter_time / self.grid_resolution))
+        self.mjd_grid = mjd + (np.arange(ngrid) + 0.5) * self.grid_resolution / self.SECS_PER_DAY
         # Initialize signal and background rate grids.
         self.sig_grid = np.zeros_like(self.mjd_grid)
         self.bg_grid = np.zeros_like(self.mjd_grid)

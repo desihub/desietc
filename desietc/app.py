@@ -71,10 +71,11 @@ class OfflineETCApp:
         (pathlib.Path('expdir') / f'{self.expid:08d}').mkdir(parents=True, exist_ok=True)
         return self.etc.start(start_time=self.get('start_time'))
 
-    def open_shutter(self, splittable=True):
+    def open_shutter(self, splittable=True, max_shutter_time=3600):
         start_mjd = self.get('frames')[self.last_frame]['when']
         start_time = desietc.util.mjd_to_date(start_mjd, utc_offset=0)
-        return self.etc.start_etc(self.expid, start_time=start_time, splittable=splittable)
+        return self.etc.start_etc(
+            expid=self.expid, start_time=start_time, splittable=splittable, max_shutter_time=max_shutter_time)
 
     def close_shutter(self, source='unknown'):
         stop_mjd = self.get('frames')[self.last_frame]['when']
