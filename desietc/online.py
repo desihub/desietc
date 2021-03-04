@@ -442,7 +442,7 @@ class OnlineETC():
         -------
         SUCCESS or FAILED
         """
-        logging.info('OnlineETC.prepare_for_exposure')
+        logging.info(f'OnlineETC.prepare_for_exposure {expid}.')
         # Check that the ETC thread is still running and ready.
         self.start_thread()
         if not self.etc_ready.is_set():
@@ -478,7 +478,7 @@ class OnlineETC():
         -------
         SUCCESS or FAILED
         """
-        logging.info(f'OnlineETC.start at {start_time}')
+        logging.info(f'OnlineETC.start at {start_time}.')
         # Check that the ETC thread is still running and ready.
         self.start_thread()
         if not self.etc_ready.is_set():
@@ -503,7 +503,7 @@ class OnlineETC():
         The ETC will accumulate effective exposure time until the next call
         to to :meth:`stop_etc` or :meth:`stop`.
         """
-        logging.info('OnlineETC.start_etc at {start_time}')
+        logging.info(f'OnlineETC.start_etc at {start_time}.')
         # Check that the ETC thread is still running and ready.
         self.start_thread()
         if not self.etc_ready.is_set():
@@ -532,22 +532,23 @@ class OnlineETC():
 
         return SUCCESS
 
-    def stop_etc(self, source='OPERATOR', stop_time=None, **options):
+    def stop_etc(self, source, stop_time):
         """Signal to the ETC that the spectograph shutters have just closed.
 
         The ETC will continue processing any new sky or guide frames until
         :meth:`stop` is called.
         """
-        logging.info('OnlineETC.stop_etc')
+        logging.info(f'OnlineETC.stop_etc at {stop_time} from "{source}".')
         # Check that the ETC thread is still running and ready.
         self.start_thread()
         if not self.etc_ready.is_set():
             return FAILED
 
-        self.etc_stop_time = stop_time or datetime.datetime.utcnow()
+        if not desietc.util.is_datetime(stop_time):
+            logging.error(f'Invalid stop_time (should be datetime): {stop_time}.')
+            return FAILED
+        self.etc_stop_time = stop_time
         self.etc_stop_src = source
-        if options:
-            logging.warn('stop_etc: ignoring extra options: %r' % options)
 
         # Signal our worker thread.
         self.etc_processing.clear()
