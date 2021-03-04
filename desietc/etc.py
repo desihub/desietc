@@ -684,10 +684,10 @@ class ETCAlgorithm(object):
                 self.noisy_gfa.add(camera)
         return True
 
-    def start_exposure(self, timestamp, expid, requested_teff, sbprofile, max_exposure_time, cosmics_split_time):
+    def start_exposure(self, timestamp, expid, req_efftime, sbprofile, max_exposure_time, cosmics_split_time):
         """Start a new exposure using parameters:
         expid:              next exposure id (int)
-        requested_teff:        target value of the effective exposure time in seconds (float)
+        req_efftime:        target value of the effective exposure time in seconds (float)
         sbprofile:        a string describing the type of target to assume (DARK/BRIGHT/...)
         max_exposure_time:  Maximum exposure time in seconds (irrespective of accumulated SNR)
         cosmics_split_time: Time in second before requesting a cosmic ray split
@@ -698,14 +698,14 @@ class ETCAlgorithm(object):
             max_exposure_time = max_hours * 3600
         self.exp_data = dict(
             expid=expid, # This is the initial expid in case there are cosmic splits.
-            requested_teff=requested_teff,
+            req_efftime=req_efftime,
             sbprofile=sbprofile,
             max_exposure_time=max_exposure_time,
             cosmics_split_time=cosmics_split_time,
         )
         self.exptag = str(expid).zfill(8)
         self.night = desietc.util.mjd_to_night(desietc.util.date_to_mjd(timestamp, utc_offset=0))
-        logging.info(f'Start {self.night}/{self.exptag} at {timestamp} with teff={requested_teff:.1f}s, type={sbprofile}, '
+        logging.info(f'Start {self.night}/{self.exptag} at {timestamp} with teff={req_efftime:.1f}s, type={sbprofile}, '
                      + f'max={max_exposure_time:.1f}s, split={cosmics_split_time:.1f}s')
         self.reset_accumulated()
 
@@ -796,7 +796,7 @@ class ETCAlgorithm(object):
         :meth:`process_guide_frame` or :meth:`process_sky`.
         """
         # Check that we have the NTS parameters for this exposure.
-        for key in 'mjd_start', 'mjd_max', 'requested_teff', 'cosmics_split_time':
+        for key in 'mjd_start', 'mjd_max', 'req_efftime', 'cosmics_split_time':
             if key not in self.exp_data:
                 logging.error(f'update_accumulated: missing required NTS parameter "{key}".')
                 return False
@@ -804,7 +804,7 @@ class ETCAlgorithm(object):
         if mjd_now < mjd_start:
             logging.error('update_accumulated() called with mjd_now < mjd_start.')
             return False
-        target = self.exp_data['requested_teff']
+        target = self.exp_data['req_efftime']
         cosmic_split = self.exp_data['cosmics_split_time']
         # Check the state of the shutter.
         nopen, nclose = len(self.shutter_open), len(self.shutter_close)

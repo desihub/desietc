@@ -44,8 +44,8 @@ class OfflineETCApp:
         logging.info(f'get_status: {status}')
         self.status_updates.append(status)
 
-    def call_when_image_ready(self, path, expid, frame=0):
-        print(f'Image ready for {expid}[{frame}] at {path}')
+    def call_when_image_ready(self, expid, frame=0, filename=None):
+        print(f'Image ready for {expid}[{frame}] at {filename}')
 
     def call_to_request_stop(self, cause):
         logging.info(f'request_stop: cause={cause}')

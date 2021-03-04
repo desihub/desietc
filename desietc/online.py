@@ -103,7 +103,7 @@ class OnlineETC():
 
         # initialize status variables
         self.expid = None
-        self.requested_teff = None
+        self.req_efftime = None
         self.sbprofile = None
         self.max_exposure_time = None
         self.cosmics_split_time = None
@@ -196,7 +196,7 @@ class OnlineETC():
                     if not last_image_processing:
                         # A new exposure is starting: pass through prepare_for_exposure args now.
                         self.ETCalg.start_exposure(
-                            self.img_start_time, self.expid, self.requested_teff, self.sbprofile,
+                            self.img_start_time, self.expid, self.req_efftime, self.sbprofile,
                             self.max_exposure_time, self.cosmics_split_time)
                         last_image_processing = True
                         # Set the path where the PNG generated after the acquisition analysis will be written.
@@ -325,7 +325,7 @@ class OnlineETC():
 
         # Exposure parameters set in prepare_for_exposure()
         etc_status['expid'] = self.expid
-        etc_status['req_teff'] = self.requested_teff
+        etc_status['req_efftime'] = self.req_efftime
         etc_status['sbprofile'] = self.sbprofile
         etc_status['max_exptime'] = self.max_exposure_time
         etc_status['cosmics_split'] = self.cosmics_split_time
@@ -407,7 +407,7 @@ class OnlineETC():
 
         return SUCCESS
 
-    def prepare_for_exposure(self, expid, requested_teff, sbprofile, max_exposure_time, cosmics_split_time):
+    def prepare_for_exposure(self, expid, req_efftime, sbprofile, max_exposure_time, cosmics_split_time):
         """Record the observing parameters for the next exposure, usually from NTS.
 
         The ETC will not see these parameters until the next call to :meth:`start`.
@@ -415,7 +415,7 @@ class OnlineETC():
         Parameters
         ----------
         expid:              next exposure id (int)
-        requested_teff:     target value of the effective exposure time in seconds (float)
+        req_efftime:     target value of the effective exposure time in seconds (float)
         sbprofile:          a string describing the surface profile type to use for FFRAC calculations
         max_exposure_time:  Maximum exposure time in seconds (irrespective of accumulated SNR)
         cosmics_split_time: Time in second before requesting a cosmic ray split
@@ -431,7 +431,7 @@ class OnlineETC():
 
         # Store this exposure's parameters.
         self.expid = expid
-        self.requested_teff = requested_teff
+        self.req_efftime = req_efftime
         self.sbprofile = sbprofile
         self.max_exposure_time = max_exposure_time
         self.cosmics_split_time = cosmics_split_time
