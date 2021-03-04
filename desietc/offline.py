@@ -148,7 +148,7 @@ def fetch_exposure(path, expid, only_complete=True):
     )
 
 
-def replay_exposure(ETC, path, expid, outpath, teff=1000, ttype='DARK', cutoff=3600, cosmic=1200,
+def replay_exposure(ETC, path, expid, outpath, teff=1000, sbprofile='ELG', cutoff=3600, cosmic=1200,
                     maxsplit=3, splittable=True, overwrite=False, dry_run=False, only_complete=True):
     """Recreate the online ETC processing of an exposure by replaying the
     FITS files stored to disk.
@@ -172,7 +172,7 @@ def replay_exposure(ETC, path, expid, outpath, teff=1000, ttype='DARK', cutoff=3
     # Save images with the per-exposure outputs.
     ETC.set_image_path(exppath_out)
     # Start the exposure processing.
-    ETC.start_exposure(F['start_time'], expid, teff, ttype, cutoff, cosmic, maxsplit, splittable)
+    ETC.start_exposure(F['start_time'], expid, teff, sbprofile, cutoff, cosmic, maxsplit, splittable)
     # Loop over frames to replay.
     for frame in F['frames']:
         if frame['typ'] == 'gfa':

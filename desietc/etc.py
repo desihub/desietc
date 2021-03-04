@@ -696,6 +696,12 @@ class ETCAlgorithm(object):
         if max_exposure_time <= 0 or max_exposure_time > max_hours * 3600:
             logging.warn(f'max_exposure_time={max_exposure_time} looks fishy: using {max_hours} hours.')
             max_exposure_time = max_hours * 3600
+        if sbprofile not in ('PSF', 'ELG', 'BGS', 'FLT'):
+            logging.error(f'Got invalid sbprofile "{sbprofile}" so defaulting to "ELG".')
+            sbprofile = 'ELG'
+        if sbprofile != 'PSF':
+            logging.warn(f'{sbprofile} profile not implemented yet so using PSF.')
+            sbprofile = 'PSF'
         self.exp_data = dict(
             expid=expid, # This is the initial expid in case there are cosmic splits.
             req_efftime=req_efftime,

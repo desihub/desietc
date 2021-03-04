@@ -80,7 +80,9 @@ class OfflineETCApp:
         return self.etc.stop_etc(source=source, stop_time=stop_time)
 
     def stop(self, source='unknown'):
-        return self.etc.stop(source=source)
+        stop_mjd = self.get('frames')[self.last_frame]['when']
+        stop_time = desietc.util.mjd_to_date(stop_mjd, utc_offset=0)
+        return self.etc.stop(source=source, stop_time=stop_time)
 
     def call_for_acq_image(self, wait=None):
         if self.get('acq_path') is not None:
@@ -115,8 +117,8 @@ def main():
 
     app = OfflineETCApp()
     print('OfflineETCApp is running.')
-    #options = dict(requested_teff=1000, sbprofile='PSF', max_exposure_time=2000, cosmics_split_time=1200)
-    options = dict(requested_teff=1000, sbprofile='PSF', max_exposure_time=2000, cosmics_split_time=30)
+    options = dict(requested_teff=1000, sbprofile='ELG', max_exposure_time=2000, cosmics_split_time=1200)
+    #options = dict(requested_teff=1000, sbprofile='ELG', max_exposure_time=2000, cosmics_split_time=30)
     while True:
         print('Enter a command: s(tart) f(rame) o(pen) c(lose) (s)t(op) q(uit)')
         cmd = input('# ')

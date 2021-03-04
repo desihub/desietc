@@ -261,7 +261,6 @@ class OnlineETC():
 
                     # Send a telemetry update if flagged above or if we are overdue.
                     now = datetime.datetime.utcnow()
-                    ##logging.info(f'now {now} last {self.last_update_time} next {self.last_update_time + self.max_update_delay}')
                     if have_new_telemetry or (now > self.last_update_time + self.max_update_delay):
                         self.last_update_time = now
                         self.call_to_update_status()
@@ -272,10 +271,16 @@ class OnlineETC():
                         # The previous exposure has just ended.
                         if last_etc_processing and not self.etc_processing.is_set():
                             # The shutter just closed for the last time, but we didn't catch it above
-                            # because stop() was called too soon after stop_etc().
-                            # Do the same shutter-closed processing here as above.
-                            logging.warn('Got stop_etc() and stop() in rapid fire: ' +
-                                f'{self.img_stop_time - self.etc_stop_time}')
+                            # because stop() was called too soon after stop_etc(). Do the same
+                            # shutter-closed processing here as above.
+                            if self.etc_stop_time is None or self.etc_stop_time < self.etc_start_time:
+                                # This should never happen...
+                                logging.error('Got stop() after start_etc() without any stop_etc().')
+                                # We don't know when the shutter closed, so assume it was now.
+                                self.etc_stop_time = datetime.datetime.utcnow()
+                            else:
+                                logging.warn('Got stop_etc() and stop() in rapid fire: ' +
+                                    f'{self.img_stop_time - self.etc_stop_time}')
                             self.ETCalg.close_shutter(self.etc_stop_time)
                             last_etc_processing = False
                             have_new_telemetry = True
@@ -415,7 +420,7 @@ class OnlineETC():
         Parameters
         ----------
         expid:              next exposure id (int)
-        req_efftime:     target value of the effective exposure time in seconds (float)
+        req_efftime:        target value of the effective exposure time in seconds (float)
         sbprofile:          a string describing the surface profile type to use for FFRAC calculations
         max_exposure_time:  Maximum exposure time in seconds (irrespective of accumulated SNR)
         cosmics_split_time: Time in second before requesting a cosmic ray split
@@ -537,6 +542,7 @@ class OnlineETC():
 
         if self.etc_processing.is_set():
             logging.error('stop: called before stop_etc.')
+            self.etc_stop_time = self.img_stop_time
             self.etc_processing.clear()
 
         # Signal our worker thread that image processing should start.
