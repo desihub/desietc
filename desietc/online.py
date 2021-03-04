@@ -558,7 +558,7 @@ class OnlineETC():
 
         return SUCCESS
 
-    def stop(self, source='OPERATOR', stop_time=None, **options):
+    def stop(self, source, stop_time):
         """Signal to the ETC that the current exposure has stopped.
 
         The ETC will save its processing history for this exposure after this call.
@@ -566,16 +566,17 @@ class OnlineETC():
         In case stop is called while the spectrograph shutters are open,
         log an error and clear etc_processing before clearing image_processing.
         """
-        logging.info('OnlineETC.stop')
+        logging.info(f'OnlineETC.stop at {stop_time} from "{source}".')
         # Check that the ETC thread is still running and ready.
         self.start_thread()
         if not self.etc_ready.is_set():
             return FAILED
 
-        self.img_stop_time = stop_time or datetime.datetime.utcnow()
+        if not desietc.util.is_datetime(stop_time):
+            logging.error(f'Invalid stop_time (should be datetime): {stop_time}.')
+            return FAILED
+        self.img_stop_time = stop_time
         self.img_stop_src = source
-        if options:
-            logging.warn('stop: ignoring extra options: %r' % options)
 
         if self.etc_processing.is_set():
             logging.error('stop: called before stop_etc.')
