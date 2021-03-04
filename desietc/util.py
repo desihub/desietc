@@ -854,6 +854,16 @@ class NumpyEncoder(json.JSONEncoder):
             return super().default(obj)
 
 
+def is_datetime(time, oldest=datetime.datetime(2019, 1, 1)):
+    """Test for a valid datetime after oldest.
+    """
+    try:
+        delta = (time - oldest).days
+        return delta > 0
+    except Exception as e:
+        return False
+
+
 def load_guider_centroids(path, expid):
     """Attempt to read the centroids json file produced by the guider.
 

@@ -463,21 +463,30 @@ class OnlineETC():
 
         return SUCCESS
 
-    def start(self, start_time=None, **options):
+    def start(self, start_time):
         """Start processing the exposure specified in the last call to
         :meth:`prepare_for_exposure`.  The ETC will start looking for an
         acquisition image once this is called.
+
+        Parameters
+        ----------
+        start_time : datetime.datetime
+            UTC timestamp of when exposure processing started for this tile.
+
+        Returns
+        -------
+        SUCCESS or FAILED
         """
-        logging.info('OnlineETC.start')
+        logging.info(f'OnlineETC.start at {start_time}')
         # Check that the ETC thread is still running and ready.
         self.start_thread()
         if not self.etc_ready.is_set():
             return FAILED
 
-        self.img_start_time = start_time or datetime.datetime.utcnow()
-        logging.info('start: start exposure at %r' % self.img_start_time)
-        if options:
-            logging.warn('start: ignoring extra options: %r' % options)
+        if not desietc.util.is_datetime(start_time):
+            logging.error(f'Invalid start_time (should be datetime): {start_time}.')
+            return FAILED
+        self.img_start_time = start_time
 
         # Signal our worker thread.
         self.image_processing.set()
