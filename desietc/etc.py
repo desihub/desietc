@@ -870,11 +870,11 @@ class ETCAlgorithm(object):
         logging.info(f'shutter[{nopen}] treal={self.accumulated_real_time:.1f}s, teff={self.accumulated_eff_time:.1f}s' +
             f' [+{prev_teff:.1f}s] using bg={self.accumulated_background:.3f}, sig={self.accumulated_signal:.3f}.')
         # Have we reached the cutoff time?
-        if mjd_now >= mjd_max:
+        if mjd_now >= self.mjd_grid[-1]:
             # We have already reached the maximum allowed exposure time.
             istop = inow
-            self.action = ('stop', 'max exptime')
-            logging.info(f'Maximum exposure time reached.')
+            self.action = ('stop', 'max_shutter_time reached')
+            logging.info(f'Maximum shutter time reached.')
             self.projected_eff_time = self.accumulated_eff_time + prev_teff
             self.time_remaining = 0.
             self.split_remaining = 0.

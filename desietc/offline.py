@@ -16,6 +16,9 @@ import desietc.gfa
 import desietc.sky
 import desietc.plot
 
+SECS_PER_DAY = 86400
+
+
 def fetch_exposure(path, expid, only_complete=True):
     """
     """
@@ -115,25 +118,29 @@ def fetch_exposure(path, expid, only_complete=True):
     logging.info(f'Exposure has {num_gfa_frames} GFA frames.')
     # Determine the order in which the combined GFA+SKY frames should be fed to the ETC.
     frames = (
-        [ dict(typ='gfa', num=n, when=gfa_info[n]['MJD-OBS']+gfa_info[n]['EXPTIME'] / 86400)
+        [ dict(typ='gfa', num=n, start=gfa_info[n]['MJD-OBS'], stop=gfa_info[n]['MJD-OBS']+gfa_info[n]['EXPTIME'] / SECS_PER_DAY)
           for n in range(num_gfa_frames) ] +
-        [ dict(typ='sky', num=n, when=sky_info[n]['MJD-OBS']+sky_info[n]['EXPTIME'] / 86400)
+        [ dict(typ='sky', num=n, start=sky_info[n]['MJD-OBS'], stop=sky_info[n]['MJD-OBS']+sky_info[n]['EXPTIME'] / SECS_PER_DAY)
           for n in range(num_sky_frames) ])
-    frames = sorted(frames, key=lambda frame: frame['when'])
+    frames = sorted(frames, key=lambda frame: frame['stop'])
     if len(frames) == 0:
         logging.error(f'No GFA or SKY frames found.')
         return None
-    # Determine the start time for this exposure.
-    if num_gfa_frames > 0:
-        start_mjd = gfa_info[0]['MJD-OBS']
-    else:
-        start_mjd = sky_info[0]['MJD-OBS']
+    # Determine the start time for this exposure from the first frame.
+    start_mjd = frames[0]['start']
     start_time = desietc.util.mjd_to_date(start_mjd, utc_offset=0)
+    # Determine the stop time for this exposure from the last frame.
+    stop_mjd = frames[-1]['stop']
+    if desi_path.exists() and desi_mjd_obs + desi_exptime / SECS_PER_DAY > stop_mjd:
+        # Use the spectograph shutter closing time if this is later.
+        stop_mjd = desi_mjd_obs + desi_exptime / SECS_PER_DAY
+    stop_time = desietc.util.mjd_to_date(stop_mjd, utc_offset=0)
     # If we get this far, return a dictionary of the fetched results.
     return dict(
         expid=expid,
         exptag=exptag,
         start_time=start_time,
+        stop_time=stop_time,
         desi_path=desi_path,
         desi_mjd_obs=desi_mjd_obs,
         desi_exptime=desi_exptime,
@@ -148,8 +155,9 @@ def fetch_exposure(path, expid, only_complete=True):
     )
 
 
-def replay_exposure(ETC, path, expid, outpath, teff=1000, sbprof='ELG', cutoff=3600, cosmic=1200,
-                    maxsplit=3, splittable=True, overwrite=False, dry_run=False, only_complete=True):
+def replay_exposure(ETC, path, expid, outpath, req_efftime=1000, sbprof='ELG',
+                    max_exposure_time=3600, cosmics_split_time=1200, maxsplit=4,
+                    overwrite=False, dry_run=False, only_complete=True):
     """Recreate the online ETC processing of an exposure by replaying the
     FITS files stored to disk.
     """
@@ -172,9 +180,21 @@ def replay_exposure(ETC, path, expid, outpath, teff=1000, sbprof='ELG', cutoff=3
     # Save images with the per-exposure outputs.
     ETC.set_image_path(exppath_out)
     # Start the exposure processing.
-    ETC.start_exposure(F['start_time'], expid, teff, sbprof, cutoff, cosmic, maxsplit, splittable)
+    ETC.start_exposure(F['start_time'], expid, req_efftime, sbprof,
+                       max_exposure_time, cosmics_split_time, maxsplit)
+    # When does the shuter close?
+    if F['desi_path'].exists():
+        shutter_close_mjd = F['desi_mjd_obs'] + F['desi_exptime'] / SECS_PER_DAY
+        shutter_close_date = desietc.util.mjd_to_date(shutter_close_mjd, utc_offset=0)
+    else:
+        shutter_close_mjd = None
+    shutter_open = False
     # Loop over frames to replay.
     for frame in F['frames']:
+        if shutter_open and shutter_close_mjd is not None and frame['start'] >= shutter_close_mjd:
+            ETC.close_shutter(shutter_close_date)
+            ETC.save_exposure(exppath_out)
+            shutter_open = False
         if frame['typ'] == 'gfa':
             if frame['num'] == 0 and F['acq_path'].exists():
                 data = acq_to_online(F['acq_path'], desietc.gfa.GFACamera.guide_names)
@@ -192,33 +212,34 @@ def replay_exposure(ETC, path, expid, outpath, teff=1000, sbprof='ELG', cutoff=3
                 if F['desi_path'].exists():
                     # Signal the shutter opening.
                     timestamp = desietc.util.mjd_to_date(F['desi_mjd_obs'], utc_offset=0)
-                    ETC.open_shutter(timestamp)
+                    # expid, timestamp, splittable, max_shutter_time
+                    ETC.open_shutter(
+                        expid=expid, timestamp=timestamp, splittable=False, max_shutter_time=F['desi_exptime'])
+                    shutter_open = True
             else:
                 # Process the next guide frame.
                 ETC.process_guide_frame(data)
         else: # SKY
             data = fits_to_online(F['sky_path'], ETC.SKY.sky_names, frame['num'])
             ETC.process_sky_frame(data)
-    if F['desi_path'].exists():
-        # Signal the shutter closing.
-        timestamp = desietc.util.mjd_to_date(
-            F['desi_mjd_obs'] + F['desi_exptime'] / ETC.SECS_PER_DAY, utc_offset=0)
-        ETC.close_shutter(timestamp)
-        # End the exposure.
-        ETC.stop_exposure(timestamp)
-        # Save the ETC outputs for this exposure.
+    if shutter_open and shutter_close_mjd is not None:
+        # The shutter did not already close due to a frame after the DESI exposure, so close it now.
+        ETC.close_shutter(shutter_close_date)
         ETC.save_exposure(exppath_out)
-        # Plot the signal and background measurement buffers spanning this exposure.
-        mjd1 = F['desi_mjd_obs']
-        mjd2 = mjd1 + F['desi_exptime'] / ETC.SECS_PER_DAY
-        fig, ax = plt.subplots(2, 1, figsize=(9, 9))
-        fig.suptitle(f'ETC Analysis for {ETC.night}/{ETC.exptag}')
-        desietc.plot.plot_measurements(
-            ETC.sky_measurements, mjd1, mjd2, label='SKYCAM Level', ax=ax[0])
-        desietc.plot.plot_measurements(
-            ETC.thru_measurements, mjd1, mjd2, label='GFA Throughput', ax=ax[1])
-        plt.savefig(exppath_out / f'etc-measure-{ETC.exptag}.png')
-        plt.close(fig)
+        shutter_open = False
+    # End the exposure.
+    ETC.stop_exposure(F['stop_time'])
+    # Plot the signal and background measurement buffers spanning [start_time, stop_time].
+    mjd1 = desietc.util.date_to_mjd(F['start_time'], utc_offset=0)
+    mjd2 = desietc.util.date_to_mjd(F['stop_time'], utc_offset=0)
+    fig, ax = plt.subplots(2, 1, figsize=(9, 9))
+    fig.suptitle(f'ETC Analysis for {ETC.night}/{ETC.exptag}')
+    desietc.plot.plot_measurements(
+        ETC.sky_measurements, mjd1, mjd2, label='SKYCAM Level', ax=ax[0])
+    desietc.plot.plot_measurements(
+        ETC.thru_measurements, mjd1, mjd2, label='GFA Throughput', ax=ax[1])
+    plt.savefig(exppath_out / f'etc-measure-{ETC.exptag}.png')
+    plt.close(fig)
 
     return True
 
