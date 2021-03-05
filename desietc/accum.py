@@ -33,10 +33,10 @@ class Accumulator(object):
     def reset(self):
         """Reset accumulated quantities.
         """
-        self.accumulated_mjd = desietc.util.date_to_mjd(datetime.datetime.utcnow(), utc_offset=0)
-        self.accumulated_eff_time = self.accumulated_real_time = 0.
-        self.accumulated_signal = self.accumulated_background = 0.
-        self.time_remaining = self.split_remaining = self.projected_eff_time = 0.
+        self.last_mjd = desietc.util.date_to_mjd(datetime.datetime.utcnow(), utc_offset=0)
+        self.efftime = self.realtime = 0.
+        self.signal = self.background = 0.
+        self.remaining = self.next_split = self.proj_efftime = 0.
         self.nopen = self.nclose = 0
         self.shutter_is_open = False
         self.shutter_open = []
@@ -148,7 +148,7 @@ class Accumulator(object):
         self.action = None
         # Record this shutter closing.
         self.shutter_close.append(mjd)
-        self.shutter_teff.append(self.accumulated_eff_time)
+        self.shutter_teff.append(self.efftime)
         self.shutter_treal.append((mjd - self.shutter_open[-1]) * self.SECS_PER_DAY)
         self.nclose += 1
         self.shutter_is_open = False
@@ -179,7 +179,7 @@ class Accumulator(object):
         prev_treal = 0. if self.nopen == 1 else self.shutter_treal[-1]
         # --- The shutter is open and we have the NTS parameters to use -------------------------
         # Record the timestamp of this update.
-        self.accumulated_mjd = mjd_now
+        self.last_mjd = mjd_now
         # Get grid indices coresponding to the most recent shutter opening and now.
         mjd_open = self.shutter_open[-1]
         inow = np.searchsorted(self.mjd_grid, mjd_now)
@@ -188,22 +188,22 @@ class Accumulator(object):
         self.sig_grid[past] = self.sig_buffer.sample_grid(self.mjd_grid[past])
         self.bg_grid[past] = self.bg_buffer.sample_grid(self.mjd_grid[past])
         # Calculate the mean signal and background during this shutter open period.
-        self.accumulated_signal = np.mean(self.sig_grid[past])
-        self.accumulated_background = np.mean(self.bg_grid[past])
+        self.signal = np.mean(self.sig_grid[past])
+        self.background = np.mean(self.bg_grid[past])
         # Calculate the accumulated effective exposure time for this shutter opening in seconds.
-        self.accumulated_real_time = (mjd_now - mjd_open) * self.SECS_PER_DAY
-        self.accumulated_eff_time = self.accumulated_real_time * self.exptime_factor(
-            self.accumulated_signal, self.accumulated_background)
-        logging.info(f'shutter[{self.nopen}] treal={self.accumulated_real_time:.1f}s, teff={self.accumulated_eff_time:.1f}s' +
-            f' [+{prev_teff:.1f}s] using bg={self.accumulated_background:.3f}, sig={self.accumulated_signal:.3f}.')
+        self.realtime = (mjd_now - mjd_open) * self.SECS_PER_DAY
+        self.efftime = self.realtime * self.exptime_factor(
+            self.signal, self.background)
+        logging.info(f'shutter[{self.nopen}] treal={self.realtime:.1f}s, teff={self.efftime:.1f}s' +
+            f' [+{prev_teff:.1f}s] using bg={self.background:.3f}, sig={self.signal:.3f}.')
         # Have we reached the cutoff time?
-        if self.accumulated_real_time >= self.max_remaining:
+        if self.realtime >= self.max_remaining:
             # We have already reached the maximum allowed exposure time.
             self.action = ('stop', 'max_exposure_time reached')
             logging.info(f'Maximum exposure time of {self.max_exposure_time:.1f}s reached.')
-            self.projected_eff_time = self.accumulated_eff_time + prev_teff
-            self.time_remaining = 0.
-            self.split_remaining = 0.
+            self.proj_efftime = self.efftime + prev_teff
+            self.remaining = 0.
+            self.next_split = 0.
             return True
         # Forecast the future signal and background.
         self.sig_grid[future] = self.sig_buffer.forecast_grid(self.mjd_grid[future])
@@ -217,7 +217,7 @@ class Accumulator(object):
         accum_teff = accum_treal * self.exptime_factor(accum_sig, accum_bg)
         # When do we expect to close the shutter.
         self.action = None
-        if self.accumulated_eff_time + prev_teff >= self.req_efftime:
+        if self.efftime + prev_teff >= self.req_efftime:
             # We have already reached the target.
             istop = inow
             self.action = ('stop', 'target reached')
@@ -231,19 +231,19 @@ class Accumulator(object):
             istop = np.argmax(accum_teff + prev_teff >= self.req_efftime)
         # Lookup our expected stop time and time remaining, assuming the shutter stays open.
         mjd_stop = self.mjd_grid[istop]
-        self.time_remaining = (mjd_stop - mjd_now) * self.SECS_PER_DAY
+        self.remaining = (mjd_stop - mjd_now) * self.SECS_PER_DAY
         # Calculate the corresponding effective time, including any previous shutters.
-        self.projected_eff_time = accum_teff[istop] + prev_teff
-        logging.info(f'Will stop in {self.time_remaining:.1f}s at teff={self.projected_eff_time:.1f}s' +
+        self.proj_efftime = accum_teff[istop] + prev_teff
+        logging.info(f'Will stop in {self.remaining:.1f}s at teff={self.proj_efftime:.1f}s' +
             f' (target={self.req_efftime:.1f}s).')
         # Calculate how many cosmic splits are remaining if none exceeds the split maximum.
         nsplit_remaining = int(np.ceil((mjd_stop - mjd_open) * self.SECS_PER_DAY / self.cosmics_split_time))
         # Calculate when the next split should be.
         mjd_split = mjd_open + (mjd_stop - mjd_open) / nsplit_remaining
-        self.split_remaining = (mjd_split - mjd_now) * self.SECS_PER_DAY
-        logging.info(f'Next split ({self.nopen} of {self.nclose+nsplit_remaining}) in {self.split_remaining:.1f}s')
+        self.next_split = (mjd_split - mjd_now) * self.SECS_PER_DAY
+        logging.info(f'Next split ({self.nopen} of {self.nclose+nsplit_remaining}) in {self.next_split:.1f}s')
         if (self.splittable and self.action is None and
-            nsplit_remaining > 1 and self.split_remaining <= 0):
+            nsplit_remaining > 1 and self.next_split <= 0):
             self.action = ('split', 'cosmic split')
         if self.action is not None:
             logging.info(f'Recommended action is {self.action}.')

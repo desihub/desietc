@@ -593,9 +593,9 @@ class ETCAlgorithm(object):
         if self.accum.shutter_is_open:
             if self.accum.update(mjd_stop):
                 self.thru_measurements.set_last(
-                    sig=self.accum.accumulated_signal, bg=self.accum.accumulated_background,
-                    teff=self.accum.accumulated_eff_time, tproj=self.accum.time_remaining,
-                    final=self.accum.projected_eff_time, split=self.accum.split_remaining)
+                    sig=self.accum.signal, bg=self.accum.background,
+                    teff=self.accum.efftime, tproj=self.accum.remaining,
+                    final=self.accum.proj_efftime, split=self.accum.next_split)
         # Update running averages.
         self.transp_buffer.add(mjd_start, mjd_stop, transp, 0.1)
         self.ffrac_buffer.add(mjd_start, mjd_stop, ffrac, 0.1)
@@ -654,9 +654,9 @@ class ETCAlgorithm(object):
         if self.accum.shutter_is_open:
             if self.accum.update(mjd_stop):
                 self.sky_measurements.set_last(
-                    sig=self.accum.accumulated_signal, bg=self.accum.accumulated_background,
-                    teff=self.accum.accumulated_eff_time, tproj=self.accum.time_remaining,
-                    final=self.accum.projected_eff_time, split=self.accum.split_remaining)
+                    sig=self.accum.signal, bg=self.accum.background,
+                    teff=self.accum.efftime, tproj=self.accum.remaining,
+                    final=self.accum.proj_efftime, split=self.accum.next_split)
         # Profile timing.
         elapsed = time.time() - start
         logging.debug(f'Sky frame processing took {elapsed:.2f}s for {ncamera} cameras.')
@@ -780,8 +780,8 @@ class ETCAlgorithm(object):
         if not self.accum.close(timestamp):
             return
         self.exp_data['close'] = desietc.util.date_to_mjd(timestamp, utc_offset=0)
-        logging.info(f'Shutter close[{self.accum.nclose}] at {timestamp} after {self.accum.accumulated_real_time:.1f}s ' +
-            f'with actual teff={self.accum.accumulated_eff_time:.1f}s')
+        logging.info(f'Shutter close[{self.accum.nclose}] at {timestamp} after {self.accum.realtime:.1f}s ' +
+            f'with actual teff={self.accum.efftime:.1f}s')
 
     def stop_exposure(self, timestamp):
         """

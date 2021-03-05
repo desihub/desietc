@@ -359,14 +359,14 @@ class OnlineETC():
         etc_status['skylevel'] = self.ETCalg.skylevel
 
         # ETC effective exposure time tracking.
-        etc_status['accum_mjd'] = self.ETCalg.accum.accumulated_mjd
-        etc_status['accum_sig'] = self.ETCalg.accum.accumulated_signal
-        etc_status['accum_bg'] = self.ETCalg.accum.accumulated_background
-        etc_status['accum_teff'] = self.ETCalg.accum.accumulated_eff_time
-        etc_status['accum_real'] = self.ETCalg.accum.accumulated_real_time
-        etc_status['accum_tproj'] = self.ETCalg.accum.time_remaining
-        etc_status['accum_final'] = self.ETCalg.accum.projected_eff_time
-        etc_status['accum_split'] = self.ETCalg.accum.split_remaining
+        etc_status['last_mjd'] = self.ETCalg.accum.last_mjd
+        etc_status['signal'] = self.ETCalg.accum.signal
+        etc_status['background'] = self.ETCalg.accum.background
+        etc_status['efftime'] = self.ETCalg.accum.efftime
+        etc_status['realtime'] = self.ETCalg.accum.realtime
+        etc_status['remaining'] = self.ETCalg.accum.remaining
+        etc_status['prof_efftime'] = self.ETCalg.accum.proj_efftime
+        etc_status['next_split'] = self.ETCalg.accum.next_split
         etc_status['splittable'] = self.ETCalg.accum.splittable
 
         return etc_status
