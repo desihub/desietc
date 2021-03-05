@@ -106,9 +106,7 @@ class Accumulator(object):
         # Initialize a MJD grid to use for SNR calculations during this shutter.
         # Grid values are bin centers, with spacing fixed at grid_resolution.
         # The grid covers from now up to the maximum allowed exposure time.
-        self.max_remaining = self.max_exposure_time
-        if self.nopen > 0:
-            self.max_remaining -= self.shutter_treal[-1]
+        self.max_remaining = self.max_exposure_time - np.sum(self.shutter_treal)
         ngrid = int(np.ceil(self.max_remaining / self.grid_resolution))
         mjd = desietc.util.date_to_mjd(timestamp, utc_offset=0)
         self.mjd_grid = mjd + (np.arange(ngrid) + 0.5) * self.grid_resolution / self.SECS_PER_DAY
@@ -175,8 +173,8 @@ class Accumulator(object):
             logging.error(f'update: invalid shutter state [{self.nopen},{self.nclose}].')
             return False
         # Lookup the real and effective time accumulated on all previous splits for this exposure.
-        prev_teff = 0. if self.nopen == 1 else self.shutter_teff[-1]
-        prev_treal = 0. if self.nopen == 1 else self.shutter_treal[-1]
+        prev_teff = np.sum(self.shutter_teff)
+        prev_treal = np.sum(self.shutter_treal)
         # --- The shutter is open and we have the NTS parameters to use -------------------------
         # Record the timestamp of this update.
         self.last_mjd = mjd_now
