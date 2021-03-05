@@ -139,12 +139,10 @@ class Accumulator(object):
             # We do not have a consistent shutter state.
             logging.error(f'close_shutter called after {self.nopen} opens, {self.nclose} closes: will ignore it.')
             return False
-        # Update accumulated quantities.
-        mjd = desietc.util.date_to_mjd(timestamp, utc_offset=0)
-        self.update(mjd)
-        # Ignore any requested action now that the shutter is already closed.
+        # Ignore any previously requested action now that the shutter is closed.
         self.action = None
         # Record this shutter closing.
+        mjd = desietc.util.date_to_mjd(timestamp, utc_offset=0)
         self.shutter_close.append(mjd)
         self.shutter_teff.append(self.efftime)
         self.shutter_treal.append((mjd - self.shutter_open[-1]) * self.SECS_PER_DAY)
