@@ -254,8 +254,8 @@ class OnlineETC():
                             have_new_telemetry = True
 
                     # Is there an action to take associated with new telemetry?
-                    if have_new_telemetry and self.ETCalg.action is not None:
-                        action, cause = self.ETCalg.action
+                    if have_new_telemetry and self.ETCalg.accum.action is not None:
+                        action, cause = self.ETCalg.accum.action
                         if action == 'stop':
                             self.call_to_request_stop(cause)
                         elif action == 'split' and self.splittable:
@@ -362,15 +362,15 @@ class OnlineETC():
         etc_status['skylevel'] = self.ETCalg.skylevel
 
         # ETC effective exposure time tracking.
-        etc_status['accum_mjd'] = self.ETCalg.accumulated_mjd
-        etc_status['accum_sig'] = self.ETCalg.accumulated_signal
-        etc_status['accum_bg'] = self.ETCalg.accumulated_background
-        etc_status['accum_teff'] = self.ETCalg.accumulated_eff_time
-        etc_status['accum_real'] = self.ETCalg.accumulated_real_time
-        etc_status['accum_tproj'] = self.ETCalg.time_remaining
-        etc_status['accum_final'] = self.ETCalg.projected_eff_time
-        etc_status['accum_split'] = self.ETCalg.split_remaining
-        etc_status['splittable'] = self.ETCalg.splittable
+        etc_status['accum_mjd'] = self.ETCalg.accum.accumulated_mjd
+        etc_status['accum_sig'] = self.ETCalg.accum.accumulated_signal
+        etc_status['accum_bg'] = self.ETCalg.accum.accumulated_background
+        etc_status['accum_teff'] = self.ETCalg.accum.accumulated_eff_time
+        etc_status['accum_real'] = self.ETCalg.accum.accumulated_real_time
+        etc_status['accum_tproj'] = self.ETCalg.accum.time_remaining
+        etc_status['accum_final'] = self.ETCalg.accum.projected_eff_time
+        etc_status['accum_split'] = self.ETCalg.accum.split_remaining
+        etc_status['splittable'] = self.ETCalg.accum.splittable
 
         # Timestamp for the last update of an ETC variable.
         etc_status['last_updated'] = self.last_update_time.isoformat()
