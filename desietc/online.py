@@ -547,9 +547,6 @@ class OnlineETC():
         # Signal our worker thread.
         self.etc_processing.clear()
 
-        # Update our status.
-        self.call_to_update_status()
-
         return SUCCESS
 
     def stop(self, source, stop_time):
