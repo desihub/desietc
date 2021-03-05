@@ -76,10 +76,9 @@ import desietc.etc
 
 class OnlineETC():
 
-    def __init__(self, shutdown_event, max_update_delay=30):
+    def __init__(self, shutdown_event):
 
         self.shutdown_event = shutdown_event
-        self.max_update_delay = datetime.timedelta(seconds=max_update_delay)
 
         # Callouts to the ETC application
         self.call_for_acq_image = None
@@ -99,7 +98,6 @@ class OnlineETC():
         if gfa_calib is None or sky_calib is None:
             raise RuntimeError('ETC_GFA_CALIB and ETC_SKY_CALIB must be set.')
         self.ETCalg = desietc.etc.ETCAlgorithm(sky_calib, gfa_calib, parallel=True)
-        self.last_update_time = datetime.datetime.utcnow()
 
         # initialize status variables
         self.expid = None
@@ -171,7 +169,6 @@ class OnlineETC():
          - the initial acquisition image has been processed (which takes ~10s in parallel mode)
          - a new guide frame has been processed (which takes ~0.5s)
          - a new sky frame has been processed (which takes ~0.2s)
-         - a period of max_update_delay with no other status updates (with a ~1s resolution).
 
         The thread that runs this function is started in our constructor.
         """
@@ -261,10 +258,8 @@ class OnlineETC():
                         elif action == 'split' and self.splittable:
                             self.call_to_request_split(cause)
 
-                    # Send a telemetry update if flagged above or if we are overdue.
-                    now = datetime.datetime.utcnow()
-                    if have_new_telemetry or (now > self.last_update_time + self.max_update_delay):
-                        self.last_update_time = now
+                    # Send a telemetry update if something has changed.
+                    if have_new_telemetry:
                         self.call_to_update_status()
 
                 else:
@@ -373,9 +368,6 @@ class OnlineETC():
         etc_status['accum_final'] = self.ETCalg.accum.projected_eff_time
         etc_status['accum_split'] = self.ETCalg.accum.split_remaining
         etc_status['splittable'] = self.ETCalg.accum.splittable
-
-        # Timestamp for the last update of an ETC variable.
-        etc_status['last_updated'] = self.last_update_time.isoformat()
 
         return etc_status
 
