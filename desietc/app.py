@@ -50,7 +50,6 @@ class OfflineETCApp:
     def call_to_request_stop(self, cause):
         logging.info(f'request_stop: cause={cause}')
         self.close_shutter()
-        self.stop()
 
     def call_to_request_split(self, cause):
         logging.info(f'request_split: cause={cause}')
@@ -120,10 +119,10 @@ def main():
 
     app = OfflineETCApp()
     print('OfflineETCApp is running.')
-    options = dict(req_efftime=1000, sbprof='ELG', max_exposure_time=2000, cosmics_split_time=1200, maxsplit=4)
-    #options = dict(req_efftime=1000, sbprof='ELG', max_exposure_time=2000, cosmics_split_time=30, maxsplit=4)
+    #options = dict(req_efftime=1000, sbprof='ELG', max_exposure_time=2000, cosmics_split_time=1200, maxsplit=4)
+    options = dict(req_efftime=1000, sbprof='ELG', max_exposure_time=2000, cosmics_split_time=30, maxsplit=4)
     while True:
-        print('Enter a command: s(tart) f(rame) o(pen) c(lose) (s)t(op) q(uit)')
+        print('Enter a command: s(tart) f(rame) o(pen) c(lose) (s)t(op) q(uit) ?(status)')
         cmd = input('# ')
         if cmd == 'q':
             print('Shutting down...')
@@ -147,6 +146,8 @@ def main():
         elif cmd == 'f':
             if app.next_frame < nframes - 1:
                 app.next_frame += 1
+        elif cmd == '?':
+            app.call_to_update_status()
         else:
             if cmd:
                 print(f'Ignoring unrecognized input "{cmd}".')

@@ -199,8 +199,8 @@ class Accumulator(object):
         # Have we reached the cutoff time?
         if self.realtime >= self.max_remaining:
             # We have already reached the maximum allowed exposure time.
-            self.action = ('stop', 'max_exposure_time reached')
-            logging.info(f'Maximum exposure time of {self.max_exposure_time:.1f}s reached.')
+            self.action = ('stop', 'reached max_exposure_time')
+            logging.info(f'Reached maximum exposure time of {self.max_exposure_time:.1f}s.')
             self.proj_efftime = self.efftime + prev_teff
             self.remaining = 0.
             self.next_split = 0.
@@ -220,8 +220,8 @@ class Accumulator(object):
         if self.efftime + prev_teff >= self.req_efftime:
             # We have already reached the target.
             istop = inow
-            self.action = ('stop', 'target reached')
-            logging.info(f'Target reached.')
+            self.action = ('stop', 'reached req_efftime')
+            logging.info(f'Reached requested effective time of {self.req_efftime:.1f}s.')
         elif accum_teff[-1] + prev_teff < self.req_efftime:
             # We will not reach the target before max_exposure_time.
             istop = len(accum_teff) - 1
@@ -241,7 +241,7 @@ class Accumulator(object):
         # Calculate when the next split should be.
         mjd_split = mjd_open + (mjd_stop - mjd_open) / nsplit_remaining
         self.next_split = (mjd_split - mjd_now) * self.SECS_PER_DAY
-        logging.info(f'Next split ({self.nopen} of {self.nclose+nsplit_remaining}) in {self.next_split:.1f}s')
+        logging.info(f'Next split ({self.nopen} of {self.nclose+nsplit_remaining}) in {self.next_split:.1f}s.')
         if (self.splittable and self.action is None and
             nsplit_remaining > 1 and self.next_split <= 0):
             self.action = ('split', 'cosmic split')
