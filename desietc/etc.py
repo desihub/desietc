@@ -260,7 +260,7 @@ class ETCAlgorithm(object):
             self.image_path = None
 
     def reset_counts(self):
-        self.total_guider_count = 0
+        self.total_gfa_count = 0
         self.total_acq_count = 0
         self.total_sky_count = 0
 
@@ -384,6 +384,7 @@ class ETCAlgorithm(object):
         # Save the acquisition timing.
         self.exp_data['acq_mjd'] = acq_mjd
         self.exp_data['acq_exptime'] = acq_exptime
+        self.total_gfa_count += 1
         # Collect results from any parallel processes.
         for camera in pending:
             logging.info(f'Waiting for {camera}...')
@@ -506,8 +507,8 @@ class ETCAlgorithm(object):
         start = time.time()
         fnum = self.num_guide_frames
         self.num_guide_frames += 1
-        self.total_guider_count += 1
-        logging.info(f'Processing guide frame {fnum} [{self.total_guider_count}] for {self.exptag}.')
+        self.total_gfa_count += 1
+        logging.info(f'Processing guide frame {fnum} [{self.total_gfa_count}] for {self.exptag}.')
         self.check_top_header(data['GUIDER']['header'], f'guide[{fnum}]')
         if self.dithered_model is None:
             logging.error('Ignoring guide frame before acquisition image.')
