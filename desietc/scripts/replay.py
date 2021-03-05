@@ -127,7 +127,7 @@ def etcoffline(args):
     ETC = desietc.etc.ETCAlgorithm(
         args.sky_calib, args.gfa_calib, args.psf_pixels, args.max_dither, args.num_dither,
         args.Ebv_coef, args.ffrac_ref, args.nbad_threshold, args.nll_threshold,
-        args.grid_resolution, args.parallel)
+        args.avg_secs, args.avg_min_values, args.grid_resolution, args.parallel)
 
     # Enable GMM debug messages if requested.
     if args.debug and args.gmm_debug:
@@ -231,6 +231,10 @@ def main():
         help='Maximum allowed bad overscan pixels before warning')
     parser.add_argument('--nll-threshold', type=float, default=10,
         help='Maximum allowed GMM fit NLL value before warning')
+    parser.add_argument('--avg-secs', type=float, default=120,
+        help='Compute running averages over this time interval in seconds.')
+    parser.add_argument('--avg-min-values', type=int, default=4,
+        help='A running average requires at least this many values.')
     parser.add_argument('--grid-resolution', type=float, default=0.5,
         help='Resolution of ETC calculations in seconds')
     parser.add_argument('--gmm-debug', action='store_true',

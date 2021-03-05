@@ -358,7 +358,9 @@ class OnlineETC():
         # Observing conditions updated after each GFA or SKY frame.
         etc_status['seeing'] = self.ETCalg.fwhm
         etc_status['ffrac'] = self.ETCalg.ffrac
-        etc_status['transparency'] = self.ETCalg.transp
+        etc_status['transp'] = self.ETCalg.transp
+        etc_status['ffrac_avg'] = self.ETCalg.ffrac_avg
+        etc_status['transp_avg'] = self.ETCalg.transp_avg
         etc_status['skylevel'] = self.ETCalg.skylevel
 
         # ETC effective exposure time tracking.

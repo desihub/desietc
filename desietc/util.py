@@ -747,6 +747,14 @@ class MeasurementBuffer(object):
             mask &= self.entries['mjd1'] < mjd2
         return mask
 
+    def average(self, mjd, interval_secs, min_values):
+        """Return the average of values recorded up to inteval_secs before mjd,
+        or None if less than min_values have been recorded.
+        """
+        sel = self.inside(mjd - interval_secs / self.SECS_PER_DAY, mjd)
+        nsel = np.count_nonzero(sel)
+        return np.mean(self.entries[sel]['value']) if nsel >= min_values else None
+
     def sample_grid(self, mjd_grid):
         """Sample measurements on a the specified MJD grid.
 

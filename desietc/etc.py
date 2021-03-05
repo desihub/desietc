@@ -44,7 +44,7 @@ class ETCAlgorithm(object):
 
     def __init__(self, sky_calib, gfa_calib, psf_pixels=25, max_dither=7, num_dither=1200,
                  Ebv_coef=2.165, ffrac_ref=0.56, nbad_threshold=100, nll_threshold=10,
-                 grid_resolution=0.5, parallel=True):
+                 avg_secs=120, avg_min_values=4, grid_resolution=0.5, parallel=True):
         """Initialize once per session.
 
         Parameters
@@ -71,6 +71,10 @@ class ETCAlgorithm(object):
         nll_threshold : float
             Maximum allowed GMM fit NLL value before a PSF fit is flagged as
             potentially bad.
+        avg_secs : float
+            Compute running averages over this time interval in seconds.
+        avg_min_values : int
+            A running average requires at least this many values.
         grid_resolution : float
             Resolution of grid (in seconds) to use for SNR calculations.
         parallel : bool
@@ -80,6 +84,8 @@ class ETCAlgorithm(object):
         self.ffrac_ref = ffrac_ref
         self.nbad_threshold = nbad_threshold
         self.nll_threshold = nll_threshold
+        self.avg_secs = avg_secs
+        self.avg_min_values = avg_min_values
         self.gfa_calib = gfa_calib
         # Initialize PSF fitting.
         if psf_pixels % 2 == 0:
@@ -107,9 +113,13 @@ class ETCAlgorithm(object):
         self.ffrac = None
         self.transp = None
         self.skylevel = None
+        # Initialize running averages of ffrac and transp.
+        self.ffrac_buffer = desietc.util.MeasurementBuffer(1000, 1)
+        self.transp_buffer = desietc.util.MeasurementBuffer(1000, 1)
+        self.ffrac_avg = None
+        self.transp_avg = None
         # Initialize call counters.
         self.reset_counts()
-
         # How many GUIDE and SKY cameras do we expect?
         self.ngfa = len(desietc.gfa.GFACamera.guide_names)
         self.nsky = len(desietc.sky.SkyCamera.sky_names)
@@ -586,6 +596,11 @@ class ETCAlgorithm(object):
                     sig=self.accum.accumulated_signal, bg=self.accum.accumulated_background,
                     teff=self.accum.accumulated_eff_time, tproj=self.accum.time_remaining,
                     final=self.accum.projected_eff_time, split=self.accum.split_remaining)
+        # Update running averages.
+        self.transp_buffer.add(mjd_start, mjd_stop, transp, 0.1)
+        self.ffrac_buffer.add(mjd_start, mjd_stop, ffrac, 0.1)
+        self.transp_avg = self.transp_buffer.average(mjd_stop, self.avg_secs, self.avg_min_values)
+        self.ffrac_avg = self.ffrac_buffer.average(mjd_stop, self.avg_secs, self.avg_min_values)
         # Report timing.
         elapsed = time.time() - start
         logging.debug(f'Guide frame processing took {elapsed:.2f}s for {nstar} stars in {ncamera} cameras.')
@@ -836,6 +851,8 @@ class ETCAlgorithm(object):
                 ),
                 thru=self.thru_measurements.save(mjd, None),
                 sky=self.sky_measurements.save(mjd, None),
+                ffrac=self.ffrac_buffer.save(mjd, None),
+                transp=self.transp_buffer.save(mjd, None),
             )
         except Exception as e:
             logging.error(f'save_exposure: error building output dict: {e}')
