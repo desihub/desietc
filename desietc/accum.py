@@ -241,10 +241,10 @@ class Accumulator(object):
         # Calculate when the next split should be.
         mjd_split = mjd_open + (mjd_stop - mjd_open) / nsplit_remaining
         self.next_split = (mjd_split - mjd_now) * self.SECS_PER_DAY
-        logging.info(f'Next split ({self.nopen} of {self.nclose+nsplit_remaining}) in {self.next_split:.1f}s.')
-        if (self.splittable and self.action is None and
-            nsplit_remaining > 1 and self.next_split <= 0):
-            self.action = ('split', 'cosmic split')
+        if self.action is None and nsplit_remaining > 1:
+            logging.info(f'Next split ({self.nopen} of {self.nclose+nsplit_remaining}) in {self.next_split:.1f}s.')
+            if self.splittable and self.next_split <= 0:
+                self.action = ('split', 'cosmic split')
         if self.action is not None:
             logging.info(f'Recommended action is {self.action}.')
         return True

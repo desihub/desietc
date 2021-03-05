@@ -120,7 +120,7 @@ def main():
     app = OfflineETCApp()
     print('OfflineETCApp is running.')
     #options = dict(req_efftime=1000, sbprof='ELG', max_exposure_time=2000, cosmics_split_time=1200, maxsplit=4)
-    options = dict(req_efftime=1000, sbprof='ELG', max_exposure_time=2000, cosmics_split_time=30, maxsplit=4)
+    options = dict(req_efftime=60, sbprof='ELG', max_exposure_time=2000, cosmics_split_time=30, maxsplit=4)
     while True:
         print('Enter a command: s(tart) f(rame) o(pen) c(lose) (s)t(op) q(uit) ?(status)')
         cmd = input('# ')
