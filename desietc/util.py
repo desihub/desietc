@@ -5,6 +5,8 @@ do not read/write any files or produce any logging output.
 """
 import datetime
 import json
+import pathlib
+import subprocess
 
 import numpy as np
 
@@ -941,3 +943,14 @@ def load_guider_centroids(path, expid):
                 centroid[camera][istar, 0, iframe] = S.get('y_centroid', np.nan)
                 centroid[camera][istar, 1, iframe] = S.get('x_centroid', np.nan)
     return expected, combined, centroid
+
+
+def git_describe():
+    try:
+        path = pathlib.Path(__file__).parent
+        process = subprocess.Popen(
+            ['git', 'describe', '--tags', '--always'],
+            cwd=path, shell=False, stdout=subprocess.PIPE)
+        return process.communicate()[0].strip().decode()
+    except Exception as e:
+        return None

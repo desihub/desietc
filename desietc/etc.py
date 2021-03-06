@@ -87,6 +87,12 @@ class ETCAlgorithm(object):
         self.avg_secs = avg_secs
         self.avg_min_values = avg_min_values
         self.gfa_calib = gfa_calib
+        # Capture a git description of the code we are running.
+        self.git = desietc.util.git_describe()
+        if self.git:
+            logging.info(f'Running desietc {self.git}')
+        else:
+            logging.warning('Could not determine git info.')
         # Initialize PSF fitting.
         if psf_pixels % 2 == 0:
             raise ValueError('psf_pixels must be odd.')
@@ -842,6 +848,7 @@ class ETCAlgorithm(object):
         # Build a data structure to save via json.
         try:
             save = dict(
+                desietc=self.git or 'unknown',
                 expinfo=self.exp_data,
                 fassign=self.fassign_data,
                 acquisition=self.acquisition_data,

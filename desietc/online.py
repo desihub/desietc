@@ -346,6 +346,9 @@ class OnlineETC():
 
         # The remaining variables are only updated by the _etc thread #########
 
+        # Git description of the desietc package being used.
+        etc_status['desietc'] = self.ETCalg.git or 'uknown'
+
         # Counters tracked by ETCalg
         etc_status['gfa_count'] = self.ETCalg.total_gfa_count
         etc_status['sky_count'] = self.ETCalg.total_sky_count
