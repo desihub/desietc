@@ -59,6 +59,7 @@ import sys
 import os
 import threading
 import time
+import json
 
 try:
     import DOSlib.logger as logging
@@ -365,9 +366,12 @@ class OnlineETC():
         etc_status['efftime'] = self.ETCalg.accum.efftime
         etc_status['realtime'] = self.ETCalg.accum.realtime
         etc_status['remaining'] = self.ETCalg.accum.remaining
-        etc_status['prof_efftime'] = self.ETCalg.accum.proj_efftime
+        etc_status['proj_efftime'] = self.ETCalg.accum.proj_efftime
         etc_status['next_split'] = self.ETCalg.accum.next_split
         etc_status['splittable'] = self.ETCalg.accum.splittable
+
+        # Use a roundtrip through json to convert all values to native types.
+        etc_status = json.loads(json.dumps(etc_status, cls=desietc.util.NumpyEncoder))
 
         return etc_status
 
