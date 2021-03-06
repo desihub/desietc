@@ -690,7 +690,7 @@ class MeasurementBuffer(object):
         dtype = [
             ('mjd1', np.float64), ('mjd2', np.float64), ('value', np.float32), ('error', np.float32)
         ] + aux_dtype
-        self._entries = np.empty(shape=maxlen, dtype=dtype)
+        self._entries = np.zeros(shape=maxlen, dtype=dtype)
         self.names = self._entries.dtype.names
         self.default_value = default_value
         self.padding = padding / self.SECS_PER_DAY
@@ -793,7 +793,7 @@ class MeasurementBuffer(object):
         # Evaluate the linear trend on our grid.
         return offset + slope * (mjd_grid - mjd1)
 
-    def save(self, mjd1, mjd2):
+    def save(self, mjd1, mjd2=None):
         """Return a json suitable serialization of our entries spanning (mjd1, mjd2).
 
         Use mjd2=None to use all entries after mjd1.
@@ -803,16 +803,17 @@ class MeasurementBuffer(object):
         something equivalent.
         """
         sel = self.inside(mjd1, mjd2)
-        output = []
-        for entry in self.entries[sel]:
-            row = {}
-            for name in self.names:
-                if self._entries.dtype[name].shape != ():
-                    row[name] = entry[name].tolist()
-                else:
-                    row[name] = entry[name]
-            output.append(row)
-        return output
+        E = self.entries[sel]
+        # Convert to a dictionary of fields, excluding mjd1,2.
+        D = {name: E[name] for name in E.dtype.fields if name not in ('mjd1','mjd2')}
+        # Lookup the earliest MJD.
+        mjd0 = E['mjd1'][0]
+        D['mjd0'] = mjd0
+        # Replace mjd1,2 with offsets dt1,2 from mjd0 in seconds.
+        # Use float32 so that JSON output will be rounded.
+        D['dt1'] = np.float32((E['mjd1'] - mjd0) * self.SECS_PER_DAY)
+        D['dt2'] = np.float32((E['mjd2'] - mjd0) * self.SECS_PER_DAY)
+        return D
 
 
 def mjd_to_date(mjd, utc_offset):
@@ -858,10 +859,20 @@ class NumpyEncoder(json.JSONEncoder):
         elif isinstance(obj, np.integer):
             return int(obj)
         elif isinstance(obj, np.ndarray):
-            if obj.dtype == np.float32:
-                # tolist converts to 64-bit native float so apply rounding first.
-                obj = np.round(obj.astype(np.float64), self.FLOAT32_DECIMALS)
-            return obj.tolist()
+            if obj.dtype.fields is not None:
+                # convert a recarray to a dictionary.
+                new_obj = {}
+                for (name, (dtype, size)) in obj.dtype.fields.items():
+                    if dtype.base == np.float32:
+                        new_obj[name] = np.round(obj[name], self.FLOAT32_DECIMALS)
+                    else:
+                        new_obj[name] = obj[name]
+                return new_obj
+            else:
+                if obj.dtype == np.float32:
+                    # tolist converts to 64-bit native float so apply rounding first.
+                    obj = np.round(obj.astype(np.float64), self.FLOAT32_DECIMALS)
+                return obj.tolist()
         else:
             return super().default(obj)
 

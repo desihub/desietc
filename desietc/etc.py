@@ -484,8 +484,10 @@ class ETCAlgorithm(object):
                 fiber = desietc.util.make_template(
                     self.psf_pixels, profile, dx=fiber_dx, dy=fiber_dy, normalized=False)
                 stars.append(dict(
-                    x0=x0, y0=y0, rmag=rmag, nelec_rate=nelec_rate,
-                    fiber_dx=fiber_dx, fiber_dy=fiber_dy, yslice=yslice, xslice=xslice))
+                    x0=np.float32(x0), y0=np.float32(y0), rmag=np.float32(rmag),
+                    nelec_rate=np.float32(nelec_rate),
+                    fiber_dx=np.float32(fiber_dx), fiber_dy=np.float32(fiber_dy),
+                    yslice=yslice, xslice=xslice))
                 # Save the template separately from the stars info since we do not want
                 # to archive it in the ETC json output.
                 templates.append(fiber)
@@ -847,16 +849,15 @@ class ETCAlgorithm(object):
                 shutter=dict(
                     open=self.accum.shutter_open,
                     close=self.accum.shutter_close,
-                    teff=self.accum.shutter_teff,
-                    treal=self.accum.shutter_treal,
+                    teff=np.float32(self.accum.shutter_teff),
+                    treal=np.float32(self.accum.shutter_treal),
                 ),
-                thru=self.thru_measurements.save(mjd, None),
-                sky=self.sky_measurements.save(mjd, None),
-                ffrac=self.ffrac_buffer.save(mjd, None),
-                transp=self.transp_buffer.save(mjd, None),
+                thru=self.thru_measurements.save(mjd),
+                sky=self.sky_measurements.save(mjd),
             )
         except Exception as e:
             logging.error(f'save_exposure: error building output dict: {e}')
+            raise e
             save = {}
         # Encode numpy types using python built-in types for serialization.
         try:
