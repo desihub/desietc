@@ -846,17 +846,21 @@ def mjd_to_night(mjd):
 
 
 class NumpyEncoder(json.JSONEncoder):
-    """JSON encoder to use with numpy data.
+    """JSON encoder to use with numpy data with rounding of float32 values.
     """
+    FLOAT32_DECIMALS = 6
     def default(self, obj):
         if isinstance(obj, np.float32):
-            # TODO: round output to 6 decimals
-            return float(obj)
+            # Convert to 64-bit float before rounding.
+            return float(np.round(np.float64(obj), self.FLOAT32_DECIMALS))
         elif isinstance(obj, np.floating):
             return float(obj)
         elif isinstance(obj, np.integer):
             return int(obj)
         elif isinstance(obj, np.ndarray):
+            if obj.dtype == np.float32:
+                # tolist converts to 64-bit native float so apply rounding first.
+                obj = np.round(obj.astype(np.float64), self.FLOAT32_DECIMALS)
             return obj.tolist()
         else:
             return super().default(obj)
