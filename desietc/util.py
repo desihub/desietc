@@ -946,6 +946,12 @@ def load_guider_centroids(path, expid):
 
 
 def git_describe():
+    """Return a string describing the git origin of the package where this function is defined.
+
+    The result is usually <tag>-<n>-g<hash> where <tag> is the last tag, <n> is the number of
+    subsequent commits, and <hash> is the current git hash.  When n=0, only <hash> is returned.
+    Details on git-describe are at https://git-scm.com/docs/git-describe
+    """
     try:
         path = pathlib.Path(__file__).parent
         process = subprocess.Popen(
