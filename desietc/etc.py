@@ -121,7 +121,8 @@ class ETCAlgorithm(object):
         # Initialize observing conditions updated after each GFA or SKY frame.
         self.fwhm = None
         self.ffrac = None
-        self.transp = None
+        self.transp_obs = None
+        self.transp_zenith = None
         self.skylevel = None
         # Initialize running averages of ffrac and transp.
         self.ffrac_buffer = desietc.util.MeasurementBuffer(1000, 1)
@@ -611,12 +612,14 @@ class ETCAlgorithm(object):
         if ncamera == 0:
             return False
         # Combine all cameras.
-        transp = np.nanmedian(camera_transp) if np.any(np.isfinite(camera_transp)) else 0.
+        transp_obs = np.nanmedian(camera_transp) if np.any(np.isfinite(camera_transp)) else 0.
         ffrac = np.nanmedian(camera_ffrac) if np.any(np.isfinite(camera_ffrac)) else 0.
-        thru = transp * ffrac
-        logging.info(f'Guide transp={transp:.3f}, ffrac={ffrac:.3f}, thru={thru:.3f}.')
-        self.transp = transp
+        thru = transp_obs * ffrac
+        logging.info(f'Guide transp={transp_obs:.3f}, ffrac={ffrac:.3f}, thru={thru:.3f}.')
+        self.transp_obs = transp_obs
         self.ffrac = ffrac
+        # Adjust the transparency to X=1.
+        self.transp_zenith = self.transp_obs / self.atm_extinction
         # Record this measurement.
         mjd_start, mjd_stop = self.get_mjd_range(mjd_obs, exptime, f'guide[{fnum}]')
         # Use constant error until we have a proper estimate.
@@ -631,7 +634,7 @@ class ETCAlgorithm(object):
                     teff=self.accum.efftime, tproj=self.accum.remaining,
                     final=self.accum.proj_efftime, split=self.accum.next_split)
         # Update running averages.
-        self.transp_buffer.add(mjd_start, mjd_stop, transp, 0.1)
+        self.transp_buffer.add(mjd_start, mjd_stop, transp_zenith, 0.1)
         self.ffrac_buffer.add(mjd_start, mjd_stop, ffrac, 0.1)
         self.transp_avg = self.transp_buffer.average(mjd_stop, self.avg_secs, self.avg_min_values)
         self.ffrac_avg = self.ffrac_buffer.average(mjd_stop, self.avg_secs, self.avg_min_values)
