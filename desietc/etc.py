@@ -634,8 +634,8 @@ class ETCAlgorithm(object):
                     teff=self.accum.efftime, tproj=self.accum.remaining,
                     final=self.accum.proj_efftime, split=self.accum.next_split)
         # Update running averages.
-        self.transp_buffer.add(mjd_start, mjd_stop, transp_zenith, 0.1)
-        self.ffrac_buffer.add(mjd_start, mjd_stop, ffrac, 0.1)
+        self.transp_buffer.add(mjd_start, mjd_stop, self.transp_zenith, 0.1)
+        self.ffrac_buffer.add(mjd_start, mjd_stop, self.ffrac, 0.1)
         self.transp_avg = self.transp_buffer.average(mjd_stop, self.avg_secs, self.avg_min_values)
         self.ffrac_avg = self.ffrac_buffer.average(mjd_stop, self.avg_secs, self.avg_min_values)
         # Report timing.

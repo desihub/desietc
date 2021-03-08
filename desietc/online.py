@@ -368,6 +368,8 @@ class OnlineETC():
         etc_status['background'] = self.ETCalg.accum.background
         etc_status['efftime'] = self.ETCalg.accum.efftime
         etc_status['realtime'] = self.ETCalg.accum.realtime
+        etc_status['efftime_tot'] = self.ETCalg.accum.efftime_tot
+        etc_status['realtime_tot'] = self.ETCalg.accum.realtime_tot
         etc_status['remaining'] = self.ETCalg.accum.remaining
         etc_status['proj_efftime'] = self.ETCalg.accum.proj_efftime
         etc_status['next_split'] = self.ETCalg.accum.next_split

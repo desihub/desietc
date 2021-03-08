@@ -34,7 +34,7 @@ class Accumulator(object):
         """Reset accumulated quantities.
         """
         self.last_mjd = desietc.util.date_to_mjd(datetime.datetime.utcnow(), utc_offset=0)
-        self.efftime = self.realtime = 0.
+        self.efftime = self.realtime = self.efftime_tot = self.realtime_tot = 0.
         self.signal = self.background = 0.
         self.remaining = self.next_split = self.proj_efftime = 0.
         self.nopen = self.nclose = 0
@@ -192,6 +192,8 @@ class Accumulator(object):
             self.signal, self.background)
         logging.info(f'shutter[{self.nopen}] treal={self.realtime:.1f}s, teff={self.efftime:.1f}s' +
             f' [+{prev_teff:.1f}s] using bg={self.background:.3f}, sig={self.signal:.3f}.')
+        self.realime_tot = self.realtime + prev_treal
+        self.efftime_tot = self.efftime + prev_teff
         # Have we reached the cutoff time?
         if self.realtime >= self.max_remaining:
             # We have already reached the maximum allowed exposure time.
