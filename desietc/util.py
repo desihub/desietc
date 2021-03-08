@@ -960,3 +960,25 @@ def git_describe():
         return process.communicate()[0].strip().decode()
     except Exception as e:
         return None
+
+
+def cos_zenith_to_airmass(cosZ):
+    """Convert a zenith angle to an airmass.
+    Uses the Rozenberg 1966 interpolation formula, which gives reasonable
+    results for high zenith angles, with a horizon air mass of 40.
+    https://en.wikipedia.org/wiki/Air_mass_(astronomy)#Interpolative_formulas
+    Rozenberg, G. V. 1966. "Twilight: A Study in Atmospheric Optics."
+    New York: Plenum Press, 160.
+    The value of cosZ is clipped to [0,1], so observations below the horizon
+    return the horizon value (~40).
+    Parameters
+    ----------
+    cosZ : float or array
+        Cosine of angle(s) to convert.
+    Returns
+    -------
+    float or array
+        Airmass value(s) >= 1.
+    """
+    cosZ = np.clip(np.asarray(cosZ), 0., 1.)
+    return np.clip(1. / (cosZ + 0.025 * np.exp(-11 * cosZ)), 1., None)

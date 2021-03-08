@@ -126,7 +126,7 @@ def etcoffline(args):
     # Initialize the global ETC algorithm.
     ETC = desietc.etc.ETCAlgorithm(
         args.sky_calib, args.gfa_calib, args.psf_pixels, args.max_dither, args.num_dither,
-        args.Ebv_coef, args.ffrac_ref, args.nbad_threshold, args.nll_threshold,
+        args.Ebv_coef, args.X_coef, args.ffrac_ref, args.nbad_threshold, args.nll_threshold,
         args.avg_secs, args.avg_min_values, args.grid_resolution, args.parallel)
 
     # Enable GMM debug messages if requested.
@@ -223,8 +223,10 @@ def main():
         help='Maximum dither in pixels to use for guide star fits')
     parser.add_argument('--num-dither', type=int, default=1200,
         help='Number of dithers to use between (-max,+max)')
-    parser.add_argument('--Ebv-coef', type=float, default=1,
+    parser.add_argument('--Ebv-coef', type=float, default=2.165,
         help='Coefficient to use for MW extinction')
+    parser.add_argument('--X-coef', type=float, default=0.114,
+        help='Coefficient to use for atmospheric extinction')
     parser.add_argument('--ffrac-ref', type=float, default=0.56,
         help='Reference value of FFRAC that defines nominal conditions')
     parser.add_argument('--nbad-threshold', type=int, default=100,

@@ -43,7 +43,7 @@ class ETCAlgorithm(object):
     BUFFER_NAME = 'ETC_{0}_buffer'
 
     def __init__(self, sky_calib, gfa_calib, psf_pixels=25, max_dither=7, num_dither=1200,
-                 Ebv_coef=2.165, ffrac_ref=0.56, nbad_threshold=100, nll_threshold=10,
+                 Ebv_coef=2.165, X_coef=0.114, ffrac_ref=0.56, nbad_threshold=100, nll_threshold=10,
                  avg_secs=120, avg_min_values=4, grid_resolution=0.5, parallel=True):
         """Initialize once per session.
 
@@ -63,6 +63,9 @@ class ETCAlgorithm(object):
         Ebv_coef : float
             Coefficient to use for converting Ebv into an equivalent MW
             transparency via 10 ** (-coef * Ebv / 2.5)
+        X_coef : float
+            Coefficient to use to convert observed transparency at airmass X
+            into an equivalent X=1 value via 10 ** (-coef * (X-1) / 2.5)
         ffrac_ref : float
             Reference value of the fiber fraction that defines nominal conditions.
         nbad_threshold : int
@@ -81,6 +84,7 @@ class ETCAlgorithm(object):
             Process GFA images in parallel when True.
         """
         self.Ebv_coef = Ebv_coef
+        self.X_coef = X_coef
         self.ffrac_ref = ffrac_ref
         self.nbad_threshold = nbad_threshold
         self.nll_threshold = nll_threshold
@@ -369,15 +373,25 @@ class ETCAlgorithm(object):
         self.psf_stack = {}
         self.noisy_gfa = set()
         pending = []
-        acq_mjd, acq_exptime = None, None
+        # Use the first per-camera header for these values since the top header is missing EXPTIME
+        # and has MJD-OBS a few seconds earlier (the request time?)
+        need_hdr = True
+        hdr = {'MJD-OBS': None, 'EXPTIME': None, 'MOUNTAZ': None, 'MOUNTEL': 1., 'MOUNTHA': 0.}
+        acq_mjd, acq_exptime, acq_airmass = None, None, None
         for camera in desietc.gfa.GFACamera.guide_names:
             if camera not in data:
                 logging.warn(f'No acquisition image for {camera}.')
                 continue
             if not self.process_camera_header(data[camera]['header'], f'{camera} acquisition image'):
                 continue
-            acq_mjd = acq_mjd or data[camera]['header']['MJD-OBS']
-            acq_exptime = acq_exptime or data[camera]['header']['EXPTIME']
+            if need_hdr:
+                for key in hdr:
+                    value = data[camera]['header'].get(key, None)
+                    if value is None:
+                        logging.error(f'Acquisition header missing "{key}": using default {hdr[key]}.')
+                    else:
+                        hdr[key] = value
+                need_hdr = False
             if not self.preprocess_gfa(camera, data[camera], f'{camera} acquisition image'):
                 continue
             if self.parallel:
@@ -387,9 +401,20 @@ class ETCAlgorithm(object):
                 self.acquisition_data[camera], self.psf_stack[camera] = self.measure_psf(
                     self.GFAs[camera], self.GMM, self.psf_inset, self.measure)
             ncamera += 1
-        # Save the acquisition timing.
-        self.exp_data['acq_mjd'] = acq_mjd
-        self.exp_data['acq_exptime'] = acq_exptime
+        # Calculate the atmospheric extintion factor to use.
+        X = desietc.util.cos_zenith_to_airmass(np.sin(np.deg2rad(hdr['MOUNTEL'])))
+        self.atm_extinction = 10 ** (-self.X_coef * (X - 1) / 2.5)
+        logging.info(f'Using atmospheric extinction {self.atm_extinction:.4f} at X={X:.3f}.')
+        # Save the header info.
+        self.exp_data.update(dict(
+            acq_mjd=hdr['MJD-OBS'],
+            acq_exptime=hdr['EXPTIME'],
+            hour_angle=hdr['MOUNTHA'],
+            elevation=hdr['MOUNTEL'],
+            azimuth=hdr['MOUNTAZ'],
+            airmass=X,
+            atm_extinction=self.atm_extinction,
+        ))
         self.total_gfa_count += 1
         # Collect results from any parallel processes.
         for camera in pending:
