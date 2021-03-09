@@ -189,7 +189,7 @@ class ETCAlgorithm(object):
         bufsize = desietc.gfa.GFACamera.buffer_size
         for camera in desietc.gfa.GFACamera.guide_names:
             if self.shared_mem[camera] is not None:
-                logging.warn(f'Shared memory already allocated for {camera}?')
+                logging.warning(f'Shared memory already allocated for {camera}?')
             bufname = self.BUFFER_NAME.format(camera)
             try:
                 self.shared_mem[camera] = multiprocessing.shared_memory.SharedMemory(
@@ -230,7 +230,7 @@ class ETCAlgorithm(object):
                     self.processes[camera].join(timeout=timeout)
                     logging.info(f'Shutdown pipe and process for {camera}.')
                 else:
-                    logging.warn(f'Process for {camera} is not alive.')
+                    logging.warning(f'Process for {camera} is not alive.')
             except Exception as e:
                 logging.error(f'Failed to shutdown pipe and process for {camera}: {e}')
             self.pipes[camera] = None
@@ -241,7 +241,7 @@ class ETCAlgorithm(object):
                     self.shared_mem[camera].unlink()
                     logging.info(f'Released shared memory for {camera}.')
                 else:
-                    logging.warn(f'No shared memory allocated for {camera}.')
+                    logging.warning(f'No shared memory allocated for {camera}.')
             except Exception as e:
                 logging.error(f'Failed to released shared memory for {camera}: {e}')
             self.shared_mem[camera] = None
@@ -380,7 +380,7 @@ class ETCAlgorithm(object):
         acq_mjd, acq_exptime, acq_airmass = None, None, None
         for camera in desietc.gfa.GFACamera.guide_names:
             if camera not in data:
-                logging.warn(f'No acquisition image for {camera}.')
+                logging.warning(f'No acquisition image for {camera}.')
                 continue
             if not self.process_camera_header(data[camera]['header'], f'{camera} acquisition image'):
                 continue
@@ -433,17 +433,17 @@ class ETCAlgorithm(object):
         for camera, camera_result in self.acquisition_data.items():
             nstars[camera] = camera_result['nstar']
             if nstars[camera] == 0:
-                logging.warn(f'No stars found for {camera}.')
+                logging.warning(f'No stars found for {camera}.')
                 continue
             if camera_result['nll'] > self.nll_threshold:
-                logging.warn(f'Bad fit for {camera} with NLL={camera_result["nll"]:.1f}.')
+                logging.warning(f'Bad fit for {camera} with NLL={camera_result["nll"]:.1f}.')
                 badfit.append(camera)
             nstars_tot += nstars[camera]
             fwhm_vec.append(camera_result.get('fwhm', np.nan))
             ffrac_vec.append(camera_result.get('ffrac', np.nan))
             gmm_params = camera_result.get('gmm', [])
             if len(gmm_params) == 0:
-                logging.warn(f'PSF measurement failed for {camera}.')
+                logging.warning(f'PSF measurement failed for {camera}.')
                 continue
             psf_model[camera] = self.GMM.predict(gmm_params)
             # Precompute dithered renderings of the model for fast guide frame fits.
@@ -658,7 +658,7 @@ class ETCAlgorithm(object):
         each_ndrop = np.zeros(self.nsky, np.int32)
         for i, camera in enumerate(self.SKY.sky_names):
             if camera not in data:
-                logging.warn(f'No {camera} image for frame {fnum}.')
+                logging.warning(f'No {camera} image for frame {fnum}.')
                 continue
             if not self.process_camera_header(data[camera]['header'], f'{camera}[{fnum}]'):
                 continue
@@ -702,12 +702,12 @@ class ETCAlgorithm(object):
         mjd_obs = np.asarray(mjd_obs)
         mjd_obs_all = np.nanmean(mjd_obs)
         if np.any(np.abs(mjd_obs - mjd_obs_all) * self.SECS_PER_DAY > max_jitter):
-            logging.warn(f'MJD_OBS jitter exceeds {max_jitter}s for {source}: {mjd_obs}.')
+            logging.warning(f'MJD_OBS jitter exceeds {max_jitter}s for {source}: {mjd_obs}.')
             mjd_obs_all = np.nanmedian(mjd_obs)
         exptime = np.asarray(exptime)
         exptime_all = np.nanmean(exptime)
         if np.any(np.abs(exptime - exptime_all) * self.SECS_PER_DAY > max_jitter):
-            logging.warn(f'EXPTIME jitter exceeds {max_jitter}s for {source}: {exptime}')
+            logging.warning(f'EXPTIME jitter exceeds {max_jitter}s for {source}: {exptime}')
             exptime_all = np.nanmedian(exptime)
         return (mjd_obs_all, mjd_obs_all + exptime_all / self.SECS_PER_DAY)
 
@@ -732,7 +732,7 @@ class ETCAlgorithm(object):
         # Flag this camera if it appears to have excessive noise
         if thisGFA.nbad_overscan >= self.nbad_threshold:
             if camera not in self.noisy_gfa:
-                logging.warn(f'{camera} has excessive noise in {source}.')
+                logging.warning(f'{camera} has excessive noise in {source}.')
                 self.noisy_gfa.add(camera)
         return True
 
@@ -763,13 +763,13 @@ class ETCAlgorithm(object):
         """
         max_hours = 6
         if max_exposure_time <= 0 or max_exposure_time > max_hours * 3600:
-            logging.warn(f'max_exposure_time={max_exposure_time} looks fishy: using {max_hours} hours.')
+            logging.warning(f'max_exposure_time={max_exposure_time} looks fishy: using {max_hours} hours.')
             max_exposure_time = max_hours * 3600
         if sbprof not in ('PSF', 'ELG', 'BGS', 'FLT'):
             logging.error(f'Got invalid sbprof "{sbprof}" so defaulting to "ELG".')
             sbprof = 'ELG'
         if sbprof != 'PSF':
-            logging.warn(f'{sbprof} profile not implemented yet so using PSF.')
+            logging.warning(f'{sbprof} profile not implemented yet so using PSF.')
             sbprof = 'PSF'
         self.exp_data = dict(
             expid=expid, # This is the initial expid in case there are cosmic splits.
@@ -846,7 +846,7 @@ class ETCAlgorithm(object):
         self.fassign_data = {}
         for key in ('TILEID', 'TILERA', 'TILEDEC', 'FIELDROT'):
             if key not in header:
-                logging.warn(f'Fiberassign file is missing header keyword {key}.')
+                logging.warning(f'Fiberassign file is missing header keyword {key}.')
                 self.fassign_data[key] = None
             else:
                 self.fassign_data[key] = header[key]
@@ -857,7 +857,7 @@ class ETCAlgorithm(object):
         sel = (fassign['OBJTYPE'] == 'TGT') & np.isfinite(fassign['EBV'])
         ntarget = np.count_nonzero(sel)
         if ntarget < 100:
-            logging.warn(f'Fiberassignment for tile {tileid} only has {ntarget} targets.')
+            logging.warning(f'Fiberassignment for tile {tileid} only has {ntarget} targets.')
             return False
         if ntarget > 0:
             Ebv = np.median(fassign[sel]['EBV'])

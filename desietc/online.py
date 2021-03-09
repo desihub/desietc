@@ -280,7 +280,7 @@ class OnlineETC():
                                 # We don't know when the shutter closed, so assume it was now.
                                 self.etc_stop_time = datetime.datetime.utcnow()
                             else:
-                                logging.warn('Got stop_etc() and stop() in rapid fire: ' +
+                                logging.warning('Got stop_etc() and stop() in rapid fire: ' +
                                     f'{self.img_stop_time - self.etc_stop_time}')
                             self.ETCalg.close_shutter(self.etc_stop_time)
                             last_etc_processing = False

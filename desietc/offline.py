@@ -35,19 +35,19 @@ def fetch_exposure(path, expid, only_complete=True):
     fassign_paths = list(exppath.glob('fiberassign-??????.fits*'))
     missing = 0
     if not acq_path.exists():
-        logging.warn(f'Missing acquisition image: {acq_path}.')
+        logging.warning(f'Missing acquisition image: {acq_path}.')
         missing += 1
     if not gfa_path.exists():
-        logging.warn(f'Missing GFA data cube: {gfa_path}.')
+        logging.warning(f'Missing GFA data cube: {gfa_path}.')
         missing += 1
     if not sky_path.exists():
-        logging.warn(f'Missing SKY data cube: {sky_path}.')
+        logging.warning(f'Missing SKY data cube: {sky_path}.')
         missing += 1
     if not desi_path.exists():
-        logging.warn(f'Missing DESI exposure: {desi_path}.')
+        logging.warning(f'Missing DESI exposure: {desi_path}.')
         missing += 1
     if len(fassign_paths) != 1:
-        logging.warn(f'Missing fiberassign file.')
+        logging.warning(f'Missing fiberassign file.')
         fassign_path = exppath / '_does_not_exist_'
         missing += 1
     else:

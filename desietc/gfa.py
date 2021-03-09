@@ -226,17 +226,17 @@ class GFACamera(object):
             for ampname in self.amp_names:
                 amp = self.amps[ampname]
                 if amp.base is not raw_base:
-                    logging.warn(f'GFACamera.setraw: copied data for amp {ampname}: ' +
+                    logging.warning(f'GFACamera.setraw: copied data for amp {ampname}: ' +
                         f'raw.dtype={raw.dtype} amp.dtype={amp.dtype} raw.base? {raw.base is None} ' +
                         f'amp.base? {amp.base is None}')
-                    logging.warn(f'raw.flags:\n{raw.flags}')
-                    logging.warn(f'amp.flags:\n{amp.flags}')
-                    logging.warn(f'raw.__array_interface__:\n{raw.__array_interface__}')
-                    logging.warn(f'amp.__array_interface__:\n{amp.__array_interface__}')
+                    logging.warning(f'raw.flags:\n{raw.flags}')
+                    logging.warning(f'amp.flags:\n{amp.flags}')
+                    logging.warning(f'raw.__array_interface__:\n{raw.__array_interface__}')
+                    logging.warning(f'amp.__array_interface__:\n{amp.__array_interface__}')
                     self.check_for_copy = False
                     break
             if not self.check_for_copy:
-                logging.warn('Will not repeat this warning.')
+                logging.warning('Will not repeat this warning.')
             ##assert all((self.amps[ampname].base is raw_base for ampname in self.amp_names))
         # Calculate bias as mean overscan, ignoring the first nrowtrim rows
         # (in readout order) and any values > maxdelta from the per-exposure median overscan.
