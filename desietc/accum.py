@@ -249,6 +249,14 @@ class Accumulator(object):
             logging.info(f'Next split ({self.nopen} of {self.nclose+nsplit_remaining}) in {self.next_split:.1f}s.')
             if self.splittable and self.next_split <= 0:
                 self.action = ('split', 'cosmic split')
+        # Are we about to stop or split?
+        if self.action is None:
+            if self.realtime + self.warning_time >= self.max_remaining:
+                self.action = ('warn-stop', 'about to reach max_exposure_time')
+            elif self.remaining <= self.warning_time:
+                self.action = ('warn-stop', 'about to reach req_efftime')
+            elif self.next_split <= self.warning_time and self.splittable:
+                self.action = ('warn-split', 'about to split')
         if self.action is not None:
             logging.info(f'Recommended action is {self.action}.')
         return True

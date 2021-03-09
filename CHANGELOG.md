@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 ### Added
+ - Implement call_when_about_to_stop/split.
  - Add last_updated ISO string to status.
 ### Changed
  - Log additional info to debug GFA raw data copy vs view.

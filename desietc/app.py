@@ -26,6 +26,8 @@ class OfflineETCApp:
         # Prepare to handle callouts.
         self.etc.call_to_request_stop = self.call_to_request_stop
         self.etc.call_to_request_split = self.call_to_request_split
+        self.etc.call_when_about_to_stop = self.call_when_about_to_stop
+        self.etc.call_when_about_to_split = self.call_when_about_to_split
         self.etc.call_to_update_status = self.call_to_update_status
         self.etc.call_for_acq_image = self.call_for_acq_image
         self.etc.call_for_pm_info = self.call_for_pm_info
@@ -126,12 +128,16 @@ class OfflineETCApp:
 def main():
 
     app = OfflineETCApp()
+    nframes = 0
     print('OfflineETCApp is running.')
     #options = dict(req_efftime=1000, sbprof='ELG', max_exposure_time=2000, cosmics_split_time=1200, maxsplit=4, warning_time=60)
-    options = dict(req_efftime=60, sbprof='ELG', max_exposure_time=2000, cosmics_split_time=30, maxsplit=4, warning_time=60)
+    options = dict(req_efftime=300, sbprof='ELG', max_exposure_time=2000, cosmics_split_time=100, maxsplit=4, warning_time=60)
     while True:
         print('Enter a command: s(tart) f(rame) o(pen) c(lose) (s)t(op) q(uit) ?(status)')
-        cmd = input('# ')
+        cmdline = input('# ')
+        argv = cmdline.split(' ')
+        argc = len(argv)
+        cmd = argv[0]
         if cmd == 'q':
             print('Shutting down...')
             app.shutdown_event.set()
@@ -152,8 +158,9 @@ def main():
         elif cmd == 't':
             print(app.stop())
         elif cmd == 'f':
-            if app.next_frame < nframes - 1:
-                app.next_frame += 1
+            # Look for optional number of frames to release (default is 1).
+            nf = int(argv[1]) if argc > 1 else 1
+            app.next_frame = min(nframes - 1, app.next_frame + nf)
         elif cmd == '?':
             app.call_to_update_status()
         else:

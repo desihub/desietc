@@ -102,7 +102,7 @@ class OnlineETC():
             raise RuntimeError('ETC_GFA_CALIB and ETC_SKY_CALIB must be set.')
         self.ETCalg = desietc.etc.ETCAlgorithm(sky_calib, gfa_calib, parallel=True)
 
-        # initialize status variables
+        # Initialize status variables
         self.expid = None
         self.req_efftime = None
         self.sbprof = None
@@ -185,6 +185,7 @@ class OnlineETC():
             logging.error(f'ETCAlgorithm.start failed with: {e}.')
 
         last_image_processing = last_etc_processing = False
+        sent_warn_stop = sent_warn_split = False
 
         try:
             while not self.shutdown_event.is_set():
@@ -211,6 +212,7 @@ class OnlineETC():
                         self.ETCalg.open_shutter(
                             self.expid, self.etc_start_time, self.splittable, self.max_shutter_time)
                         last_etc_processing = True
+                        sent_warn_stop = sent_warn_split = False
 
                     elif last_etc_processing and not self.etc_processing.is_set():
                         # Shutter just closed.
@@ -261,6 +263,12 @@ class OnlineETC():
                             self.call_to_request_stop(cause)
                         elif action == 'split' and self.splittable:
                             self.call_to_request_split(cause)
+                        elif action == 'warn-stop' and not sent_warn_stop:
+                            self.call_when_about_to_stop(cause)
+                            sent_warn_stop = True
+                        elif action == 'warn-split' and not sent_warn_split:
+                            self.call_when_about_to_split(cause)
+                            sent_warn_split = True
 
                     # Send a telemetry update if something has changed.
                     if have_new_telemetry:
