@@ -119,7 +119,7 @@ class ETCAlgorithm(object):
         self.guide_stars = None
         self.image_path = None
         # Initialize observing conditions updated after each GFA or SKY frame.
-        self.fwhm = None
+        self.seeing = None
         self.ffrac = None
         self.transp_obs = None
         self.transp_zenith = None
@@ -450,18 +450,18 @@ class ETCAlgorithm(object):
             # Precompute dithered renderings of the model for fast guide frame fits.
             self.dithered_model[camera] = self.GMM.dither(gmm_params, self.xdither, self.ydither)
         # Update the current FWHM, FFRAC values now.
-        self.fwhm, self.ffrac = 0., 0.
+        self.seeing, self.ffrac = 0., 0.
         if np.any(np.isfinite(fwhm_vec)):
-            self.fwhm = np.nanmedian(fwhm_vec)
+            self.seeing = np.nanmedian(fwhm_vec)
         if np.any(np.isfinite(ffrac_vec)):
             self.ffrac = np.nanmedian(ffrac_vec)
         logging.info(f'Acquisition image quality using {nstars_tot} stars: ' +
-            f'FWHM={self.fwhm:.2f}", FFRAC={self.ffrac:.3}.')
+            f'FWHM={self.seeing:.2f}", FFRAC={self.ffrac:.3}.')
         # Generate an acquisition analysis summary image.
         if nstars_tot > 0 and self.image_path is not None:
             try:
                 desietc.plot.save_acquisition_summary(
-                    acq_mjd, self.exptag, psf_model, self.psf_stack, self.fwhm, self.ffrac, nstars,
+                    acq_mjd, self.exptag, psf_model, self.psf_stack, self.seeing, self.ffrac, nstars,
                     badfit, self.noisy_gfa, self.image_path / f'etc-{self.exptag}.png')
             except Exception as e:
                 logging.error(f'Failed to save acquisition analysis summary image: {e}')

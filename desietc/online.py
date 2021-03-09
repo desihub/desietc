@@ -355,10 +355,13 @@ class OnlineETC():
         etc_status['acq_count'] = self.ETCalg.total_acq_count
 
         # Observing conditions updated after each GFA or SKY frame.
-        etc_status['seeing'] = self.ETCalg.fwhm
-        etc_status['ffrac'] = self.ETCalg.ffrac
-        etc_status['transp'] = self.ETCalg.transp_zenith
-        etc_status['ffrac_avg'] = self.ETCalg.ffrac_avg
+        etc_status['seeing'] = self.ETCalg.seeing
+        etc_status['ffrac_psf'] = self.ETCalg.ffrac
+        etc_status['ffrac_elg'] = None
+        etc_status['ffrac_bgs'] = None
+        etc_status['ffrac'] = self.ETCalg.ffrac # for sbprof
+        etc_status['ffrac_avg'] = self.ETCalg.ffrac_avg # for sbprof
+        etc_status['transp'] = self.ETCalg.transp_zenith # at zenith
         etc_status['transp_avg'] = self.ETCalg.transp_avg # at zenith
         etc_status['skylevel'] = self.ETCalg.skylevel
 
@@ -374,6 +377,9 @@ class OnlineETC():
         etc_status['proj_efftime'] = self.ETCalg.accum.proj_efftime
         etc_status['next_split'] = self.ETCalg.accum.next_split
         etc_status['splittable'] = self.ETCalg.accum.splittable
+
+        # Updated after each stop_etc.
+        etc_status['fieldrot'] = None # units TBD
 
         # Use a roundtrip through json to convert all values to native types.
         etc_status = json.loads(json.dumps(etc_status, cls=desietc.util.NumpyEncoder))
