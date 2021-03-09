@@ -808,6 +808,8 @@ class ETCAlgorithm(object):
         self.exp_data['expid'] = expid
         self.exptag = str(expid).zfill(8)
         self.exp_data['open'] = desietc.util.date_to_mjd(timestamp, utc_offset=0)
+        self.exp_data['max_shutter_time'] = max_shutter_time
+        self.exp_data['splittable'] = splittable
         self.total_desi_count += 1
         logging.info(f'Shutter open[{self.accum.nopen},{self.total_desi_count}] for expid {expid} at {timestamp}.')
 

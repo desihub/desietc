@@ -117,8 +117,8 @@ class Accumulator(object):
         self.shutter_open.append(mjd)
         self.nopen += 1
         self.shutter_is_open = True
-        logging.info(f'Initialized accumulation with max remaining time of {self.max_remaining:.1f}s ' +
-            f'and MW transp {self.MW_transp:.4f}.')
+        logging.info(f'Initialized accumulation with max remaining time {self.max_remaining:.1f}s, ' +
+            f'MW transp={self.MW_transp:.4f}, splittable={self.splittable}.')
         return True
 
     def close(self, timestamp):
