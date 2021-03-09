@@ -6,16 +6,7 @@ Documentation for the variables reported by the `OnlineETC.get_status` method th
 
  - `img_proc` (bool): Image processing is active for observing a single tile, possibly with cosmic splits.
  - `etc_proc` (bool): The spectrograph shutters are open.
- - `etc_ready`: The ETC algorithm is ready and operating normally.
-
-## Exposure parameters set in `prepare_for_exposure`:
-
- - `expid` (int): The current exposure identifier.
- - `req_efftime` (float): The requested effective exposure time in seconds.
- - `sbprof` (str): The surface brightness profile to use for FFRAC calculations. Must be one of PSF,ELG,BGS,FLT.
- - `max_exptime` (float): The maximum total exposure time for this tile in seconds, summed over any cosmic splits.
- - `cosmics_split` (float): The maximum length of a single exposure in seconds.
- - `maxsplit` (int): The maximum number of cosmic split exposures for this tile.
+ - `etc_ready` ((bool)): The ETC algorithm is ready and operating normally.
 
 ## Timestamps of exposure state transitions:
 
@@ -25,6 +16,15 @@ These are all [ISO 8601](https://en.wikipedia.org/wiki/ISO_8601) formatted strin
  - `img_stop_time` (str): When the `img_proc` flag was last cleared.
  - `etc_start_time` (str): When the `etc_proc` flag was last set.
  - `etc_stop_time` (str): When the `etc_proc` flag was last cleared.
+
+## Exposure parameters set in `prepare_for_exposure`:
+
+ - `expid` (int): The current exposure identifier.
+ - `req_efftime` (float): The requested effective exposure time in seconds.
+ - `sbprof` (str): The surface brightness profile to use for FFRAC calculations. Must be one of PSF,ELG,BGS,FLT.
+ - `max_exptime` (float): The maximum total exposure time for this tile in seconds, summed over any cosmic splits.
+ - `cosmics_split` (float): The maximum length of a single exposure in seconds.
+ - `maxsplit` (int): The maximum number of cosmic split exposures for this tile.
 
 ## Stop sources captured by `stop` and `stop_etc`:
 
