@@ -91,6 +91,8 @@ class OnlineETC():
         self.call_for_exp_dir = None
         self.call_to_request_stop = None
         self.call_to_request_split = None
+        self.call_when_about_to_stop = None
+        self.call_when_about_to_split = None
 
         # Initialize the ETC algorithm. This will spawn 6 parallel proccesses (one per GFA)
         # and allocated ~100Mb of shared memory. These resources will be cleared when
@@ -107,6 +109,7 @@ class OnlineETC():
         self.max_exposure_time = None
         self.cosmics_split_time = None
         self.maxsplit = None
+        self.warning_time = None
         self.img_start_time = None
         self.img_stop_time = None
         self.etc_start_time = None
@@ -196,7 +199,7 @@ class OnlineETC():
                         # A new exposure is starting: pass through prepare_for_exposure args now.
                         self.ETCalg.start_exposure(
                             self.img_start_time, self.expid, self.req_efftime, self.sbprof,
-                            self.max_exposure_time, self.cosmics_split_time, self.maxsplit)
+                            self.max_exposure_time, self.cosmics_split_time, self.maxsplit, self.warning_time)
                         last_image_processing = True
                         # Set the path where the PNG generated after the acquisition analysis will be written.
                         self.ETCalg.set_image_path(self.call_for_exp_dir(self.expid))
@@ -337,6 +340,7 @@ class OnlineETC():
         etc_status['max_exptime'] = self.max_exposure_time
         etc_status['cosmics_split'] = self.cosmics_split_time
         etc_status['maxsplit'] = self.maxsplit
+        etc_status['warning_time'] = self.warning_time
 
         # Timestamps updated when start(), stop(), start_etc(), stop_etc() is called.
         etc_status['img_start_time'] = self.img_start_time.isoformat() if self.img_start_time else None
@@ -430,7 +434,7 @@ class OnlineETC():
         return SUCCESS
 
     def prepare_for_exposure(self, expid, req_efftime, sbprof, max_exposure_time,
-                             cosmics_split_time, maxsplit):
+                             cosmics_split_time, maxsplit, warning_time=60):
         """Record the observing parameters for the next exposure, usually from NTS.
 
         The ETC will not see these parameters until the next call to :meth:`start`.
@@ -451,6 +455,8 @@ class OnlineETC():
             The maximum exposure time in seconds for a single exposure.
         maxsplit : int
             The maximum number of exposures reserved by ICS for this tile.
+        warning_time : float
+            Warn when a stop or split is expected within this interval in seconds.
 
         Returns
         -------
@@ -471,7 +477,8 @@ class OnlineETC():
         self.sbprof = sbprof
         self.max_exposure_time = max_exposure_time
         self.cosmics_split_time = cosmics_split_time
-        self.maxsplit
+        self.maxsplit = self.maxsplit
+        self.warning_time = warning_time
 
         # Update our status.
         self.call_to_update_status()

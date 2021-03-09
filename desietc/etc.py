@@ -736,7 +736,8 @@ class ETCAlgorithm(object):
                 self.noisy_gfa.add(camera)
         return True
 
-    def start_exposure(self, timestamp, expid, req_efftime, sbprof, max_exposure_time, cosmics_split_time, maxsplit):
+    def start_exposure(self, timestamp, expid, req_efftime, sbprof, max_exposure_time, cosmics_split_time,
+                       maxsplit, warning_time):
         """Start a new exposure using parameters:
 
         Parameters
@@ -757,6 +758,8 @@ class ETCAlgorithm(object):
             The maximum exposure time in seconds for a single exposure.
         maxsplit : int
             The maximum number of exposures reserved by ICS for this tile.
+        warning_time : float
+            Warn when a stop or split is expected within this interval in seconds.
         """
         max_hours = 6
         if max_exposure_time <= 0 or max_exposure_time > max_hours * 3600:
@@ -775,14 +778,16 @@ class ETCAlgorithm(object):
             max_exposure_time=max_exposure_time,
             cosmics_split_time=cosmics_split_time,
             maxsplit=maxsplit,
+            warning_time=warning_time,
         )
         self.exptag = str(expid).zfill(8)
         self.night = desietc.util.mjd_to_night(desietc.util.date_to_mjd(timestamp, utc_offset=0))
         logging.info(f'Start {self.night}/{self.exptag} at {timestamp} with req_efftime={req_efftime:.1f}s, sbprof={sbprof}, '
-                     + f'max_exposure_time={max_exposure_time:.1f}s, cosmics_split_time={cosmics_split_time:.1f}s, maxsplit={maxsplit}.')
+                     + f'max_exposure_time={max_exposure_time:.1f}s, cosmics_split_time={cosmics_split_time:.1f}s, '
+                     + f'maxsplit={maxsplit}, warning_time={warning_time:.1f}s.')
         # Initialize accumulation for the upcoming sequence of cosmic splits.
         self.accum.setup(
-            req_efftime, max_exposure_time, cosmics_split_time, maxsplit,
+            req_efftime, max_exposure_time, cosmics_split_time, maxsplit, warning_time,
             sig_nominal=self.ffrac_ref, bg_nominal=1.)
 
     def open_shutter(self, expid, timestamp, splittable, max_shutter_time):

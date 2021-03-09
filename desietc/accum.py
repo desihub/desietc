@@ -48,7 +48,8 @@ class Accumulator(object):
         self.action = None
         self.mjd_grid = None
 
-    def setup(self, req_efftime, max_exposure_time, cosmics_split_time, maxsplit, sig_nominal, bg_nominal):
+    def setup(self, req_efftime, max_exposure_time, cosmics_split_time, maxsplit, warning_time,
+              sig_nominal, bg_nominal):
         """Setup a new sequence of cosmic splits.
 
         Parameters
@@ -62,6 +63,8 @@ class Accumulator(object):
             The maximum exposure time in seconds for a single exposure.
         maxsplit : int
             The maximum number of exposures reserved by ICS for this tile.
+        warning_time : float
+            Warn when a stop or split is expected within this interval in seconds.
         sig_nominal : float
             Signal rate in nominal conditions.
         bg_nominal : float
@@ -71,6 +74,7 @@ class Accumulator(object):
         self.max_exposure_time = max_exposure_time
         self.cosmics_split_time = cosmics_split_time
         self.maxsplit = maxsplit
+        self.warning_time = warning_time
         self.sig_nominal = sig_nominal
         self.bg_nominal = bg_nominal
         self.MW_transp = 1.

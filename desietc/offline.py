@@ -156,7 +156,7 @@ def fetch_exposure(path, expid, only_complete=True):
 
 
 def replay_exposure(ETC, path, expid, outpath, req_efftime=1000, sbprof='ELG',
-                    max_exposure_time=3600, cosmics_split_time=1200, maxsplit=4,
+                    max_exposure_time=3600, cosmics_split_time=1200, maxsplit=4, warning_time=60,
                     overwrite=False, dry_run=False, only_complete=True):
     """Recreate the online ETC processing of an exposure by replaying the
     FITS files stored to disk.
@@ -181,7 +181,7 @@ def replay_exposure(ETC, path, expid, outpath, req_efftime=1000, sbprof='ELG',
     ETC.set_image_path(exppath_out)
     # Start the exposure processing.
     ETC.start_exposure(F['start_time'], expid, req_efftime, sbprof,
-                       max_exposure_time, cosmics_split_time, maxsplit)
+                       max_exposure_time, cosmics_split_time, maxsplit, warning_time)
     # When does the shuter close?
     if F['desi_path'].exists():
         shutter_close_mjd = F['desi_mjd_obs'] + F['desi_exptime'] / SECS_PER_DAY
