@@ -72,6 +72,8 @@ try:
 except ImportError:
     SUCCESS, FAILED = True, False
 
+import numpy as np
+
 import desietc.etc
 
 
@@ -317,6 +319,8 @@ class OnlineETC():
     def get_status(self):
         """Return the current ETC status.
 
+        Refer to telemetry.md for a description of each variable returned.
+
         Names used here correspond to columns in the telemetry database, so should be
         descriptive but not too verbose.
 
@@ -331,6 +335,9 @@ class OnlineETC():
         The returned dictionary contains only JSON serializable python types, so
         timestamps are represented as ISO-format strings and numpy floats are
         converted to python floats.
+
+        Some values are converted to np.float32 below: this just means that they will
+        be rounded (to six decimals) before being converted to python floats.
         """
         etc_status = {}
 
@@ -371,28 +378,28 @@ class OnlineETC():
         etc_status['desi_count'] = self.ETCalg.total_desi_count
 
         # Observing conditions updated after each GFA or SKY frame.
-        etc_status['seeing'] = self.ETCalg.seeing
-        etc_status['ffrac_psf'] = self.ETCalg.ffrac
+        etc_status['seeing'] = np.float32(self.ETCalg.seeing)
+        etc_status['ffrac_psf'] = np.float32(self.ETCalg.ffrac)
         etc_status['ffrac_elg'] = None
         etc_status['ffrac_bgs'] = None
-        etc_status['ffrac'] = self.ETCalg.ffrac # for sbprof
-        etc_status['ffrac_avg'] = self.ETCalg.ffrac_avg # for sbprof
-        etc_status['transp'] = self.ETCalg.transp_zenith # at zenith
-        etc_status['transp_avg'] = self.ETCalg.transp_avg # at zenith
-        etc_status['skylevel'] = self.ETCalg.skylevel
+        etc_status['ffrac'] = np.float32(self.ETCalg.ffrac)
+        etc_status['ffrac_avg'] = np.float32(self.ETCalg.ffrac_avg)
+        etc_status['transp'] = np.float32(self.ETCalg.transp_zenith)
+        etc_status['transp_avg'] = np.float32(self.ETCalg.transp_avg)
+        etc_status['skylevel'] = np.float32(self.ETCalg.skylevel)
 
         # ETC effective exposure time tracking.
         etc_status['last_updated'] = self.ETCalg.accum.last_updated
         etc_status['last_mjd'] = self.ETCalg.accum.last_mjd
-        etc_status['signal'] = self.ETCalg.accum.signal
-        etc_status['background'] = self.ETCalg.accum.background
-        etc_status['efftime'] = self.ETCalg.accum.efftime
-        etc_status['realtime'] = self.ETCalg.accum.realtime
-        etc_status['efftime_tot'] = self.ETCalg.accum.efftime_tot
-        etc_status['realtime_tot'] = self.ETCalg.accum.realtime_tot
-        etc_status['remaining'] = self.ETCalg.accum.remaining
-        etc_status['proj_efftime'] = self.ETCalg.accum.proj_efftime
-        etc_status['next_split'] = self.ETCalg.accum.next_split
+        etc_status['signal'] = np.float32(self.ETCalg.accum.signal)
+        etc_status['background'] = np.float32(self.ETCalg.accum.background)
+        etc_status['efftime'] = np.float32(self.ETCalg.accum.efftime)
+        etc_status['realtime'] = np.float32(self.ETCalg.accum.realtime)
+        etc_status['efftime_tot'] = np.float32(self.ETCalg.accum.efftime_tot)
+        etc_status['realtime_tot'] = np.float32(self.ETCalg.accum.realtime_tot)
+        etc_status['remaining'] = np.float32(self.ETCalg.accum.remaining)
+        etc_status['proj_efftime'] = np.float32(self.ETCalg.accum.proj_efftime)
+        etc_status['next_split'] = np.float32(self.ETCalg.accum.next_split)
         etc_status['splittable'] = self.ETCalg.accum.splittable
 
         # Updated after each stop_etc.

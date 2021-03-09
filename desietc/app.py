@@ -38,6 +38,7 @@ class OfflineETCApp:
         self.etc.call_for_exp_dir = lambda expid: str(self.expdir / f'{expid:08d}')
         self.status_updates = []
         self.assets = None
+        self.next_frame = 0
         # Configure the ETC.
         assert self.etc.configure()
 
