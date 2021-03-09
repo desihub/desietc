@@ -702,12 +702,12 @@ class ETCAlgorithm(object):
         mjd_obs = np.asarray(mjd_obs)
         mjd_obs_all = np.nanmean(mjd_obs)
         if np.any(np.abs(mjd_obs - mjd_obs_all) * self.SECS_PER_DAY > max_jitter):
-            logging.warn(f'MJD_OBS jitter exceeds {max_jitter}s for {source}.')
+            logging.warn(f'MJD_OBS jitter exceeds {max_jitter}s for {source}: {mjd_obs}.')
             mjd_obs_all = np.nanmedian(mjd_obs)
         exptime = np.asarray(exptime)
         exptime_all = np.nanmean(exptime)
         if np.any(np.abs(exptime - exptime_all) * self.SECS_PER_DAY > max_jitter):
-            logging.warn(f'EXPTIME jitter exceeds {max_jitter}s for {source}.')
+            logging.warn(f'EXPTIME jitter exceeds {max_jitter}s for {source}: {exptime}')
             exptime_all = np.nanmedian(exptime)
         return (mjd_obs_all, mjd_obs_all + exptime_all / self.SECS_PER_DAY)
 
