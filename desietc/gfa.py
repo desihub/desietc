@@ -231,7 +231,10 @@ class GFACamera(object):
                         f'amp.base? {amp.base is None}')
                     logging.warn(f'raw.flags:\n{raw.flags}')
                     logging.warn(f'amp.flags:\n{amp.flags}')
+                    logging.warn(f'raw.__array_interface__:\n{raw.__array_interface__}')
+                    logging.warn(f'amp.__array_interface__:\n{amp.__array_interface__}')
                     self.check_for_copy = False
+                    break
             if not self.check_for_copy:
                 logging.warn('Will not repeat this warning.')
             ##assert all((self.amps[ampname].base is raw_base for ampname in self.amp_names))
