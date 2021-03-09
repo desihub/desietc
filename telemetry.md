@@ -25,6 +25,7 @@ These are all [ISO 8601](https://en.wikipedia.org/wiki/ISO_8601) formatted strin
  - `max_exptime` (float): The maximum total exposure time for this tile in seconds, summed over any cosmic splits.
  - `cosmics_split` (float): The maximum length of a single exposure in seconds.
  - `maxsplit` (int): The maximum number of cosmic split exposures for this tile.
+ - `warning_time` (float): Warn when a stop or split is expected within this interval in seconds.
 
 ## Stop sources captured by `stop` and `stop_etc`:
 
