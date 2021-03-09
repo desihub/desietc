@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='desietc',
-    version='0.2.0dev',
+    version='0.1.1dev',
     description='Online exposure-time calculator for DESI',
     url='http://github.com/dkirkby/desietc',
     author='David Kirkby',
