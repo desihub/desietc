@@ -10,7 +10,7 @@ Documentation for the variables reported by the `OnlineETC.get_status` method th
 
 ## Timestamps of exposure state transitions:
 
-These are all [ISO 8601](https://en.wikipedia.org/wiki/ISO_8601) formatted strings representing dates and times in UTC.  Subtract 7 hours to get local times at KPNO.
+These are all [ISO 8601](https://en.wikipedia.org/wiki/ISO_8601) formatted strings representing dates and times in UTC.  Subtract 7 hours to get local times at KPNO. Use [datetime.fromoisoformat](https://docs.python.org/3/library/datetime.html#datetime.datetime.fromisoformat) to convert to `datetime` objects.
 
  - `img_start_time` (str): When the `img_proc` flag was last set.
  - `img_stop_time` (str): When the `img_proc` flag was last cleared.
@@ -60,6 +60,7 @@ The FFRAC and TRANSP averages below combine all measurements over the past two m
 
 These quanties are updated after each new GFA or SKYCAM frame is analyzed while the spectrograph shutters are open, then stay constant while the shutter is closed, until the next exposure sequence starts.
 
+ - `last_updated` (str): The ISO format datetime string corresponding to `last_mjd`.
  - `last_mjd` (float): The MJD of the last update to any accumulated values.
  - `signal` (float): The accumulated relative signal (`ffrac * transp`) since the shutter was last opened. Does not included MW dust extinction but does include atmospheric extinction.
  - `background` (float): The accumulated relative background (`skylevel`) since the shutter was last opened.

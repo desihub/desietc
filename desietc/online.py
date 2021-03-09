@@ -316,6 +316,10 @@ class OnlineETC():
 
         Each variable is updated either by the main thread or by the _etc thread,
         but never both, as indicated in the comments below.
+
+        The returned dictionary contains only JSON serializable python types, so
+        timestamps are represented as ISO-format strings and numpy floats are
+        converted to python floats.
         """
         etc_status = {}
 
@@ -366,6 +370,7 @@ class OnlineETC():
         etc_status['skylevel'] = self.ETCalg.skylevel
 
         # ETC effective exposure time tracking.
+        etc_status['last_updated'] = self.ETCalg.accum.last_updated
         etc_status['last_mjd'] = self.ETCalg.accum.last_mjd
         etc_status['signal'] = self.ETCalg.accum.signal
         etc_status['background'] = self.ETCalg.accum.background

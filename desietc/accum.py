@@ -34,6 +34,7 @@ class Accumulator(object):
         """Reset accumulated quantities.
         """
         self.last_mjd = desietc.util.date_to_mjd(datetime.datetime.utcnow(), utc_offset=0)
+        self.last_updated = desietc.util.mjd_to_date(self.last_mjd, utc_offset=0).isoformat()
         self.efftime = self.realtime = self.efftime_tot = self.realtime_tot = 0.
         self.signal = self.background = 0.
         self.remaining = self.next_split = self.proj_efftime = 0.
@@ -176,6 +177,7 @@ class Accumulator(object):
         # --- The shutter is open and we have the NTS parameters to use -------------------------
         # Record the timestamp of this update.
         self.last_mjd = mjd_now
+        self.last_updated = desietc.util.mjd_to_date(mjd_now, utc_offset=0).isoformat()
         # Get grid indices coresponding to the most recent shutter opening and now.
         mjd_open = self.shutter_open[-1]
         inow = np.searchsorted(self.mjd_grid, mjd_now)
