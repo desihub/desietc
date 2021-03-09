@@ -272,8 +272,8 @@ class ETCAlgorithm(object):
 
     def reset_counts(self):
         self.total_gfa_count = 0
-        self.total_acq_count = 0
         self.total_sky_count = 0
+        self.total_desi_count = 0
 
     def check_top_header(self, header, source):
         """Check EXPID in the top-level GUIDER or SKY header of an exposure.
@@ -366,8 +366,7 @@ class ETCAlgorithm(object):
         """
         ncamera = 0
         start = time.time()
-        self.total_acq_count += 1
-        logging.info(f'Processing acquisition image [{self.total_acq_count}] for {self.exptag}.')
+        logging.info(f'Processing acquisition image for {self.exptag}.')
         self.check_top_header(data['GUIDER']['header'], 'acquisition image')
         # Pass 1: reduce the raw GFA data and measure the PSF.
         self.acquisition_data = {}
@@ -809,7 +808,8 @@ class ETCAlgorithm(object):
         self.exp_data['expid'] = expid
         self.exptag = str(expid).zfill(8)
         self.exp_data['open'] = desietc.util.date_to_mjd(timestamp, utc_offset=0)
-        logging.info(f'Shutter open[{self.accum.nopen}] for expid {expid} at {timestamp}.')
+        self.total_desi_count += 1
+        logging.info(f'Shutter open[{self.accum.nopen},{self.total_desi_count}] for expid {expid} at {timestamp}.')
 
     def close_shutter(self, timestamp):
         """
