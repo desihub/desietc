@@ -352,6 +352,7 @@ class OnlineETC():
         # Counters tracked by ETCalg
         etc_status['gfa_count'] = self.ETCalg.total_gfa_count
         etc_status['sky_count'] = self.ETCalg.total_sky_count
+        etc_status['desi_count'] = self.ETCalg.total_desi_count
 
         # Observing conditions updated after each GFA or SKY frame.
         etc_status['seeing'] = self.ETCalg.seeing
