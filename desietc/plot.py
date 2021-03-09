@@ -196,10 +196,14 @@ def save_acquisition_summary(
     # Generate a text overlay.
     ax = plt.axes((0, 0, 1, 1))
     ax.axis('off')
-    night =  desietc.util.mjd_to_night(mjd)
-    localtime = desietc.util.mjd_to_date(mjd, utc_offset=-7)
+    if mjd is not None:
+        night =  desietc.util.mjd_to_night(mjd)
+        localtime = desietc.util.mjd_to_date(mjd, utc_offset=-7)
+        center = localtime.strftime('%H:%M:%S') + ' (UTC-7)'
+    else:
+        night = 'YYYYMMDD'
+        center = 'HH:MM:SS (UTC-7)'
     left = f'{night}/{exptag}'
-    center = localtime.strftime('%H:%M:%S') + ' (UTC-7)'
     right = f'FWHM={fwhm:.2f}" ({100*ffrac:.1f}%)'
     for (x, ha, label) in zip((0, 0.5, 1), ('left', 'center', 'right'), (left, center, right)):
         text = ax.text(x, 0, label, color='w', ha=ha, va='bottom', size=10, transform=ax.transAxes)

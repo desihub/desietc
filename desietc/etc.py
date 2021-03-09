@@ -460,7 +460,7 @@ class ETCAlgorithm(object):
         if nstars_tot > 0 and self.image_path is not None:
             try:
                 desietc.plot.save_acquisition_summary(
-                    acq_mjd, self.exptag, psf_model, self.psf_stack, self.seeing, self.ffrac, nstars,
+                    hdr['MJD-OBS'], self.exptag, psf_model, self.psf_stack, self.seeing, self.ffrac, nstars,
                     badfit, self.noisy_gfa, self.image_path / f'etc-{self.exptag}.png')
             except Exception as e:
                 logging.error(f'Failed to save acquisition analysis summary image: {e}')
