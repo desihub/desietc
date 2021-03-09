@@ -175,6 +175,12 @@ class Accumulator(object):
         elif self.nopen != self.nclose + 1:
             logging.error(f'update: invalid shutter state [{self.nopen},{self.nclose}].')
             return False
+        # Ignore updates before the shutter opened.
+        mjd_open = self.shutter_open[-1]
+        if mjd_now < mjd_open:
+            before = (mjd_open - mjd_now) * self.SECS_PER_DAY
+            logging.info(f'update: ignoring frame recorded {before:.1f}s before shutter opened.')
+            return False
         # Lookup the real and effective time accumulated on all previous splits for this exposure.
         prev_teff = np.sum(self.shutter_teff)
         prev_treal = np.sum(self.shutter_treal)
@@ -183,7 +189,6 @@ class Accumulator(object):
         self.last_mjd = mjd_now
         self.last_updated = desietc.util.mjd_to_date(mjd_now, utc_offset=0).isoformat()
         # Get grid indices coresponding to the most recent shutter opening and now.
-        mjd_open = self.shutter_open[-1]
         inow = np.searchsorted(self.mjd_grid, mjd_now)
         past, future = slice(0, inow + 1), slice(inow, None)
         # Tabulate the signal and background since the most recent shutter opening.
