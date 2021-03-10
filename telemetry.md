@@ -76,4 +76,4 @@ These quanties are updated after each new GFA or SKYCAM frame is analyzed while 
 
 ## Post-exposure results:
 
- - `fieldrot` (float): The best-fit linear field rotation during the last exposure in units TBD. Note that this estimate is relative to any hexapod field rotation corrections already being applied during the exposure. **Not implemented yet.**
+ - `rel_rotrate` (float): The best-fit linear field rotation rate during the last exposure in arcsec/minute. Note that this estimate is relative to any hexapod field rotation corrections already being applied during the exposure. **Not implemented yet.**

@@ -403,7 +403,7 @@ class OnlineETC():
         etc_status['splittable'] = self.ETCalg.accum.splittable
 
         # Updated after each stop_etc.
-        etc_status['fieldrot'] = None # units TBD
+        etc_status['rel_rotrate'] = None
 
         # Use a roundtrip through json to convert all values to native types.
         etc_status = json.loads(json.dumps(etc_status, cls=desietc.util.NumpyEncoder))

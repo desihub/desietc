@@ -11,7 +11,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
  - Implement call_when_about_to_stop/split.
  - Add last_updated ISO string to status.
 ### Changed
+ - Rename fieldrot to rel_rotrate in status (but still not implemented).
  - Log additional info to debug GFA raw data copy vs view.
+ - Log additional info to debug EXPTIME jitter error.
 ### Fixed
  - Output of png after acquisition image analysis.
 
