@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
  - Correct TRANSP reported to ICS to X=1.
  - Implement 6-digit rounding of all float32 values in json output (reduces file size a lot).
  - Record git version of desietc being used (still needs testing ICS env).
+ - Add realtime/efftime_tot status variables.
  - Document telemetry variables.
 ### Changed
  - OnlineETC API changes to keep in sync with ICS.
