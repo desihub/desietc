@@ -43,7 +43,7 @@ class ETCAlgorithm(object):
     BUFFER_NAME = 'ETC_{0}_buffer'
 
     def __init__(self, sky_calib, gfa_calib, psf_pixels=25, max_dither=7, num_dither=1200,
-                 Ebv_coef=2.165, X_coef=0.114, ffrac_ref=0.56, nbad_threshold=100, nll_threshold=10,
+                 Ebv_coef=2.165, X_coef=0.114, ffrac_ref=0.56, nbad_threshold=100, nll_threshold=25,
                  avg_secs=120, avg_min_values=4, grid_resolution=0.5, parallel=True):
         """Initialize once per session.
 
@@ -771,8 +771,11 @@ class ETCAlgorithm(object):
         if sbprof != 'PSF':
             logging.warning(f'{sbprof} profile not implemented yet so using PSF.')
             sbprof = 'PSF'
+        self.exptag = str(expid).zfill(8)
+        self.night = desietc.util.mjd_to_night(desietc.util.date_to_mjd(timestamp, utc_offset=0))
         self.exp_data = dict(
-            expid=expid, # This is the initial expid in case there are cosmic splits.
+            expid=expid,
+            night=self.night,
             req_efftime=req_efftime,
             sbprof=sbprof,
             max_exposure_time=max_exposure_time,
@@ -780,8 +783,6 @@ class ETCAlgorithm(object):
             maxsplit=maxsplit,
             warning_time=warning_time,
         )
-        self.exptag = str(expid).zfill(8)
-        self.night = desietc.util.mjd_to_night(desietc.util.date_to_mjd(timestamp, utc_offset=0))
         logging.info(f'Start {self.night}/{self.exptag} at {timestamp} with req_efftime={req_efftime:.1f}s, sbprof={sbprof}, '
                      + f'max_exposure_time={max_exposure_time:.1f}s, cosmics_split_time={cosmics_split_time:.1f}s, '
                      + f'maxsplit={maxsplit}, warning_time={warning_time:.1f}s.')
