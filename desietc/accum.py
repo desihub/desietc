@@ -146,6 +146,7 @@ class Accumulator(object):
             return False
         # Ignore any previously requested action now that the shutter is closed.
         self.action = None
+        self.next_split = 0.
         # Record this shutter closing.
         mjd = desietc.util.date_to_mjd(timestamp, utc_offset=0)
         self.shutter_close.append(mjd)

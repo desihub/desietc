@@ -206,6 +206,13 @@ class OnlineETC():
                         last_image_processing = True
                         # Set the path where the PNG generated after the acquisition analysis will be written.
                         self.ETCalg.set_image_path(self.call_for_exp_dir(self.expid))
+                        # Flush any old GFA and SKY frames.
+                        nflush_sky = nflush_gfa = 0
+                        while self.call_for_sky_image(wait=None):
+                            nflush_sky += 1
+                        while self.call_for_gfa_image(wait=None):
+                            nflush_gfa += 1
+                        logging.info(f'Flushed {nflush_sky} SKY, {nflush_gfa} GFA frames.')
                         # Look for the acquisition image and PlateMaker guide stars next.
                         need_acq_image = need_stars = True
 
@@ -225,6 +232,10 @@ class OnlineETC():
                         self.ETCalg.save_exposure(self.call_for_exp_dir(self.expid))
                         # Reset the PNG output path.
                         self.ETCalg.set_image_path(None)
+                        # Start looking for updated PlateMaker guide star locations for the next split.
+                        # Any guide frames that arrive before this update will be queued, then processed
+                        # using the new locations.
+                        need_stars = True
 
                     # Process a sky frame if available.
                     sky_image = self.call_for_sky_image(wait=None)
