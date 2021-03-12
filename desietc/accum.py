@@ -49,7 +49,7 @@ class Accumulator(object):
         self.mjd_grid = None
 
     def setup(self, req_efftime, max_exposure_time, cosmics_split_time, maxsplit, warning_time,
-              sig_nominal, bg_nominal):
+              sig_nominal, bg_nominal, rdnoise_1ks):
         """Setup a new sequence of cosmic splits.
 
         Parameters
@@ -69,6 +69,8 @@ class Accumulator(object):
             Signal rate in nominal conditions.
         bg_nominal : float
             Background rate in nominal conditions.
+        rdnoise_1ks : float
+            Nominal read noise relative to 1000s of nominal sky background.
         """
         self.req_efftime = req_efftime
         self.max_exposure_time = max_exposure_time
@@ -77,6 +79,7 @@ class Accumulator(object):
         self.warning_time = warning_time
         self.sig_nominal = sig_nominal
         self.bg_nominal = bg_nominal
+        self.rdnoise_1ks = rdnoise_1ks
         self.MW_transp = 1.
         self.reset()
 
@@ -200,8 +203,7 @@ class Accumulator(object):
         self.background = np.mean(self.bg_grid[past])
         # Calculate the accumulated effective exposure time for this shutter opening in seconds.
         self.realtime = (mjd_now - mjd_open) * self.SECS_PER_DAY
-        self.efftime = self.realtime * self.exptime_factor(
-            self.signal, self.background)
+        self.efftime = self.get_efftime(self.realtime, self.signal, self.background)
         logging.info(f'shutter[{self.nopen}] treal={self.realtime:.1f}s, teff={self.efftime:.1f}s' +
             f' [+{prev_teff:.1f}s] using bg={self.background:.3f}, sig={self.signal:.3f}.')
         self.realtime_tot = self.realtime + prev_treal
@@ -224,7 +226,7 @@ class Accumulator(object):
         accum_bg = np.cumsum(self.bg_grid) / n_grid
         # Calculate the corresponding accumulated effective exposure time in seconds.
         accum_treal = (self.mjd_grid - mjd_open) * self.SECS_PER_DAY
-        accum_teff = accum_treal * self.exptime_factor(accum_sig, accum_bg)
+        accum_teff = self.get_efftime(accum_treal, accum_sig, accum_bg)
         # When do we expect to close the shutter.
         self.action = None
         if self.efftime + prev_teff >= self.req_efftime:
@@ -267,10 +269,9 @@ class Accumulator(object):
             logging.info(f'Recommended action is {self.action}.')
         return True
 
-    def exptime_factor(self, signal, background):
-        """Calculate the ratio between effective and real exposure time using the
-        specified accumulated signal and background rates, and their nominal values
+    def get_efftime(self, realtime, signal, background):
+        """Calculate the effective exposure time corresponding to the specified real
+        exposure time, accumulated signal and background rates, and their nominal values
         and MW transparency specified in the last call to :meth:`setup_exposure`.
-        A returned value of one corresponds to real time = effective time.
         """
-        return (self.MW_transp * signal / self.sig_nominal) ** 2 / (background / self.bg_nominal)
+        return realtime * (self.MW_transp * signal / self.sig_nominal) ** 2 / (background / self.bg_nominal)

@@ -789,7 +789,7 @@ class ETCAlgorithm(object):
         # Initialize accumulation for the upcoming sequence of cosmic splits.
         self.accum.setup(
             req_efftime, max_exposure_time, cosmics_split_time, maxsplit, warning_time,
-            sig_nominal=self.ffrac_ref, bg_nominal=1.)
+            sig_nominal=self.ffrac_ref, bg_nominal=1., rdnoise_1ks=0.25)
 
     def open_shutter(self, expid, timestamp, splittable, max_shutter_time):
         """Record the shutter opening.
