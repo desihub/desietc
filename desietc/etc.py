@@ -669,7 +669,7 @@ class ETCAlgorithm(object):
             each_flux[i] = camera_flux
             each_dflux[i] = camera_dflux
             each_ndrop[i] = self.SKY.ndrop
-            logging.debug(f'{camera}[{fnum}] flux = {camera_flux:.2f} +/- {camera_dflux:.2f}')
+            logging.info(f'{camera}[{fnum}] flux = {camera_flux:.2f} +/- {camera_dflux:.2f} exptime={self.exptime:.1f}s')
             camera_ivar = 1 / camera_dflux ** 2
             flux += camera_ivar * camera_flux
             ivar += camera_ivar
@@ -706,7 +706,7 @@ class ETCAlgorithm(object):
             mjd_obs_all = np.nanmedian(mjd_obs)
         exptime = np.asarray(exptime)
         exptime_all = np.nanmean(exptime)
-        if np.any(np.abs(exptime - exptime_all) * self.SECS_PER_DAY > max_jitter):
+        if np.any(np.abs(exptime - exptime_all) > max_jitter):
             logging.warning(f'EXPTIME jitter exceeds {max_jitter}s for {source}: {exptime}')
             exptime_all = np.nanmedian(exptime)
         return (mjd_obs_all, mjd_obs_all + exptime_all / self.SECS_PER_DAY)

@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.1.3] - Unreleased
 ### Removed
  - Remove debug logging of GFA array view/copy.
+### Fixed
+ - Fix spurious warnings about exptime jitter.
 
 ## [0.1.2] - 2020-03-11
 ### Added
