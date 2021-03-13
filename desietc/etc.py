@@ -118,6 +118,15 @@ class ETCAlgorithm(object):
         self.acquisition_data = None
         self.guide_stars = None
         self.image_path = None
+        # Initialize relative fiber fraction calculations.
+        self.rel_ffrac = dict(PSF=0, ELG=0, BGS=0, FLT=0)
+        self.rel_ffrac_coefs = dict(
+            # 5-th order polynomial coefs c0 + c1 * x + ... + c5 * x**5
+            # fit to /global/cfs/cdirs/cosmo/www/temp/ameisner/fracflux_moffat_3.5.with_elg_bgs-1.52asec.fits
+            # with x = PSF FFRAC / ffrac_ref
+            ELG=np.array([-0.01974473, 0.16854547, -0.46242521, 0.71108329, -0.77034065, 1.37284426]),
+            BGS=np.array([-0.49316198, 2.50168570, -5.05426698, 5.32645113, -3.30491560, 2.02364733]),
+        )
         # Initialize observing conditions updated after each GFA or SKY frame.
         self.seeing = None
         self.ffrac = None
@@ -617,6 +626,7 @@ class ETCAlgorithm(object):
         logging.info(f'Guide transp={transp_obs:.3f}, ffrac={ffrac:.3f}, thru={thru:.3f}.')
         self.transp_obs = transp_obs
         self.ffrac = ffrac
+        self.set_rel_ffrac(ffrac)
         # Adjust the transparency to X=1.
         self.transp_zenith = self.transp_obs / self.atm_extinction
         # Record this measurement.
@@ -910,3 +920,20 @@ class ETCAlgorithm(object):
                 logging.info(f'Wrote {fname} for {self.exptag}')
         except Exception as e:
             logging.error(f'save_exposure: error saving json: {e}')
+
+    def set_rel_ffrac(self, ffrac_psf):
+        """Convert an absolute FFRAC for PSF-like objects into FFRAC values
+        relative to nominal seeing for different source models (sbprof).
+        """
+        # Normalize the PSF value to nominal seeing.
+        self.rel_ffrac['PSF'] = ffrac_psf / self.ffrac_ref
+        # Clip the normalized PSF value to the range where our polynomial fits are valid.
+        x = np.clip(self.rel_ffrac['PSF'], 0.227, 1.457)
+        if x != self.rel_ffrac['PSF']:
+            logging.warning(f'Clipped relative PSF FFRAC {self.rel_ffrac["PSF"]:.3f} to {x:.3f}.')
+        # Use polynomial fits to convert normalized PSF value to other source models.
+        ncoef = len(self.rel_ffrac_coefs['ELG'])
+        xpow = x ** np.arange(ncoef)
+        for sbprof, coefs in self.rel_ffrac_coefs.items():
+            self.rel_ffrac[sbprof] = coefs.dot(xpow)
+        self.rel_ffrac['FLT'] = 1.
