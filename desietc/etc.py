@@ -121,6 +121,7 @@ class ETCAlgorithm(object):
         # Initialize observing conditions updated after each GFA or SKY frame.
         self.seeing = None
         self.ffrac_psf = None
+        self.rel_ffrac_sbprof = None
         self.transp_obs = None
         self.transp_zenith = None
         self.skylevel = None

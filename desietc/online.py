@@ -390,10 +390,10 @@ class OnlineETC():
 
         # Observing conditions updated after each GFA or SKY frame.
         etc_status['seeing'] = np.float32(self.ETCalg.seeing)
-        etc_status['ffrac_psf'] = np.float32(self.ETCalg.ffrac)
-        etc_status['ffrac_elg'] = None
-        etc_status['ffrac_bgs'] = None
-        etc_status['ffrac'] = np.float32(self.ETCalg.ffrac)
+        etc_status['ffrac_psf'] = np.float32(self.ETCalg.rel_ffrac['PSF'])
+        etc_status['ffrac_elg'] = np.float32(self.ETCalg.rel_ffrac['ELG'])
+        etc_status['ffrac_bgs'] = np.float32(self.ETCalg.rel_ffrac['BGS'])
+        etc_status['ffrac'] = np.float32(self.ETCalg.rel_ffrac_sbprof)
         etc_status['ffrac_avg'] = np.float32(self.ETCalg.ffrac_avg)
         etc_status['transp'] = np.float32(self.ETCalg.transp_zenith)
         etc_status['transp_avg'] = np.float32(self.ETCalg.transp_avg)
