@@ -462,7 +462,9 @@ class ETCAlgorithm(object):
         if np.any(np.isfinite(fwhm_vec)):
             self.seeing = np.nanmedian(fwhm_vec)
         if np.any(np.isfinite(ffrac_vec)):
-            self.ffrac = np.nanmedian(ffrac_vec)
+            ffrac_psf = np.nanmedian(ffrac_vec)
+            self.set_rel_ffrac(ffrac_psf)
+            self.ffrac = ffrac_psf
         logging.info(f'Acquisition image quality using {nstars_tot} stars: ' +
             f'FWHM={self.seeing:.2f}", FFRAC={self.ffrac:.3}.')
         # Generate an acquisition analysis summary image.
@@ -620,16 +622,16 @@ class ETCAlgorithm(object):
         if ncamera == 0:
             return False
         # Combine all cameras.
-        transp_obs = np.nanmedian(camera_transp) if np.any(np.isfinite(camera_transp)) else 0.
-        ffrac = np.nanmedian(camera_ffrac) if np.any(np.isfinite(camera_ffrac)) else 0.
-        thru = transp_obs * ffrac
-        logging.info(f'Guide transp={transp_obs:.3f}, ffrac={ffrac:.3f}, thru={thru:.3f}.')
-        self.transp_obs = transp_obs
-        self.ffrac = ffrac
-        self.set_rel_ffrac(ffrac)
+        self.transp_obs = np.nanmedian(camera_transp) if np.any(np.isfinite(camera_transp)) else 0.
+        ffrac_psf = np.nanmedian(camera_ffrac) if np.any(np.isfinite(camera_ffrac)) else 0.
+        # Calculate relative FFRAC for different profiles.
+        self.set_rel_ffrac(ffrac_psf)
+        thru = self.transp_obs * self.rel_ffrac['PSF']
+        self.ffrac = ffrac_psf
         # Adjust the transparency to X=1.
         self.transp_zenith = self.transp_obs / self.atm_extinction
         # Record this measurement.
+        logging.info(f'Guide transp={self.transp_obs:.3f}, ffrac={self.ffrac:.3f}, thru={thru:.3f}.')
         mjd_start, mjd_stop = self.get_mjd_range(mjd_obs, exptime, f'guide[{fnum}]')
         # Use constant error until we have a proper estimate.
         self.thru_measurements.add(
@@ -798,8 +800,7 @@ class ETCAlgorithm(object):
                      + f'maxsplit={maxsplit}, warning_time={warning_time:.1f}s.')
         # Initialize accumulation for the upcoming sequence of cosmic splits.
         self.accum.setup(
-            req_efftime, max_exposure_time, cosmics_split_time, maxsplit, warning_time,
-            sig_nominal=self.ffrac_ref, bg_nominal=1., rdnoise_1ks=0.25)
+            req_efftime, max_exposure_time, cosmics_split_time, maxsplit, warning_time, rdnoise_1ks=0.25)
 
     def open_shutter(self, expid, timestamp, splittable, max_shutter_time):
         """Record the shutter opening.

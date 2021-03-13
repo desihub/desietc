@@ -21,9 +21,11 @@ class Accumulator(object):
         Parameters
         ----------
         sig_buffer : MeasurementBuffer
-            Buffer containing recent signal throughput measurements.
+            Buffer containing recent signal throughput measurements
+            normalized to one for nominal conditions.
         bg_buffer : MeasurementBuffer
-            Buffer containing recent background sky-level measurements.
+            Buffer containing recent background sky-level measurements
+            normalized to one for nominal conditions.
         """
         self.sig_buffer = sig_buffer
         self.bg_buffer = bg_buffer
@@ -49,7 +51,7 @@ class Accumulator(object):
         self.mjd_grid = None
 
     def setup(self, req_efftime, max_exposure_time, cosmics_split_time, maxsplit, warning_time,
-              sig_nominal, bg_nominal, rdnoise_1ks):
+              rdnoise_1ks):
         """Setup a new sequence of cosmic splits.
 
         Parameters
@@ -65,10 +67,6 @@ class Accumulator(object):
             The maximum number of exposures reserved by ICS for this tile.
         warning_time : float
             Warn when a stop or split is expected within this interval in seconds.
-        sig_nominal : float
-            Signal rate in nominal conditions.
-        bg_nominal : float
-            Background rate in nominal conditions.
         rdnoise_1ks : float
             Nominal read noise relative to 1000s of nominal sky background.
         """
@@ -77,8 +75,6 @@ class Accumulator(object):
         self.cosmics_split_time = cosmics_split_time
         self.maxsplit = maxsplit
         self.warning_time = warning_time
-        self.sig_nominal = sig_nominal
-        self.bg_nominal = bg_nominal
         self.rdnoise_1ks = rdnoise_1ks
         self.MW_transp = 1.
         self.reset()
@@ -274,7 +270,7 @@ class Accumulator(object):
         exposure time, accumulated signal and background rates, and their nominal values
         and MW transparency specified in the last call to :meth:`setup_exposure`.
         """
-        sig_factor = self.MW_transp * signal / self.sig_nominal
+        sig_factor = self.MW_transp * signal
         rdnoise = self.rdnoise_1ks * 1000 / np.maximum(0.1, realtime)
-        bg_factor = (background + rdnoise) / (self.bg_nominal + rdnoise)
+        bg_factor = (background + rdnoise) / (1 + rdnoise)
         return realtime * sig_factor ** 2 / bg_factor
