@@ -118,21 +118,21 @@ class ETCAlgorithm(object):
         self.acquisition_data = None
         self.guide_stars = None
         self.image_path = None
-        # Initialize relative fiber fraction calculations.
-        self.rel_ffrac = dict(PSF=0, ELG=0, BGS=0, FLT=0)
-        self.rel_ffrac_coefs = dict(
-            # 5-th order polynomial coefs c0 + c1 * x + ... + c5 * x**5
-            # fit to /global/cfs/cdirs/cosmo/www/temp/ameisner/fracflux_moffat_3.5.with_elg_bgs-1.52asec.fits
-            # with x = PSF FFRAC / ffrac_ref
-            ELG=np.array([-0.01974473, 0.16854547, -0.46242521, 0.71108329, -0.77034065, 1.37284426]),
-            BGS=np.array([-0.49316198, 2.50168570, -5.05426698, 5.32645113, -3.30491560, 2.02364733]),
-        )
         # Initialize observing conditions updated after each GFA or SKY frame.
         self.seeing = None
-        self.ffrac = None
+        self.ffrac_psf = None
         self.transp_obs = None
         self.transp_zenith = None
         self.skylevel = None
+        # Initialize relative fiber fraction calculations.
+        self.rel_ffrac = dict(PSF=0, ELG=0, BGS=0, FLT=0)
+        self.rel_ffrac_coefs = dict(
+            # 5-th order polynomial coefs c0 + c1 * x + ... + c5 * x**5 with x = PSF FFRAC / ffrac_ref
+            # fit to the ratios ELG/PSF and BGS/PSF using data from
+            # /global/cfs/cdirs/cosmo/www/temp/ameisner/fracflux_moffat_3.5.with_elg_bgs-1.52asec.fits
+            ELG=np.array([ 1.37284426, -0.77034065,  0.71108329, -0.46242521,  0.16854547, -0.01974473]),
+            BGS=np.array([ 2.02364733, -3.3049156 ,  5.32645113, -5.05426698,  2.5016857 , -0.49316198]),
+        )
         # Initialize running averages of ffrac and transp.
         self.ffrac_buffer = desietc.util.MeasurementBuffer(1000, 1)
         self.transp_buffer = desietc.util.MeasurementBuffer(1000, 1)
@@ -458,21 +458,20 @@ class ETCAlgorithm(object):
             # Precompute dithered renderings of the model for fast guide frame fits.
             self.dithered_model[camera] = self.GMM.dither(gmm_params, self.xdither, self.ydither)
         # Update the current FWHM, FFRAC values now.
-        self.seeing, self.ffrac = 0., 0.
+        self.seeing, ffrac_psf = 0., 0.
         if np.any(np.isfinite(fwhm_vec)):
             self.seeing = np.nanmedian(fwhm_vec)
         if np.any(np.isfinite(ffrac_vec)):
             ffrac_psf = np.nanmedian(ffrac_vec)
-            self.set_rel_ffrac(ffrac_psf)
-            self.ffrac = ffrac_psf
+        self.set_rel_ffrac(ffrac_psf)
         logging.info(f'Acquisition image quality using {nstars_tot} stars: ' +
-            f'FWHM={self.seeing:.2f}", FFRAC={self.ffrac:.3}.')
+            f'FWHM={self.seeing:.2f}", FFRAC={self.ffrac_psf:.3}.')
         # Generate an acquisition analysis summary image.
         if nstars_tot > 0 and self.image_path is not None:
             try:
                 desietc.plot.save_acquisition_summary(
-                    hdr['MJD-OBS'], self.exptag, psf_model, self.psf_stack, self.seeing, self.ffrac, nstars,
-                    badfit, self.noisy_gfa, self.image_path / f'etc-{self.exptag}.png')
+                    hdr['MJD-OBS'], self.exptag, psf_model, self.psf_stack, self.seeing, self.ffrac_psf,
+                    nstars, badfit, self.noisy_gfa, self.image_path / f'etc-{self.exptag}.png')
             except Exception as e:
                 logging.error(f'Failed to save acquisition analysis summary image: {e}')
         # Reset the guide frame counter and guide star data.
@@ -626,12 +625,11 @@ class ETCAlgorithm(object):
         ffrac_psf = np.nanmedian(camera_ffrac) if np.any(np.isfinite(camera_ffrac)) else 0.
         # Calculate relative FFRAC for different profiles.
         self.set_rel_ffrac(ffrac_psf)
-        thru = self.transp_obs * self.rel_ffrac['PSF']
-        self.ffrac = ffrac_psf
+        thru = self.transp_obs * self.rel_ffrac_sbprof
         # Adjust the transparency to X=1.
         self.transp_zenith = self.transp_obs / self.atm_extinction
         # Record this measurement.
-        logging.info(f'Guide transp={self.transp_obs:.3f}, ffrac={self.ffrac:.3f}, thru={thru:.3f}.')
+        logging.info(f'Guide transp={self.transp_obs:.3f}, ffrac={self.ffrac_psf:.3f}, thru={thru:.3f}.')
         mjd_start, mjd_stop = self.get_mjd_range(mjd_obs, exptime, f'guide[{fnum}]')
         # Use constant error until we have a proper estimate.
         self.thru_measurements.add(
@@ -646,7 +644,7 @@ class ETCAlgorithm(object):
                     final=self.accum.proj_efftime, split=self.accum.next_split)
         # Update running averages.
         self.transp_buffer.add(mjd_start, mjd_stop, self.transp_zenith, 0.1)
-        self.ffrac_buffer.add(mjd_start, mjd_stop, self.ffrac, 0.1)
+        self.ffrac_buffer.add(mjd_start, mjd_stop, self.rel_ffrac_sbprof, 0.1)
         self.transp_avg = self.transp_buffer.average(mjd_stop, self.avg_secs, self.avg_min_values)
         self.ffrac_avg = self.ffrac_buffer.average(mjd_stop, self.avg_secs, self.avg_min_values)
         # Report timing.
@@ -780,9 +778,6 @@ class ETCAlgorithm(object):
         if sbprof not in ('PSF', 'ELG', 'BGS', 'FLT'):
             logging.error(f'Got invalid sbprof "{sbprof}" so defaulting to "ELG".')
             sbprof = 'ELG'
-        if sbprof != 'PSF':
-            logging.warning(f'{sbprof} profile not implemented yet so using PSF.')
-            sbprof = 'PSF'
         self.exptag = str(expid).zfill(8)
         self.night = desietc.util.mjd_to_night(desietc.util.date_to_mjd(timestamp, utc_offset=0))
         self.exp_data = dict(
@@ -926,6 +921,8 @@ class ETCAlgorithm(object):
         """Convert an absolute FFRAC for PSF-like objects into FFRAC values
         relative to nominal seeing for different source models (sbprof).
         """
+        # Remember the absolute PSF value.
+        self.ffrac_psf = ffrac_psf
         # Normalize the PSF value to nominal seeing.
         self.rel_ffrac['PSF'] = ffrac_psf / self.ffrac_ref
         # Clip the normalized PSF value to the range where our polynomial fits are valid.
@@ -934,7 +931,20 @@ class ETCAlgorithm(object):
             logging.warning(f'Clipped relative PSF FFRAC {self.rel_ffrac["PSF"]:.3f} to {x:.3f}.')
         # Use polynomial fits to convert normalized PSF value to other source models.
         ncoef = len(self.rel_ffrac_coefs['ELG'])
-        xpow = x ** np.arange(ncoef)
+        xpow = x ** (1 + np.arange(ncoef))
         for sbprof, coefs in self.rel_ffrac_coefs.items():
             self.rel_ffrac[sbprof] = coefs.dot(xpow)
         self.rel_ffrac['FLT'] = 1.
+        # Record the value for the current source model or ELG by default.
+        sbprof = 'ELG'
+        try:
+            sbprof = self.exp_data.get('sbprof', 'ELG')
+        except:
+            logging.error('Failed to get current source model (sbprof).')
+        self.rel_ffrac_sbprof = self.rel_ffrac[sbprof]
+        msg = f'ffrac_psf={self.ffrac_psf:.5f} => relative'
+        for name, value in self.rel_ffrac.items():
+            if name == sbprof:
+                name = '*' + name
+            msg += f' {name}={value:.5f}'
+        logging.info(msg)
