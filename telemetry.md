@@ -70,7 +70,7 @@ These quanties are updated after each new GFA or SKYCAM frame is analyzed while 
  - `efftime_tot` (float): Same as `efftime` but also including any previous cosmic splits for this tile. The exposure stops once this reaches `req_efftime`.
  - `realtime_tot` (float): Same as `realtime` but also including any previous cosmic splits for this tile. The exposure stops if this reaches `max_exptime` before `req_efftime` is accumulated.
  - `remaining` (float): The estimated additional real time in seconds required to reach `req_efftime`, summed over any future cosmic splits.
- - `prof_efftime` (float): The projected final value of `efftime_tot` when the exposure stops. Will be less than `req_efftime` is the exposure is not expected to finish before `max_exptime`.
+ - `proj_efftime` (float): The projected final value of `efftime_tot` when the exposure stops. Will be less than `req_efftime` is the exposure is not expected to finish before `max_exptime`.
  - `next_split` (float): The projected real time until the next cosmic split in seconds.
  - `splittable` (bool): Is the ETC allowed to request a cosmic split for the current exposure?
 
