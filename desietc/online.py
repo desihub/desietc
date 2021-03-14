@@ -208,9 +208,9 @@ class OnlineETC():
                         self.ETCalg.set_image_path(self.call_for_exp_dir(self.expid))
                         # Flush any old GFA and SKY frames.
                         nflush_sky = nflush_gfa = 0
-                        while self.call_for_sky_image(wait=None):
+                        while self.call_for_sky_image():
                             nflush_sky += 1
-                        while self.call_for_gfa_image(wait=None):
+                        while self.call_for_gfa_image():
                             nflush_gfa += 1
                         logging.info(f'Flushed {nflush_sky} SKY, {nflush_gfa} GFA frames.')
                         # Look for the acquisition image and PlateMaker guide stars next.
@@ -238,14 +238,14 @@ class OnlineETC():
                         need_stars = True
 
                     # Process a sky frame if available.
-                    sky_image = self.call_for_sky_image(wait=None)
+                    sky_image = self.call_for_sky_image()
                     if sky_image:
                         self.ETCalg.process_sky_frame(sky_image['image'])
                         have_new_telemetry = True
 
                     if need_acq_image:
                         # Process the acquisition image if available.
-                        acq_image = self.call_for_acq_image(wait=None)
+                        acq_image = self.call_for_acq_image()
                         if acq_image:
                             self.ETCalg.process_acquisition(acq_image['image'])
                             img_path = self.ETCalg.image_path / f'etc-{self.expid:08d}.png'
@@ -257,14 +257,14 @@ class OnlineETC():
 
                     if need_stars:
                         # Process the PlateMaker guide stars if available.
-                        pm_info = self.call_for_pm_info(wait=None)
+                        pm_info = self.call_for_pm_info()
                         if pm_info:
                             self.ETCalg.set_guide_stars(pm_info['guidestars'])
                             need_stars = False
 
                     if not need_acq_image and not need_stars:
                         # We have PSF models and guide stars: process a guide frame if available.
-                        gfa_image = self.call_for_gfa_image(wait=None)
+                        gfa_image = self.call_for_gfa_image()
                         if gfa_image:
                             self.ETCalg.process_guide_frame(gfa_image['image'])
                             have_new_telemetry = True
