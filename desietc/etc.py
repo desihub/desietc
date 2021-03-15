@@ -544,7 +544,7 @@ class ETCAlgorithm(object):
         logging.info(f'Using {nstars_msg} guide stars for {self.exptag}.')
         return True
 
-    def process_guide_frame(self, data):
+    def process_guide_frame(self, data, timestamp):
         """Process a guide frame.
         """
         ncamera = nstar = 0
@@ -552,7 +552,7 @@ class ETCAlgorithm(object):
         fnum = self.num_guide_frames
         self.num_guide_frames += 1
         self.total_gfa_count += 1
-        logging.info(f'Processing guide frame {fnum} [{self.total_gfa_count}] for {self.exptag}.')
+        logging.info(f'Processing guide frame {fnum} [{self.total_gfa_count}] for {self.exptag} at {timestamp}.')
         self.check_top_header(data['GUIDER']['header'], f'guide[{fnum}]')
         if self.dithered_model is None:
             logging.error('Ignoring guide frame before acquisition image.')
@@ -638,7 +638,8 @@ class ETCAlgorithm(object):
             aux_data=(each_ffrac, each_transp, each_dx, each_dy, 0, 0, 0, 0, 0, 0))
         # Update our accumulated signal if the shutter is open.
         if self.accum.shutter_is_open:
-            if self.accum.update('GFA', mjd_stop, mjd_stop):
+            mjd_now = desietc.util.date_to_mjd(timestamp, utc_offset=0)
+            if self.accum.update('GFA', mjd_stop, mjd_now):
                 self.thru_measurements.set_last(
                     sig=self.accum.signal, bg=self.accum.background,
                     teff=self.accum.efftime, tproj=self.accum.remaining,
@@ -653,7 +654,7 @@ class ETCAlgorithm(object):
         logging.debug(f'Guide frame processing took {elapsed:.2f}s for {nstar} stars in {ncamera} cameras.')
         return True
 
-    def process_sky_frame(self, data):
+    def process_sky_frame(self, data, timestamp):
         """Process a SKY frame.
         """
         ncamera = 0
@@ -661,7 +662,7 @@ class ETCAlgorithm(object):
         fnum = self.num_sky_frames
         self.num_sky_frames += 1
         self.total_sky_count += 1
-        logging.info(f'Processing sky frame {fnum} [{self.total_sky_count}] for {self.exptag}.')
+        logging.info(f'Processing sky frame {fnum} [{self.total_sky_count}] for {self.exptag} at {timestamp}.')
         self.check_top_header(data['SKY']['header'], f'sky[{fnum}]')
         flux, ivar = 0, 0
         mjd_obs, exptime = [], []
@@ -699,7 +700,8 @@ class ETCAlgorithm(object):
             aux_data=(each_flux, each_dflux, each_ndrop, 0, 0, 0, 0, 0, 0))
         # Update our accumulated background if the shutter is open.
         if self.accum.shutter_is_open:
-            if self.accum.update('SKY', mjd_stop, mjd_stop):
+            mjd_now = desietc.util.date_to_mjd(timestamp, utc_offset=0)
+            if self.accum.update('SKY', mjd_stop, mjd_now):
                 self.sky_measurements.set_last(
                     sig=self.accum.signal, bg=self.accum.background,
                     teff=self.accum.efftime, tproj=self.accum.remaining,

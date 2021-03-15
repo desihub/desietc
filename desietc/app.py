@@ -16,6 +16,21 @@ import desietc.offline
 import desietc.util
 
 
+# Hijack online.get_utcnow() to return a value we can set.
+_utcnow = None
+
+def set_mjd_now(mjd):
+    global _utcnow
+    _utcnow = desietc.util.mjd_to_date(mjd, utc_offset=0)
+
+def hijacked_utcnow():
+    global _utcnow
+    print(f'utcnow is {_utcnow}')
+    return _utcnow
+
+desietc.online.get_utcnow = hijacked_utcnow
+
+
 class OfflineETCApp:
 
     def __init__(self):
@@ -87,6 +102,7 @@ class OfflineETCApp:
 
     def open_shutter(self, splittable=True, max_shutter_time=3600):
         start_mjd = self.get('frames')[self.last_frame]['start']
+        set_mjd_now(self.get('frames')[self.last_frame]['stop'])
         start_time = desietc.util.mjd_to_date(start_mjd, utc_offset=0)
         return self.etc.start_etc(
             expid=self.expid, start_time=start_time, splittable=splittable, max_shutter_time=max_shutter_time)
@@ -122,6 +138,7 @@ class OfflineETCApp:
             names = desietc.sky.SkyCamera.sky_names if ftype == 'sky' else desietc.gfa.GFACamera.guide_names
             fnum = self.get('frames')[self.next_frame]['num']
             self.last_frame += 1
+            set_mjd_now(self.get('frames')[self.last_frame]['stop'])
             return dict(image=desietc.offline.fits_to_online(path, names, fnum))
         else:
             return None

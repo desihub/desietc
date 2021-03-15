@@ -191,6 +191,7 @@ def replay_exposure(ETC, path, expid, outpath, req_efftime=1000, sbprof='ELG',
     shutter_open = False
     # Loop over frames to replay.
     for frame in F['frames']:
+        now = desietc.util.mjd_to_date(frame['stop'], utc_offset=0)
         if shutter_open and shutter_close_mjd is not None and frame['start'] >= shutter_close_mjd:
             ETC.close_shutter(shutter_close_date)
             ETC.save_exposure(exppath_out)
@@ -218,10 +219,10 @@ def replay_exposure(ETC, path, expid, outpath, req_efftime=1000, sbprof='ELG',
                     shutter_open = True
             else:
                 # Process the next guide frame.
-                ETC.process_guide_frame(data)
+                ETC.process_guide_frame(data, now)
         else: # SKY
             data = fits_to_online(F['sky_path'], ETC.SKY.sky_names, frame['num'])
-            ETC.process_sky_frame(data)
+            ETC.process_sky_frame(data, now)
     if shutter_open and shutter_close_mjd is not None:
         # The shutter did not already close due to a frame after the DESI exposure, so close it now.
         ETC.close_shutter(shutter_close_date)

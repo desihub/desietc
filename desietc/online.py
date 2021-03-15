@@ -77,6 +77,12 @@ import numpy as np
 import desietc.etc
 
 
+# Define a wrapper around utcnow that can be overridden for offline playback
+# since the built-in datetime object's methods cannot be overridden directly.
+def get_utcnow():
+    return datetime.datetime.utcnow()
+
+
 class OnlineETC():
 
     def __init__(self, shutdown_event):
@@ -240,7 +246,7 @@ class OnlineETC():
                     # Process a sky frame if available.
                     sky_image = self.call_for_sky_image()
                     if sky_image:
-                        self.ETCalg.process_sky_frame(sky_image['image'])
+                        self.ETCalg.process_sky_frame(sky_image['image'], get_utcnow())
                         have_new_telemetry = True
 
                     if need_acq_image:
@@ -266,7 +272,7 @@ class OnlineETC():
                         # We have PSF models and guide stars: process a guide frame if available.
                         gfa_image = self.call_for_gfa_image()
                         if gfa_image:
-                            self.ETCalg.process_guide_frame(gfa_image['image'])
+                            self.ETCalg.process_guide_frame(gfa_image['image'], get_utcnow())
                             have_new_telemetry = True
 
                     # Is there an action to take associated with new telemetry?
@@ -299,7 +305,7 @@ class OnlineETC():
                                 # This should never happen...
                                 logging.error('Got stop() after start_etc() without any stop_etc().')
                                 # We don't know when the shutter closed, so assume it was now.
-                                self.etc_stop_time = datetime.datetime.utcnow()
+                                self.etc_stop_time = get_utcnow()
                             else:
                                 logging.warning('Got stop_etc() and stop() in rapid fire: ' +
                                     f'{self.img_stop_time - self.etc_stop_time}')
