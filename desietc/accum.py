@@ -139,6 +139,8 @@ class Accumulator(object):
         self.shutter_is_open = True
         # Start a new transcript for this exposure.
         self.ntranscript = 0
+        # Initial update.
+        self.update('OPEN', mjd, mjd)
         logging.info(f'Initialized accumulation with max remaining time {self.max_remaining:.1f}s, ' +
             f'MW transp={self.MW_transp:.4f}, splittable={self.splittable}.')
         return True
@@ -164,8 +166,10 @@ class Accumulator(object):
         # Ignore any previously requested action now that the shutter is closed.
         self.action = None
         self.next_split = 0.
-        # Record this shutter closing.
+        # Final update.
         mjd = desietc.util.date_to_mjd(timestamp, utc_offset=0)
+        self.update('CLOSE', mjd, mjd)
+        # Record this shutter closing.
         self.shutter_close.append(mjd)
         self.shutter_teff.append(self.efftime)
         self.shutter_treal.append((mjd - self.shutter_open[-1]) * self.SECS_PER_DAY)
