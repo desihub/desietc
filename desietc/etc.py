@@ -662,6 +662,8 @@ class ETCAlgorithm(object):
             if not self.process_camera_header(data[camera]['header'], f'{camera}[{fnum}]'):
                 continue
             camera_flux, camera_dflux = self.SKY.setraw(data[camera]['data'], name=camera)
+            logging.warning('Hardcoding EXPTIME=60 for now')
+            self.exptime = 60
             camera_flux /= self.exptime
             camera_dflux /= self.exptime
             # Prepare the auxiliary data saved to the ETC json file.
