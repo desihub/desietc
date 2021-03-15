@@ -144,15 +144,6 @@ class ETCAlgorithm(object):
         # How many GUIDE and SKY cameras do we expect?
         self.ngfa = len(desietc.gfa.GFACamera.guide_names)
         self.nsky = len(desietc.sky.SkyCamera.sky_names)
-        # Define auxiliary data to save with each GFA or SKY measurement.
-        aux_dtype = [
-            ('sig', np.float32),                  # accumulated signal estimate
-            ('bg', np.float32),                   # accumulated background estimate
-            ('teff', np.float32),                 # accumulated effective time estimate in seconds
-            ('tproj', np.float32),                # projected real time remaining in seconds
-            ('final', np.float32),                # projected final effective time in seconds
-            ('split', np.float32),                # projected time until next split in seconds
-        ]
         # Initialize buffers to record our signal- and sky-rate measurements.
         self.thru_measurements = desietc.util.MeasurementBuffer(
             maxlen=1000, default_value=1, aux_dtype=[
@@ -160,13 +151,13 @@ class ETCAlgorithm(object):
                 ('transp', np.float32, (self.ngfa,)), # transparency measured from single GFA
                 ('dx', np.float32, (self.ngfa,)),     # mean x shift of centroid from single GFA in pixels
                 ('dy', np.float32, (self.ngfa,)),     # mean y shift of centroid from single GFA in pixels
-            ] + aux_dtype)
+            ])
         self.sky_measurements = desietc.util.MeasurementBuffer(
             maxlen=200, default_value=1, aux_dtype=[
                 ('flux', np.float32, (self.nsky,)),   # sky flux meausured from a single SKYCAM.
                 ('dflux', np.float32, (self.nsky,)),  # sky flux uncertainty meausured from a single SKYCAM.
                 ('ndrop', np.int32, (self.nsky,)),    # number of fibers dropped from the camera flux estimate.
-            ] + aux_dtype)
+            ])
         # Initialize exposure accumulator.
         self.accum = desietc.accum.Accumulator(self.thru_measurements, self.sky_measurements, grid_resolution)
         # Initialize the SKY camera processor.
@@ -635,15 +626,11 @@ class ETCAlgorithm(object):
         # Use constant error until we have a proper estimate.
         self.thru_measurements.add(
             mjd_start, mjd_stop, thru, 0.01,
-            aux_data=(each_ffrac, each_transp, each_dx, each_dy, 0, 0, 0, 0, 0, 0))
+            aux_data=(each_ffrac, each_transp, each_dx, each_dy))
         # Update our accumulated signal if the shutter is open.
         if self.accum.shutter_is_open:
             mjd_now = desietc.util.date_to_mjd(timestamp, utc_offset=0)
-            if self.accum.update('GFA', mjd_stop, mjd_now):
-                self.thru_measurements.set_last(
-                    sig=self.accum.signal, bg=self.accum.background,
-                    teff=self.accum.efftime, tproj=self.accum.remaining,
-                    final=self.accum.proj_efftime, split=self.accum.next_split)
+            self.accum.update('GFA', mjd_stop, mjd_now)
         # Update running averages.
         self.transp_buffer.add(mjd_start, mjd_stop, self.transp_zenith, 0.1)
         self.ffrac_buffer.add(mjd_start, mjd_stop, self.rel_ffrac_sbprof, 0.1)
@@ -697,15 +684,11 @@ class ETCAlgorithm(object):
         mjd_start, mjd_stop = self.get_mjd_range(mjd_obs, exptime, f'sky[{fnum}]')
         self.sky_measurements.add(
             mjd_start, mjd_stop, flux, dflux,
-            aux_data=(each_flux, each_dflux, each_ndrop, 0, 0, 0, 0, 0, 0))
+            aux_data=(each_flux, each_dflux, each_ndrop))
         # Update our accumulated background if the shutter is open.
         if self.accum.shutter_is_open:
             mjd_now = desietc.util.date_to_mjd(timestamp, utc_offset=0)
-            if self.accum.update('SKY', mjd_stop, mjd_now):
-                self.sky_measurements.set_last(
-                    sig=self.accum.signal, bg=self.accum.background,
-                    teff=self.accum.efftime, tproj=self.accum.remaining,
-                    final=self.accum.proj_efftime, split=self.accum.next_split)
+            self.accum.update('SKY', mjd_stop, mjd_now)
         # Profile timing.
         elapsed = time.time() - start
         logging.debug(f'Sky frame processing took {elapsed:.2f}s for {ncamera} cameras.')

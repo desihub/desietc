@@ -521,7 +521,7 @@ class OnlineETC():
         self.sbprof = sbprof
         self.max_exposure_time = max_exposure_time
         self.cosmics_split_time = cosmics_split_time
-        self.maxsplit = self.maxsplit
+        self.maxsplit = maxsplit
         self.warning_time = warning_time
 
         # Update our status.
