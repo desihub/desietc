@@ -35,12 +35,17 @@ class OfflineETCApp:
         self.etc.call_for_sky_image = lambda: self.call_for_frame('sky')
         self.etc.call_for_gfa_image = lambda: self.call_for_frame('gfa')
         self.expdir = pathlib.Path('expdir')
-        self.etc.call_for_exp_dir = lambda expid: str(self.expdir / f'{expid:08d}')
+        self.etc.call_for_exp_dir = self.call_for_exp_dir
         self.status_updates = []
         self.assets = None
         self.next_frame = 0
         # Configure the ETC.
         assert self.etc.configure()
+
+    def call_for_exp_dir(self, expid):
+        path = self.expdir / str(self.etc.ETCalg.night) / self.etc.ETCalg.exptag
+        path.mkdir(parents=True, exist_ok=True)
+        return str(path)
 
     def call_to_update_status(self):
         status = self.etc.get_status()
@@ -78,7 +83,6 @@ class OfflineETCApp:
                                       max_exposure_time=max_exposure_time,
                                       cosmics_split_time=cosmics_split_time, maxsplit=maxsplit,
                                       warning_time=warning_time)
-        (pathlib.Path('expdir') / f'{self.expid:08d}').mkdir(parents=True, exist_ok=True)
         return self.etc.start(start_time=self.get('start_time'))
 
     def open_shutter(self, splittable=True, max_shutter_time=3600):
