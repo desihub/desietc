@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.1.3] - Unreleased
 ### Added
  - Calculate FFRAC for sbprof=ELG,BGS,FLT.
+ - Periodic telemetry updates when the shutters are open.
 ### Removed
  - Remove debug logging of GFA array view/copy.
 ### Fixed

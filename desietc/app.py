@@ -5,6 +5,7 @@ import logging
 import threading
 import pathlib
 import time
+import datetime
 import pdb
 
 import matplotlib
@@ -17,16 +18,19 @@ import desietc.util
 
 
 # Hijack online.get_utcnow() to return a value we can set.
-_utcnow = None
+_offset = datetime.timedelta()
 
 def set_mjd_now(mjd):
-    global _utcnow
-    _utcnow = desietc.util.mjd_to_date(mjd, utc_offset=0)
+    global _offset
+    then = desietc.util.mjd_to_date(mjd, utc_offset=0)
+    now = datetime.datetime.utcnow()
+    _offset = now - then
 
 def hijacked_utcnow():
-    global _utcnow
-    print(f'utcnow is {_utcnow}')
-    return _utcnow
+    global _offset
+    utcnow = datetime.datetime.utcnow() - _offset
+    #print(f'utcnow is {utcnow}')
+    return utcnow
 
 desietc.online.get_utcnow = hijacked_utcnow
 
@@ -98,6 +102,7 @@ class OfflineETCApp:
                                       max_exposure_time=max_exposure_time,
                                       cosmics_split_time=cosmics_split_time, maxsplit=maxsplit,
                                       warning_time=warning_time)
+        set_mjd_now(desietc.util.date_to_mjd(self.get('start_time'), utc_offset=0))
         return self.etc.start(start_time=self.get('start_time'))
 
     def open_shutter(self, splittable=True, max_shutter_time=3600):

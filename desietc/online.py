@@ -85,9 +85,10 @@ def get_utcnow():
 
 class OnlineETC():
 
-    def __init__(self, shutdown_event):
+    def __init__(self, shutdown_event, min_telemetry_secs=2):
 
         self.shutdown_event = shutdown_event
+        self.min_telemetry_interval = datetime.timedelta(seconds=min_telemetry_secs)
 
         # Callouts to the ETC application
         self.call_for_acq_image = None
@@ -195,6 +196,8 @@ class OnlineETC():
         last_image_processing = last_etc_processing = False
         sent_warn_stop = sent_warn_split = False
 
+        last_telemetry = get_utcnow()
+
         try:
             while not self.shutdown_event.is_set():
 
@@ -228,6 +231,7 @@ class OnlineETC():
                             self.expid, self.etc_start_time, self.splittable, self.max_shutter_time)
                         last_etc_processing = True
                         sent_warn_stop = sent_warn_split = False
+                        have_new_telemetry = True
 
                     elif last_etc_processing and not self.etc_processing.is_set():
                         # Shutter just closed.
@@ -289,9 +293,17 @@ class OnlineETC():
                             self.call_when_about_to_split(cause)
                             sent_warn_split = True
 
-                    # Send a telemetry update if something has changed.
+                    # Is it time for another telemetry update, even if there is no new data?
+                    now = get_utcnow()
+                    if self.ETCalg.accum.shutter_is_open:
+                        if now - last_telemetry >= self.min_telemetry_interval:
+                            mjd_now = desietc.util.date_to_mjd(now, utc_offset=0)
+                            self.ETCalg.accum.update('TICK', mjd_now, mjd_now)
+                            have_new_telemetry = True
+
                     if have_new_telemetry:
                         self.call_to_update_status()
+                        last_telemetry = now
 
                 else:
                     # No exposure is active.
