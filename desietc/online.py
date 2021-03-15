@@ -460,16 +460,15 @@ class OnlineETC():
             self.ETCalg.reset_counts()
             self.ETCalg.accum.reset()
             self.image_processing.clear()
-            # reset per-tile variables
-            self.img_start_time = None
-            self.img_stop_time = None
-            self.img_stop_src = None
+            #self.img_start_time = None
+            #self.img_stop_time = None
+            #self.img_stop_src = None
 
-        # reset per-exposure variables
-        self.expid = None
-        self.etc_start_time = None
-        self.etc_stop_time = None
-        self.etc_stop_src = None
+        # reset onlineETC variables
+        #self.expid = None
+        #self.etc_start_time = None
+        #self.etc_stop_time = None
+        #self.etc_stop_src = None
 
         # update status
         if update_status == True:
