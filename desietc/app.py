@@ -32,8 +32,8 @@ class OfflineETCApp:
         self.etc.call_for_acq_image = self.call_for_acq_image
         self.etc.call_for_pm_info = self.call_for_pm_info
         self.etc.call_when_image_ready = self.call_when_image_ready
-        self.etc.call_for_sky_image = lambda wait: self.call_for_frame('sky', wait)
-        self.etc.call_for_gfa_image = lambda wait: self.call_for_frame('gfa', wait)
+        self.etc.call_for_sky_image = lambda: self.call_for_frame('sky')
+        self.etc.call_for_gfa_image = lambda: self.call_for_frame('gfa')
         self.expdir = pathlib.Path('expdir')
         self.etc.call_for_exp_dir = lambda expid: str(self.expdir / f'{expid:08d}')
         self.status_updates = []
@@ -97,24 +97,22 @@ class OfflineETCApp:
         stop_time = desietc.util.mjd_to_date(stop_mjd, utc_offset=0)
         return self.etc.stop(source=source, stop_time=stop_time)
 
-    def call_for_acq_image(self, wait=None):
+    def call_for_acq_image(self):
         if self.get('acq_path') is not None:
             assert self.get('frames')[0]['typ'] == 'gfa'
             return dict(
                 image=desietc.offline.acq_to_online(self.get('acq_path'), desietc.gfa.GFACamera.guide_names),
                 fiberassign=self.get('fassign_path'))
         else:
-            if wait: time.sleep(wait)
             return None
 
-    def call_for_pm_info(self, wait=None):
+    def call_for_pm_info(self):
         if self.get('pm_info') is not None:
             return dict(guidestars=self.get('pm_info'))
         else:
-            if wait: time.sleep(wait)
             return None
 
-    def call_for_frame(self, ftype, wait=None):
+    def call_for_frame(self, ftype):
         if self.get('frames') is not None and (self.next_frame > self.last_frame) and (self.get('frames')[self.next_frame]['typ'] == ftype):
             path = self.get(f'{ftype}_path')
             names = desietc.sky.SkyCamera.sky_names if ftype == 'sky' else desietc.gfa.GFACamera.guide_names
@@ -122,7 +120,6 @@ class OfflineETCApp:
             self.last_frame += 1
             return dict(image=desietc.offline.fits_to_online(path, names, fnum))
         else:
-            if wait: time.sleep(wait)
             return None
 
 
@@ -131,8 +128,8 @@ def main():
     app = OfflineETCApp()
     nframes = 0
     print('OfflineETCApp is running.')
-    #options = dict(req_efftime=1000, sbprof='ELG', max_exposure_time=2000, cosmics_split_time=1200, maxsplit=4, warning_time=60)
-    options = dict(req_efftime=300, sbprof='ELG', max_exposure_time=2000, cosmics_split_time=100, maxsplit=4, warning_time=60)
+    options = dict(req_efftime=1000, sbprof='ELG', max_exposure_time=2000, cosmics_split_time=1200, maxsplit=4, warning_time=60)
+    #options = dict(req_efftime=300, sbprof='ELG', max_exposure_time=2000, cosmics_split_time=100, maxsplit=4, warning_time=60)
     while True:
         print('Enter a command: s(tart) f(rame) o(pen) c(lose) (s)t(op) q(uit) ?(status)')
         cmdline = input('# ')
