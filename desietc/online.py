@@ -195,6 +195,7 @@ class OnlineETC():
 
         last_image_processing = last_etc_processing = False
         sent_warn_stop = sent_warn_split = False
+        sent_req_stop = sent_req_split = False
 
         last_telemetry = get_utcnow()
 
@@ -231,6 +232,7 @@ class OnlineETC():
                             self.expid, self.etc_start_time, self.splittable, self.max_shutter_time)
                         last_etc_processing = True
                         sent_warn_stop = sent_warn_split = False
+                        sent_req_stop = sent_req_split = False
                         have_new_telemetry = True
 
                     elif last_etc_processing and not self.etc_processing.is_set():
@@ -282,10 +284,12 @@ class OnlineETC():
                     # Is there an action to take associated with new telemetry?
                     if have_new_telemetry and self.ETCalg.accum.action is not None:
                         action, cause = self.ETCalg.accum.action
-                        if action == 'stop':
+                        if action == 'stop' and not sent_req_stop:
                             self.call_to_request_stop(cause)
-                        elif action == 'split' and self.splittable:
+                            sent_req_stop = True
+                        elif action == 'split' and self.splittable and not sent_req_split:
                             self.call_to_request_split(cause)
+                            sent_req_split = True
                         elif action == 'warn-stop' and not sent_warn_stop:
                             self.call_when_about_to_stop(cause)
                             sent_warn_stop = True
