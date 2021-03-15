@@ -638,7 +638,7 @@ class ETCAlgorithm(object):
             aux_data=(each_ffrac, each_transp, each_dx, each_dy, 0, 0, 0, 0, 0, 0))
         # Update our accumulated signal if the shutter is open.
         if self.accum.shutter_is_open:
-            if self.accum.update(mjd_stop):
+            if self.accum.update('GFA', mjd_stop, mjd_stop):
                 self.thru_measurements.set_last(
                     sig=self.accum.signal, bg=self.accum.background,
                     teff=self.accum.efftime, tproj=self.accum.remaining,
@@ -699,7 +699,7 @@ class ETCAlgorithm(object):
             aux_data=(each_flux, each_dflux, each_ndrop, 0, 0, 0, 0, 0, 0))
         # Update our accumulated background if the shutter is open.
         if self.accum.shutter_is_open:
-            if self.accum.update(mjd_stop):
+            if self.accum.update('SKY', mjd_stop, mjd_stop):
                 self.sky_measurements.set_last(
                     sig=self.accum.signal, bg=self.accum.background,
                     teff=self.accum.efftime, tproj=self.accum.remaining,
@@ -904,6 +904,7 @@ class ETCAlgorithm(object):
                 ),
                 thru=self.thru_measurements.save(mjd),
                 sky=self.sky_measurements.save(mjd),
+                accum=self.accum.transcript[:self.accum.ntranscript],
             )
         except Exception as e:
             logging.error(f'save_exposure: error building output dict: {e}')
