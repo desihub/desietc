@@ -236,7 +236,7 @@ class Accumulator(object):
         self.realtime_tot = self.realtime + prev_treal
         self.efftime_tot = self.efftime + prev_teff
         # Have we reached the cutoff time?
-        if self.realtime >= self.max_remaining:
+        if self.realtime >= self.max_remaining or len(self.mjd_grid[future]) == 0:
             # We have already reached the maximum allowed exposure time.
             self.action = ('stop', 'reached max_exposure_time')
             logging.info(f'Reached maximum exposure time of {self.max_exposure_time:.1f}s.')
