@@ -638,7 +638,7 @@ class ETCAlgorithm(object):
         self.ffrac_avg = self.ffrac_buffer.average(mjd_stop, self.avg_secs, self.avg_min_values)
         # Report timing.
         elapsed = time.time() - start
-        logging.debug(f'Guide frame processing took {elapsed:.2f}s for {nstar} stars in {ncamera} cameras.')
+        logging.info(f'Guide frame processing took {elapsed:.2f}s for {nstar} stars in {ncamera} cameras.')
         return True
 
     def process_sky_frame(self, data, timestamp):
@@ -693,7 +693,7 @@ class ETCAlgorithm(object):
             self.accum.update('SKY', mjd_stop, mjd_now)
         # Profile timing.
         elapsed = time.time() - start
-        logging.debug(f'Sky frame processing took {elapsed:.2f}s for {ncamera} cameras.')
+        logging.info(f'Sky frame processing took {elapsed:.2f}s for {ncamera} cameras.')
         return True
 
     def get_mjd_range(self, mjd_obs, exptime, source, max_jitter=5):

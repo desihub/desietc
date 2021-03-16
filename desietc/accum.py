@@ -195,6 +195,10 @@ class Accumulator(object):
         bool
             True if the update was successful.
         """
+        # Check for a large delay between the src and now.
+        delay = (mjd_now - mjd_src) * self.SECS_PER_DAY
+        if delay > 20:
+            logging.warning(f'Large update delay from {src}: {delay:.1f}s.')
         # Check the state of the shutter.
         if not self.shutter_is_open:
             logging.error(f'update: called with shutter closed [{self.nopen},{self.nclose}].')
