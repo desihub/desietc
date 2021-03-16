@@ -808,6 +808,9 @@ class MeasurementBuffer(object):
         E = self.entries[sel]
         if len(E) == 0:
             return {}
+        # Sort based on mjd1.
+        isort = np.argsort(E['mjd1'])
+        E = E[isort]
         # Convert to a dictionary of fields, excluding mjd1,2.
         D = {name: E[name] for name in E.dtype.fields if name not in ('mjd1','mjd2')}
         # Lookup the earliest MJD.
