@@ -444,6 +444,10 @@ class OnlineETC():
         return etc_status
 
     def reset(self, all = True, keep_accumulated = False, update_status = True):
+        # Dummy call that does nothing, still here in case ETCApp calls it.
+        logging.warning('OnlineETC.reset called but does nothing.')
+
+    def _reset(self, all = True, keep_accumulated = False, update_status = True):
         """
         """
         logging.info('OnlineETC.reset')
@@ -486,7 +490,7 @@ class OnlineETC():
             return FAILED
 
         # reset internal variables
-        self.reset(all=True)
+        self._reset(all=True)
 
         return SUCCESS
 
@@ -526,7 +530,7 @@ class OnlineETC():
             return FAILED
 
         # Reset status variables, keep seeing, sky level and transparency values
-        self.reset(all=True, update_status=False)
+        self._reset(all=True, update_status=False)
 
         # Store this exposure's parameters.
         self.expid = expid
