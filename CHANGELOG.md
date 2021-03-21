@@ -10,13 +10,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
  - Calculate FFRAC for sbprof=ELG,BGS,FLT.
  - Periodic telemetry updates when the shutters are open.
- - Hardcode SKYCAM exposure time to 60s until abort is working.
+ - mjd_plot utility to graph something versus MJD with localtime labels.
 ## Changed
  - Request to stop/split is only sent once per exposure.
+ - ICS calls to reset() no longer do anything.
 ### Removed
  - Remove debug logging of GFA array view/copy.
 ### Fixed
  - Fix spurious warnings about exptime jitter.
+ - Fix some db bugs.
 
 ## [0.1.2] - 2020-03-11
 ### Added
