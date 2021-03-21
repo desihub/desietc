@@ -16,6 +16,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.lines
 import matplotlib.patheffects
+import matplotlib.dates
 
 import desietc.util
 
@@ -273,3 +274,14 @@ def plot_measurements(buffer, mjd1, mjd2, ymin=0, resolution=1, label=None, ax=N
     ax.set_xlabel(f'Minutes relative to MJD {mjd1:.6f}')
     if label is not None:
         ax.set_ylabel(label)
+
+
+def mjd_plot(mjd, *args, axis=None, utc_offset=-7, date_format='%H:%M', **kwargs):
+    """Replacement for plt.plot or axis.plot where the x-axis value is an MJD interpreted
+    as a local datetime.
+    """
+    axis = axis or plt.gca()
+    plot_epoch = matplotlib.dates.date2num(datetime.datetime(1858, 11, 17) + datetime.timedelta(hours=utc_offset))
+    axis.plot_date(mjd + plot_epoch, *args, **kwargs)
+    axis.xaxis.set_major_formatter(matplotlib.dates.DateFormatter(date_format))
+    return axis
