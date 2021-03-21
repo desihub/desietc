@@ -177,11 +177,12 @@ def get_thru(path, specs=range(10), cameras='brz'):
     for (FCAL,), camera, spec in iterspecs(path, 'fluxcalib'):
         exptime = FCAL[0].read_header()['EXPTIME']
         fluxcalib, ivar = FCAL['FLUXCALIB'].read(), FCAL['IVAR'].read()
+        # Normalize to exptime before coadd since each spectrograph has a slightly different value.
         calibs[camera] += Spectrum(
             camera, np.median(fluxcalib, axis=0) / exptime, np.median(ivar, axis=0) * exptime ** 2)
     for camera in cameras:
-        # Convert from (1e17 elec cm2 s / erg) to (elec/phot)
-        calibs[camera] *= (1e17 * erg_per_photon[cslice[camera]]) / M1_area
+        # Convert from (1e17 elec cm2 / erg) to (elec/phot)
+        calibs[camera] /= M1_area / (1e17 * erg_per_photon[cslice[camera]])
     return calibs
 
 
