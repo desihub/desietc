@@ -178,7 +178,7 @@ class Exposures(object):
         if what is not None and what not in self.columns:
             raise ValueError(f'Invalid column name: "{what}".')
         if expid not in self.cache:
-            row = self.db.select('exposure.exposure', self.what, where=f'id={expid}', limit=1)
+            row = self.db.select('exposure.exposure', self.what, where=f'id={expid}', maxrows=1)
             if row is None:
                 raise ValueError('No such exposure id {0}.'.format(expid))
             # Cache the results.
@@ -203,7 +203,7 @@ class NightTelemetry(object):
     """
     def __init__(self, db, tablename, columns='*', cachesize=10, timestamp='time_recorded', verbose=False):
         # Run a test query.
-        test = db.select('telemetry.' + tablename, columns, limit=1)
+        test = db.select('telemetry.' + tablename, columns, maxrows=1)
         self.db = db
         self.cachesize = int(cachesize)
         self.tablename = tablename
