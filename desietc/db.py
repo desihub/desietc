@@ -78,10 +78,13 @@ class DB(object):
 
     def query(self, sql, maxrows=10, dates=None):
         """Perform a query using arbitrary SQL. Returns a pandas dataframe.
+        Use maxrows=None to remove any limit on the number of returned rows.
         """
         logging.debug(f'SQL: {sql}')
         if 'limit ' in sql.lower():
             raise ValueError('Must specify SQL LIMIT using maxrows.')
+        if maxrows is None:
+            maxrows = 'NULL'
         if self.method == 'direct':
             return pd.read_sql(sql + f' LIMIT {maxrows}', self.conn, parse_dates=dates)
         else:
