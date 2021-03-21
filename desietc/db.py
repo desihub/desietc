@@ -269,7 +269,7 @@ class NightTelemetry(object):
         if night not in self.cache:
             # Fetch the results.
             results = self.db.select(
-                self.tablename, self.what, limit=None,
+                self.tablename, self.what, maxrows=None,
                 where=f"{self.timestamp}>=TIMESTAMP '{tmin}' and {self.timestamp}<=TIMESTAMP '{tmax}'")
             # Convert the timestamp column to MJD.
             results['MJD'] = (results[self.timestamp] - self.MJD_epoch) / self.one_day
