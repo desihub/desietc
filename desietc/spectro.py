@@ -173,20 +173,15 @@ def get_thru(path, specs=range(10), cameras='brz'):
     loss and atmospheric extinction.
     """
     calibs = {c:CoAdd(c) for c in cameras}
-    exptime = None
     primary_area = 8.659e4 # cm2
     for (FCAL,), camera, spec in iterspecs(path, 'fluxcalib'):
-        if exptime is None:
-            hdr = FCAL[0].read_header()
-            exptime = hdr['EXPTIME']
-        else:
-            if FCAL[0].read_header()['EXPTIME'] != exptime:
-                raise RuntimeError(f'EXPTIME mismatch for fluxcalib in {path}')
+        exptime = FCAL[0].read_header()['EXPTIME']
         fluxcalib, ivar = FCAL['FLUXCALIB'].read(), FCAL['IVAR'].read()
-        calibs[camera] += Spectrum(camera, np.median(fluxcalib, axis=0), np.median(ivar, axis=0))
+        calibs[camera] += Spectrum(
+            camera, np.median(fluxcalib, axis=0) / exptime, np.median(ivar, axis=0) * exptime ** 2)
     for camera in cameras:
         # Convert from (1e17 elec cm2 s / erg) to (elec/phot)
-        calibs[camera] /= (M1_area * exptime) / (1e17 * erg_per_photon[cslice[camera]])
+        calibs[camera] *= (1e17 * erg_per_photon[cslice[camera]]) / M1_area
     return calibs
 
 
