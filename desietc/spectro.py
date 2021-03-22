@@ -152,16 +152,10 @@ def get_sky(path, specs=range(10), cameras='brz'):
     detected = {c:CoAdd(c) for c in cameras}
     exptime = None
     for (SKY,), camera, spec in iterspecs(path, 'sky', specs=specs, cameras=cameras):
-        if exptime is None:
-            exptime = SKY[0].read_header()['EXPTIME']
-        else:
-            if SKY[0].read_header()['EXPTIME'] != exptime:
-                raise RuntimeError(f'EXPTIME mismatch for sky in {path}')
+        exptime = SKY[0].read_header()['EXPTIME']
         flux, ivar = SKY['SKY'].read(), SKY['IVAR'].read()
-        detected[camera] += Spectrum(camera, np.median(flux, axis=0), np.median(ivar, axis=0))
-    # Convert from elec/Ang to elec/Ang/sec
-    for camera in cameras:
-        detected[camera] /= exptime
+        detected[camera] += Spectrum(
+            camera, np.median(flux, axis=0) / exptime, np.median(ivar, axis=0) * exptime ** 2)
     return detected
 
 
