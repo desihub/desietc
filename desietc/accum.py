@@ -314,5 +314,5 @@ class Accumulator(object):
         """
         sig_factor = self.MW_transp * signal
         rdnoise = self.rdnoise_1ks * 1000 / np.maximum(0.1, realtime)
-        bg_factor = (background + rdnoise) / (1 + rdnoise)
+        bg_factor = (background + rdnoise) / (1 + self.rdnoise_1ks)
         return realtime * sig_factor ** 2 / bg_factor

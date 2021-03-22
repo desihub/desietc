@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
  - Fix spurious warnings about exptime jitter.
  - Fix some db bugs.
+ - Fix efftime readnoise correction.
 
 ## [0.1.2] - 2020-03-11
 ### Added
