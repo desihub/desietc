@@ -6,7 +6,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.1.3] - Unreleased
+## [0.1.3] - 2021-03-22
 ### Added
  - Calculate FFRAC for sbprof=ELG,BGS,FLT.
  - Periodic telemetry updates when the shutters are open.
@@ -22,7 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
  - Fix some db bugs.
  - Fix efftime readnoise correction.
 
-## [0.1.2] - 2020-03-11
+## [0.1.2] - 2021-03-11
 ### Added
  - Implement call_when_about_to_stop/split.
  - Add last_updated ISO string to status.
@@ -35,7 +35,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
  - Output of png after acquisition image analysis.
 
-## [0.1.1] - 2020-03-08
+## [0.1.1] - 2021-03-08
 ### Added
  - Implement running averages of FFRAC, TRANSP.
  - Correct TRANSP reported to ICS to X=1.
@@ -52,5 +52,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
  - Fix logic for 3 or more cosmic splits.
 
-## [0.1.0] - 2020-02-28
+## [0.1.0] - 2021-02-28
 This is the first tag, used for on-sky testing during 20200228.
