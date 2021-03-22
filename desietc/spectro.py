@@ -151,7 +151,7 @@ def get_sky(path, specs=range(10), cameras='brz'):
     """
     detected = {c:CoAdd(c) for c in cameras}
     exptime = None
-    for (SKY,), camera, spec in iterspecs(path, 'sky', cameras=cameras):
+    for (SKY,), camera, spec in iterspecs(path, 'sky', specs=specs, cameras=cameras):
         if exptime is None:
             exptime = SKY[0].read_header()['EXPTIME']
         else:
@@ -174,7 +174,7 @@ def get_thru(path, specs=range(10), cameras='brz'):
     """
     calibs = {c:CoAdd(c) for c in cameras}
     primary_area = 8.659e4 # cm2
-    for (FCAL,), camera, spec in iterspecs(path, 'fluxcalib', cameras=cameras):
+    for (FCAL,), camera, spec in iterspecs(path, 'fluxcalib', specs=specs, cameras=cameras):
         exptime = FCAL[0].read_header()['EXPTIME']
         fluxcalib, ivar = FCAL['FLUXCALIB'].read(), FCAL['IVAR'].read()
         # Normalize to exptime before coadd since each spectrograph has a slightly different value.
