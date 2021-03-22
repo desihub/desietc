@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## Changed
  - Request to stop/split is only sent once per exposure.
  - ICS calls to reset() no longer do anything.
+ - Tune ETC parameters to TSNR2 using 20210319-21 data.
 ### Removed
  - Remove debug logging of GFA array view/copy.
 ### Fixed

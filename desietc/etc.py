@@ -43,7 +43,7 @@ class ETCAlgorithm(object):
     BUFFER_NAME = 'ETC_{0}_buffer'
 
     def __init__(self, sky_calib, gfa_calib, psf_pixels=25, max_dither=7, num_dither=1200,
-                 Ebv_coef=2.165, X_coef=0.114, ffrac_ref=0.56, nbad_threshold=100, nll_threshold=25,
+                 Ebv_coef=2.165, X_coef=0.114, ffrac_ref=0.435, nbad_threshold=100, nll_threshold=25,
                  avg_secs=300, avg_min_values=8, grid_resolution=0.5, parallel=True):
         """Initialize once per session.
 
@@ -783,7 +783,7 @@ class ETCAlgorithm(object):
                      + f'maxsplit={maxsplit}, warning_time={warning_time:.1f}s.')
         # Initialize accumulation for the upcoming sequence of cosmic splits.
         self.accum.setup(
-            req_efftime, max_exposure_time, cosmics_split_time, maxsplit, warning_time, rdnoise_1ks=0.25)
+            req_efftime, max_exposure_time, cosmics_split_time, maxsplit, warning_time, rdnoise_1ks=0.40)
 
     def open_shutter(self, expid, timestamp, splittable, max_shutter_time):
         """Record the shutter opening.
