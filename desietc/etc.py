@@ -461,9 +461,11 @@ class ETCAlgorithm(object):
         # Generate an acquisition analysis summary image.
         if nstars_tot > 0 and self.image_path is not None:
             try:
+                png_name = self.image_path / f'etc-{self.exptag}.png'
                 desietc.plot.save_acquisition_summary(
                     hdr['MJD-OBS'], self.exptag, psf_model, self.psf_stack, self.seeing, self.ffrac_psf,
-                    nstars, badfit, self.noisy_gfa, self.image_path / f'etc-{self.exptag}.png')
+                    nstars, badfit, self.noisy_gfa, png_name)
+                logging.info(f'Wrote {png_name}')
             except Exception as e:
                 logging.error(f'Failed to save acquisition analysis summary image: {e}')
         # Reset the guide frame counter and guide star data.

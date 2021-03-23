@@ -136,8 +136,10 @@ def save_acquisition_summary(
     """
     """
     # Get the size of the PSF model and stack images.
-    first = next(iter(psf_stack))
-    size = psf_stack[first].shape[1]
+    shapes = [D.shape for D in psf_stack.values() if D is not None]
+    if len(shapes) == 0:
+        return
+    size = shapes[0][1]
     # Get the number of expected in-focus GFAs.
     names = desietc.gfa.GFACamera.guide_names
     ngfa = len(names)
@@ -168,7 +170,7 @@ def save_acquisition_summary(
     for i, name in enumerate(names):
         axes[0, i].axis('off')
         axes[1, i].axis('off')
-        if name in psf_stack:
+        if name in psf_stack and psf_stack[name] is not None:
             data = psf_stack[name][0].copy()
             norm = model_sum.get(name, default_norm)
             data /= norm
@@ -185,7 +187,7 @@ def save_acquisition_summary(
                 xpt = np.array([-4 * du, dv, du, -dv, -4 * du])
                 ypt = np.array([4 * dv, du, -dv, -du, 4 * dv])
                 axes[0, i].add_line(matplotlib.lines.Line2D(xpt + xc, ypt + yc, c='c', lw=1, ls='-'))
-        if name in psf_model:
+        if name in psf_model and psf_model[name] is not None:
             data = psf_model[name]
             data /= model_sum[name]
             axes[1, i].imshow(psf_model[name], vmin=vmin, vmax=vmax, cmap=cmap,

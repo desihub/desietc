@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.1.4] - Unreleased
 ## Changed
  - Less verbose WARNING log messages.
+## Fixed
+ - PNG output when some GFAs have no guide stars.
 
 ## [0.1.3] - 2021-03-22
 ### Added
