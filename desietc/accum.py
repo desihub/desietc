@@ -265,7 +265,7 @@ class Accumulator(object):
             elif accum_teff[-1] + prev_teff < self.req_efftime:
                 # We will not reach the target before max_exposure_time.
                 istop = len(accum_teff) - 1
-                logging.warning('Will probably not reach requested SNR before max exposure time.')
+                logging.info('Will probably not reach requested SNR before max exposure time.')
             else:
                 # We expect to reach the target before mjd_max but are not there yet.
                 istop = np.argmax(accum_teff + prev_teff >= self.req_efftime)
