@@ -821,6 +821,11 @@ class ETCAlgorithm(object):
         if not self.accum.close(timestamp):
             return
         self.exp_data['close'] = desietc.util.date_to_mjd(timestamp, utc_offset=0)
+        # Use float32 values so they are rounded in the json output.
+        self.exp_data['efftime'] = np.float32(self.accum.efftime)
+        self.exp_data['realtime'] = np.float32(self.accum.realtime)
+        self.exp_data['signal'] = np.float32(self.accum.signal)
+        self.exp_data['background'] = np.float32(self.accum.background)
         logging.info(f'Shutter close[{self.accum.nclose}] at {timestamp} after {self.accum.realtime:.1f}s ' +
             f'with actual teff={self.accum.efftime:.1f}s')
 
