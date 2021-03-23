@@ -168,8 +168,9 @@ def save_acquisition_summary(
     # Loop over cameras.
     default_norm = np.median([s for s in model_sum.values()])
     for i, name in enumerate(names):
-        axes[0, i].axis('off')
-        axes[1, i].axis('off')
+        for ax in axes[:,i]:
+            ax.axis('off')
+            ax.add_artist(plt.Rectangle([0,0], 1, 1, fc='k', ec='none', transform=ax.transAxes, zorder=-1))
         if name in psf_stack and psf_stack[name] is not None:
             data = psf_stack[name][0].copy()
             norm = model_sum.get(name, default_norm)
@@ -221,7 +222,7 @@ def save_acquisition_summary(
         if nstar > 1: label += 's'
         text = ax.text(x, 0.45, label, color='w', ha='center', va='center', size=7, transform=ax.transAxes)
         text.set_path_effects(outline)
-        warn_args = dict(size=13, color='c', fontweight='bold')
+        warn_args = dict(size=10, color='c', fontweight='bold')
         if nstar == 0:
             text = ax.text(x, 0.92, 'NO STARS?', ha='center', va='top', transform=ax.transAxes, **warn_args)
             text.set_path_effects(outline)
