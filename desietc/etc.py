@@ -43,7 +43,7 @@ class ETCAlgorithm(object):
     BUFFER_NAME = 'ETC_{0}_buffer'
 
     def __init__(self, sky_calib, gfa_calib, psf_pixels=25, max_dither=7, num_dither=1200,
-                 Ebv_coef=2.165, X_coef=0.114, ffrac_ref=0.435, nbad_threshold=100, nll_threshold=25,
+                 Ebv_coef=2.165, X_coef=0.114, ffrac_ref=0.435, nbad_threshold=100, nll_threshold=100,
                  avg_secs=300, avg_min_values=8, grid_resolution=0.5, parallel=True):
         """Initialize once per session.
 
@@ -413,8 +413,8 @@ class ETCAlgorithm(object):
             hour_angle=hdr['MOUNTHA'],
             elevation=hdr['MOUNTEL'],
             azimuth=hdr['MOUNTAZ'],
-            airmass=X,
-            atm_extinction=self.atm_extinction,
+            airmass=np.float32(X),
+            atm_extinction=np.float32(self.atm_extinction),
         ))
         self.total_gfa_count += 1
         # Collect results from any parallel processes.
