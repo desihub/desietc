@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
  - Record efftime,realtime,signal,background in json expinfo.
 ## Changed
  - Less verbose WARNING log messages.
+ - Extend FWHM range of ELG/BGS FFRAC correction.
 ## Fixed
  - PNG output when some GFAs have no guide stars.
 

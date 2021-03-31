@@ -128,11 +128,11 @@ class ETCAlgorithm(object):
         # Initialize relative fiber fraction calculations.
         self.rel_ffrac = dict(PSF=0, ELG=0, BGS=0, FLT=0)
         self.rel_ffrac_coefs = dict(
-            # 5-th order polynomial coefs c0 + c1 * x + ... + c5 * x**5 with x = PSF FFRAC / ffrac_ref
+            # 6-th order polynomial coefs c0 + c1 * x + ... with x = PSF FFRAC / ffrac_ref
             # fit to the ratios ELG/PSF and BGS/PSF using data from
             # /global/cfs/cdirs/cosmo/www/temp/ameisner/fracflux_moffat_3.5.with_elg_bgs-1.52asec.fits
-            ELG=np.array([ 1.37284426, -0.77034065,  0.71108329, -0.46242521,  0.16854547, -0.01974473]),
-            BGS=np.array([ 2.02364733, -3.3049156 ,  5.32645113, -5.05426698,  2.5016857 , -0.49316198]),
+            ELG=np.array([ 1.38599847, -1.01135014, 1.99737017, -3.4756245 , 3.61460758, -1.90242666,  0.3925208]),
+            BGS=np.array([ 2.20152076, -5.2956353 , 13.20529484, -19.77502959, 16.57364863, -7.14848631, 1.23474732])
         )
         # Initialize running averages of ffrac and transp.
         self.ffrac_buffer = desietc.util.MeasurementBuffer(1000, 1)
@@ -922,7 +922,7 @@ class ETCAlgorithm(object):
         # Normalize the PSF value to nominal seeing.
         self.rel_ffrac['PSF'] = ffrac_psf / self.ffrac_ref
         # Clip the normalized PSF value to the range where our polynomial fits are valid.
-        x = np.clip(self.rel_ffrac['PSF'], 0.227, 1.457)
+        x = np.clip(self.rel_ffrac['PSF'], 0.08781, 1.71781)
         if x != self.rel_ffrac['PSF']:
             logging.warning(f'Clipped relative PSF FFRAC {self.rel_ffrac["PSF"]:.3f} to {x:.3f}.')
         # Use polynomial fits to convert normalized PSF value to other source models.
@@ -938,9 +938,11 @@ class ETCAlgorithm(object):
         except:
             logging.error('Failed to get current source model (sbprof).')
         self.rel_ffrac_sbprof = self.rel_ffrac[sbprof]
+        '''
         msg = f'ffrac_psf={self.ffrac_psf:.5f} => relative'
         for name, value in self.rel_ffrac.items():
             if name == sbprof:
                 name = '*' + name
             msg += f' {name}={value:.5f}'
         logging.info(msg)
+        '''
