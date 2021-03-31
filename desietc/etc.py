@@ -153,7 +153,7 @@ class ETCAlgorithm(object):
                 ('dy', np.float32, (self.ngfa,)),     # mean y shift of centroid from single GFA in pixels
             ])
         self.sky_measurements = desietc.util.MeasurementBuffer(
-            maxlen=200, default_value=1, aux_dtype=[
+            maxlen=200, default_value=1, padding=900, aux_dtype=[
                 ('flux', np.float32, (self.nsky,)),   # sky flux meausured from a single SKYCAM.
                 ('dflux', np.float32, (self.nsky,)),  # sky flux uncertainty meausured from a single SKYCAM.
                 ('ndrop', np.int32, (self.nsky,)),    # number of fibers dropped from the camera flux estimate.

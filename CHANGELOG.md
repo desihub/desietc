@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## Changed
  - Less verbose WARNING log messages.
  - Extend FWHM range of ELG/BGS FFRAC correction.
+ - Remember last sky measurment for 15 mins (was 5 mins).
 ## Fixed
  - PNG output when some GFAs have no guide stars.
 
