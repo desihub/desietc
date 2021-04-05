@@ -43,7 +43,7 @@ class ETCAlgorithm(object):
     BUFFER_NAME = 'ETC_{0}_buffer'
 
     def __init__(self, sky_calib, gfa_calib, psf_pixels=25, max_dither=7, num_dither=1200,
-                 Ebv_coef=2.165, X_coef=0.114, ffrac_ref=0.435, nbad_threshold=100, nll_threshold=100,
+                 Ebv_coef=2.165, X_coef=0.114, ffrac_ref=0.56, nbad_threshold=100, nll_threshold=100,
                  avg_secs=300, avg_min_values=8, grid_resolution=0.5, parallel=True):
         """Initialize once per session.
 
