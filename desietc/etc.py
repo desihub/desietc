@@ -456,6 +456,7 @@ class ETCAlgorithm(object):
         if np.any(np.isfinite(ffrac_vec)):
             ffrac_psf = np.nanmedian(ffrac_vec)
         self.set_rel_ffrac(ffrac_psf)
+        self.exp_data.update(dict(acq_fwhm=np.float32(self.seeing), acq_ffrac=np.float32(self.ffrac_psf)))
         logging.info(f'Acquisition image quality using {nstars_tot} stars: ' +
             f'FWHM={self.seeing:.2f}", FFRAC={self.ffrac_psf:.3}.')
         # Generate an acquisition analysis summary image.

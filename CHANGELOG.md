@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## Added
  - Record efftime,realtime,signal,background in json expinfo.
  - Hardcode 60s SKYCAM exposure time (until we debug the abort).
+ - Save acq_fwhm, acq_ffrac in json expinfo.
 ## Changed
  - Less verbose WARNING log messages.
  - Extend FWHM range of ELG/BGS FFRAC correction.
