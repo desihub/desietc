@@ -151,12 +151,14 @@ def get_sky(path, specs=range(10), cameras='brz'):
     """
     detected = {c:CoAdd(c) for c in cameras}
     exptime = None
+    found_specs = {C: [] for C in cameras}
     for (SKY,), camera, spec in iterspecs(path, 'sky', specs=specs, cameras=cameras):
         exptime = SKY[0].read_header()['EXPTIME']
         flux, ivar = SKY['SKY'].read(), SKY['IVAR'].read()
         detected[camera] += Spectrum(
             camera, np.median(flux, axis=0) / exptime, np.median(ivar, axis=0) * exptime ** 2)
-    return detected
+        found_specs[camera].append(spec)
+    return detected, found_specs
 
 
 def get_thru(path, specs=range(10), cameras='brz'):
@@ -168,16 +170,18 @@ def get_thru(path, specs=range(10), cameras='brz'):
     """
     calibs = {c:CoAdd(c) for c in cameras}
     primary_area = 8.659e4 # cm2
+    found_specs = {C: [] for C in cameras}
     for (FCAL,), camera, spec in iterspecs(path, 'fluxcalib', specs=specs, cameras=cameras):
         exptime = FCAL[0].read_header()['EXPTIME']
         fluxcalib, ivar = FCAL['FLUXCALIB'].read(), FCAL['IVAR'].read()
         # Normalize to exptime before coadd since each spectrograph has a slightly different value.
         calibs[camera] += Spectrum(
             camera, np.median(fluxcalib, axis=0) / exptime, np.median(ivar, axis=0) * exptime ** 2)
+        found_specs[camera].append(spec)
     for camera in cameras:
         # Convert from (1e17 elec cm2 / erg) to (elec/phot)
         calibs[camera] /= M1_area / (1e17 * erg_per_photon[cslice[camera]])
-    return calibs
+    return calibs, found_specs
 
 
 def get_ebv(path, specs=range(10)):
