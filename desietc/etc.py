@@ -53,10 +53,6 @@ class ETCAlgorithm(object):
             Path to the SKY camera calibration file to use.
         gfa_calib : str
             Path to the GFA camera calibration file to use.
-        min_exptime_secs : float
-            Minimum allowed spectrograph exposure time in seconds. A stop or split
-            request will never be issued until this interval has elapsed after
-            the spectrograph shutters open.
         psf_pixels : int
             Size of postage stamp to use for PSF measurements. Must be odd.
         max_dither : float
@@ -84,6 +80,10 @@ class ETCAlgorithm(object):
             A running average requires at least this many values.
         grid_resolution : float
             Resolution of grid (in seconds) to use for SNR calculations.
+        min_exptime_secs : float
+            Minimum allowed spectrograph exposure time in seconds. A stop or split
+            request will never be issued until this interval has elapsed after
+            the spectrograph shutters open.
         parallel : bool
             Process GFA images in parallel when True.
         """
@@ -163,7 +163,9 @@ class ETCAlgorithm(object):
                 ('ndrop', np.int32, (self.nsky,)),    # number of fibers dropped from the camera flux estimate.
             ])
         # Initialize exposure accumulator.
-        self.accum = desietc.accum.Accumulator(self.thru_measurements, self.sky_measurements, grid_resolution)
+        self.accum = desietc.accum.Accumulator(
+            sig_buffer=self.thru_measurements, bg_buffer=self.sky_measurements,
+            grid_resolution=grid_resolution, min_exptime_secs=min_exptime_secs)
         # Initialize the SKY camera processor.
         self.SKY = desietc.sky.SkyCamera(calib_name=sky_calib)
         # Prepare for parallel processing if necessary.

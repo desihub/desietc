@@ -17,7 +17,7 @@ class Accumulator(object):
 
     SOURCES = dict(OPEN=0, GFA=1, SKY=2, TICK=3, CLOSE=4)
 
-    def __init__(self, sig_buffer, bg_buffer, grid_resolution, max_transcript=10000):
+    def __init__(self, sig_buffer, bg_buffer, grid_resolution, min_exptime_secs=0, max_transcript=10000):
         """Initialize an effective exposure time accumulator.
 
         Parameters
@@ -28,10 +28,17 @@ class Accumulator(object):
         bg_buffer : MeasurementBuffer
             Buffer containing recent background sky-level measurements
             normalized to one for nominal conditions.
+        min_exptime_secs : float
+            Minimum allowed spectrograph exposure time in seconds. A stop or split
+            request will never be issued until this interval has elapsed after
+            the spectrograph shutters open.
+        max_transcript : int
+            Maximum number of transcript samples that can be recorded.
         """
         self.sig_buffer = sig_buffer
         self.bg_buffer = bg_buffer
         self.grid_resolution = grid_resolution
+        self.min_exptime_secs = min_exptime_secs
         self.reset()
         # Initialize a per-exposure transcript of updates.
         self.max_transcript = max_transcript
@@ -127,6 +134,9 @@ class Accumulator(object):
         # Grid values are bin centers, with spacing fixed at grid_resolution.
         # The grid covers from now up to the maximum allowed exposure time.
         self.max_remaining = self.max_exposure_time - np.sum(self.shutter_treal)
+        if self.max_remaining < self.min_exptime_secs:
+            logging.warning(f'Increased max remaining from {self.max_remaining:.1f}s to min exptime {self.min_exptime_secs:.1f}s.')
+            self.max_remaining = self.min_exptime_secs
         ngrid = int(np.ceil(self.max_remaining / self.grid_resolution))
         mjd = desietc.util.date_to_mjd(timestamp, utc_offset=0)
         self.mjd_grid = mjd + (np.arange(ngrid) + 0.5) * self.grid_resolution / self.SECS_PER_DAY
@@ -215,11 +225,13 @@ class Accumulator(object):
         # Lookup the real and effective time accumulated on all previous splits for this exposure.
         prev_teff = np.sum(self.shutter_teff)
         prev_treal = np.sum(self.shutter_treal)
+        # Calculate the MJD when the min exposure time has been reached.
+        mjd_min_exptime = mjd_open + self.min_exptime_secs / self.SECS_PER_DAY
         # --- The shutter is open and we have the NTS parameters to use -------------------------
         # Record the timestamp of this update.
         self.last_mjd = mjd_now
         self.last_updated = desietc.util.mjd_to_date(mjd_now, utc_offset=0).isoformat()
-        # Get grid indices coresponding to the most recent shutter opening and now.
+        # Get grid index coresponding to the current time.
         inow = np.searchsorted(self.mjd_grid, mjd_now)
         past, future = slice(0, inow + 1), slice(inow, None)
         # Tabulate the signal and background since the most recent shutter opening.
@@ -239,7 +251,7 @@ class Accumulator(object):
         if self.realtime >= self.max_remaining or len(self.mjd_grid[future]) == 0:
             # We have already reached the maximum allowed exposure time.
             self.action = ('stop', 'reached max_exposure_time')
-            logging.info(f'Reached maximum exposure time of {self.max_exposure_time:.1f}s.')
+            logging.info(f'Reached max remaining time of {self.max_remaining:.1f}s.')
             self.proj_efftime = self.efftime + prev_teff
             self.remaining = 0.
             self.next_split = 0.
@@ -271,15 +283,30 @@ class Accumulator(object):
                 istop = np.argmax(accum_teff + prev_teff >= self.req_efftime)
             # Lookup our expected stop time and time remaining, assuming the shutter stays open.
             mjd_stop = self.mjd_grid[istop]
+            # Enforce the minimum exposure time.
+            if mjd_stop < mjd_min_exptime:
+                if self.action is not None:
+                    logging.warning(f'Delaying stop until min exptime of {self.min_exptime_secs}s.')
+                    self.action = None
+                else:
+                    logging.warning(f'Estimated stop occurs before min exptime of {self.min_exptime_secs}s.')
+                mjd_stop = mjd_min_exptime
+                istop = min(np.searchsorted(self.mjd_grid, mjd_min_exptime), len(self.mjd_grid)-1)
+            # Calculate the remaining real time until we expect to stop.
             self.remaining = (mjd_stop - mjd_now) * self.SECS_PER_DAY
             # Calculate the corresponding effective time, including any previous shutters.
             self.proj_efftime = accum_teff[istop] + prev_teff
+            treal_stop = (mjd_stop - mjd_open) * self.SECS_PER_DAY
             logging.info(f'Will stop in {self.remaining:.1f}s at teff={self.proj_efftime:.1f}s' +
-                f' (target={self.req_efftime:.1f}s).')
+                f' (target={self.req_efftime:.1f}s), treal={treal_stop:.1f}s (max={self.max_remaining:.1f}s).')
             # Calculate how many cosmic splits are remaining if none exceeds the split maximum.
             nsplit_remaining = int(np.ceil((mjd_stop - mjd_open) * self.SECS_PER_DAY / self.cosmics_split_time))
             # Calculate when the next split should be.
             mjd_split = mjd_open + (mjd_stop - mjd_open) / nsplit_remaining
+            # Enforce the minimum exposure time.
+            if mjd_split < mjd_min_exptime:
+                logging.warning(f'Delaying split until min exptime of {self.min_exptime_secs}s.')
+                mjd_split = mjd_min_exptime
             self.next_split = (mjd_split - mjd_now) * self.SECS_PER_DAY
             if self.action is None and nsplit_remaining > 1:
                 logging.info(f'Next split ({self.nopen} of {self.nclose+nsplit_remaining}) in {self.next_split:.1f}s.')
