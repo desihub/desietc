@@ -44,7 +44,7 @@ class ETCAlgorithm(object):
 
     def __init__(self, sky_calib, gfa_calib, psf_pixels=25, max_dither=7, num_dither=1200,
                  Ebv_coef=2.165, X_coef=0.114, ffrac_ref=0.56, nbad_threshold=100, nll_threshold=100,
-                 avg_secs=300, avg_min_values=8, grid_resolution=0.5, parallel=True):
+                 avg_secs=300, avg_min_values=8, grid_resolution=0.5, min_exptime_secs=0, parallel=True):
         """Initialize once per session.
 
         Parameters
@@ -53,6 +53,10 @@ class ETCAlgorithm(object):
             Path to the SKY camera calibration file to use.
         gfa_calib : str
             Path to the GFA camera calibration file to use.
+        min_exptime_secs : float
+            Minimum allowed spectrograph exposure time in seconds. A stop or split
+            request will never be issued until this interval has elapsed after
+            the spectrograph shutters open.
         psf_pixels : int
             Size of postage stamp to use for PSF measurements. Must be odd.
         max_dither : float

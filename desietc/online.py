@@ -85,10 +85,24 @@ def get_utcnow():
 
 class OnlineETC():
 
-    def __init__(self, shutdown_event, min_telemetry_secs=2):
+    def __init__(self, shutdown_event, max_telemetry_secs=2, min_exptime_secs=240):
+        """Initialize an ETC instance for use in the ICS online environment.
 
+        Parameters
+        ----------
+        shutdown_event : threading.Event
+            Used to signal that we should shutdown.
+        max_telemetry_secs : float
+            Maximum allowed time, in seconds, between telemetry updates when an exposure
+            is in progress.
+        min_exptime_secs : float
+            Minimum allowed spectrograph exposure time in seconds. A stop or split
+            request will never be issued until this interval has elapsed after
+            the spectrograph shutters open (according to the time stamp passed to
+            :meth:`start_etc`).
+        """
         self.shutdown_event = shutdown_event
-        self.min_telemetry_interval = datetime.timedelta(seconds=min_telemetry_secs)
+        self.min_telemetry_interval = datetime.timedelta(seconds=max_telemetry_secs)
 
         # Callouts to the ETC application
         self.call_for_acq_image = None
@@ -109,7 +123,8 @@ class OnlineETC():
         sky_calib = os.getenv('ETC_SKY_CALIB', None)
         if gfa_calib is None or sky_calib is None:
             raise RuntimeError('ETC_GFA_CALIB and ETC_SKY_CALIB must be set.')
-        self.ETCalg = desietc.etc.ETCAlgorithm(sky_calib, gfa_calib, parallel=True)
+        self.ETCalg = desietc.etc.ETCAlgorithm(
+            sky_calib=sky_calib, gfa_calib=gfa_calib, min_exptime_secs=min_exptime_secs, parallel=True)
 
         # Initialize status variables
         self.expid = None
