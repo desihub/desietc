@@ -1,3 +1,18 @@
+"""To test OnlineETC outside of ICS, start the driver program with:
+
+   python -m desietc.app
+
+then, at the command line prompt (#), enter the following sequence of commands (for example):
+
+s     # start a new exposure
+f     # playback the first GFA frame
+o     # open the spectrograph shutters
+f 20  # playback the next 20 GFA/SKY frames
+c     # close the spectrograph shutters
+?     # request a telemetry update
+t     # stop the current exposure
+q     # shutdown the OnlineETC instance
+"""
 import os
 import sys
 import traceback
@@ -36,12 +51,13 @@ desietc.online.get_utcnow = hijacked_utcnow
 
 
 class OfflineETCApp:
-
-    def __init__(self):
+    """Emulation of the ICS ETCApp that can be used outside ICS to test OnlineETC.
+    """
+    def __init__(self, max_telemetry_secs=30):
         # Initialize the ETC.
         self.shutdown_event = threading.Event()
         self.shutdown_event.clear()
-        self.etc = desietc.online.OnlineETC(self.shutdown_event)
+        self.etc = desietc.online.OnlineETC(self.shutdown_event, max_telemetry_secs=max_telemetry_secs)
         # Prepare to handle callouts.
         self.etc.call_to_request_stop = self.call_to_request_stop
         self.etc.call_to_request_split = self.call_to_request_split
@@ -154,6 +170,7 @@ def main():
     app = OfflineETCApp()
     nframes = 0
     print('OfflineETCApp is running.')
+    #options = dict(req_efftime=1000, sbprof='ELG', max_exposure_time=2000, cosmics_split_time=1, maxsplit=4, warning_time=60)
     options = dict(req_efftime=1000, sbprof='ELG', max_exposure_time=2000, cosmics_split_time=1200, maxsplit=4, warning_time=60)
     #options = dict(req_efftime=300, sbprof='ELG', max_exposure_time=2000, cosmics_split_time=100, maxsplit=4, warning_time=60)
     while True:
