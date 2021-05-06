@@ -445,3 +445,63 @@ class GFASourceMeasure(object):
         yslice = slice(yslice.start + yinset.start, yslice.start + yinset.stop)
         xslice = slice(xslice.start + xinset.start, xslice.start + xinset.stop)
         return (yslice, xslice, d, w)
+
+
+# CS5 coordinates (mm) at the center of pixel (x,y)=[0,0] and the CS5 displacements
+# corresponding to [1,0]-[0,0] and [0,1]-[0,0] in each GFA, determined using
+# desimeter.transform.gfa2fp.gfa2fp.
+CS5 = {
+    'GUIDE0': array([
+        [ 9.18450162e+01, -3.97013561e+02],
+        [ 1.42573799e-02,  4.66981235e-03],
+        [-4.65492774e-03,  1.41892856e-02]]),
+    'GUIDE2': array([
+        [ 4.05753952e+02, -3.52939152e+01],
+        [ 4.31199162e-05,  1.50010651e-02],
+        [-1.49338639e-02,  3.37050638e-05]]),
+    'GUIDE3': array([
+        [ 3.48896107e+02,  2.10237056e+02],
+        [-8.86064348e-03,  1.21055081e-02],
+        [-1.20477346e-02, -8.82590456e-03]]),
+    'GUIDE5': array([
+        [-9.18888483e+01,  3.96855686e+02],
+        [-1.42618407e-02, -4.65682022e-03],
+        [ 4.64286359e-03, -1.41935916e-02]]),
+    'GUIDE7': array([
+        [-4.05816895e+02,  3.54535663e+01],
+        [-1.00846756e-05, -1.50027231e-02],
+        [ 1.49362446e-02, -1.36688551e-06]]),
+    'GUIDE8': array([
+        [-3.49403148e+02, -2.09911349e+02],
+        [ 8.75839914e-03, -1.21795768e-02],
+        [ 1.21237342e-02,  8.72473620e-03]])
+}
+
+def gfa_to_cs5(x_gfa, y_gfa, camera):
+    """Convert GFA pixel coordinates to CS5 coordinates in mm.
+
+    Parameters
+    ----------
+    x_gfa : float or 1-d array
+        GFA pixel coordinates where 0 refers to the center of the corner pixel.
+    y_gfa : float or 1-d array
+        GFA pixel coordinates where 0 refers to the center of the corner pixel.
+    camera : str
+        Name of the in-focus GFA to perform the conversion for.
+
+    Returns
+    -------
+    array
+        CS5 coordinates in mm. Will have shape (2,) if the inputs are scalars,
+        or (N,2) if the inputs are 1-d arrays of length N.
+    """
+    scalar = np.isscalar(x_gfa)
+    x_gfa = np.atleast_1d(x_gfa)
+    y_gfa = np.atleast_1d(y_gfa)
+    if x_gfa.shape != y_gfa.shape:
+        raise ValueError('x,y arrays do not have the same shape.')
+    if x_gfa.ndim != 1:
+        raise ValueError('x,y arrays must be 1d.')
+    XY = np.stack((np.ones_like(x_gfa), x_gfa, y_gfa), axis=1)
+    result = XY.dot(CS5[camera])
+    return result[0] if scalar else result
