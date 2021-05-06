@@ -505,3 +505,35 @@ def gfa_to_cs5(x_gfa, y_gfa, camera):
     XY = np.stack((np.ones_like(x_gfa), x_gfa, y_gfa), axis=1)
     result = XY.dot(CS5[camera])
     return result[0] if scalar else result
+
+
+def get_fiber_profile(x0, y0, camera, size, fiber_diam_um=107, pixel_size_um=15, nos=1):
+    """Calculate the synthetic fiber profile centered at (x0,y0) in a GFA
+    that represents a weighted average of platescale-corrected focal-plane
+    fiber positions.
+    """
+    # Convert (x0,y0) to CS5.
+    x_cs5, y_cs5 = gfa_to_cs5(x0, y0, camera)
+    r_cs5 = np.hypot(x_cs5, y_cs5)
+
+    iy, ix = np.round(y0).astype(int), np.round(x0).astype(int)
+    r0 = 0.5 * fiber_diam_um / pixel_size_um
+    dYdth_gfa, dXdth_gfa = desietc.util.get_platescales(r_cs5)
+
+    # Representative radii that sample the distribution of positioner radii on a petal
+    # derived from $DESIMODEL/data/focalplane/fiberpos-all.ecsv
+    rfibers = np.array(
+      [ 69.06885721, 129.05435611, 164.5269194 , 193.4449678 ,
+       216.78559103, 238.03225366, 258.75740161, 277.12360033,
+       293.66794588, 309.90058822, 325.98288641, 340.3077259 ,
+       354.16032478, 369.3513516 , 384.48016671, 399.65163889])
+
+    fiber = np.zeros((size*nos, size*nos))
+    for rfiber in rfibers:
+        dYdth_fiber, dXdth_fiber = desietc.util.get_platescales(rfiber)
+        sx = dXdth_fiber / dXdth_gfa
+        sy = dYdth_fiber / dYdth_gfa
+        profile = lambda x, y: 1.0 * ((sx*x/nos) ** 2 + (sy*y/nos) ** 2 < r0 ** 2)
+        fiber += desietc.util.make_template(size*nos, profile, dx=(x0-ix)*nos, dy=(y0-iy)*nos, normalized=False)
+
+    return fiber / len(rfibers)

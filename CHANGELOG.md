@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## Added
  - GFA pixel to CS5 transforms.
  - Implement platescale interpolator.
+## Changed
+ - Improved method to calculate synthetic fiber profile centered on a guide star.
 
 ## [0.1.5] - 2021-05-06
 ## Added
