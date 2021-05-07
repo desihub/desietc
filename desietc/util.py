@@ -1029,3 +1029,15 @@ CS5 focal-plane radius in mm, using linear interpolation.
 """
 get_platescales = scipy.interpolate.interp1d(
     platescale_data[0], platescale_data[1:], copy=False, assume_sorted=True)
+
+
+def robust_median(X, axis=0, zcut=3.5):
+    """Calculate a robust median of X along the specified axis.
+    """
+    X = np.asarray(X, np.float64)
+    X0 = np.nanmedian(X, axis=axis, keepdims=True)
+    MAD = np.nanmedian(np.abs(X - X0), axis=axis, keepdims=True)
+    Z = 0.6745 * (X - X0)
+    good = np.abs(Z) <= zcut * MAD
+    X[~good] = np.nan
+    return np.nanmedian(X, axis=axis)
