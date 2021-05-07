@@ -731,6 +731,9 @@ class ETCAlgorithm(object):
             logging.warning(f'Using default GCCDTEMP {ccdtemp}C for {source}')
         try:
             thisGFA = self.GFAs[camera]
+            if np.all(data['data'] == 0):
+                logging.warning(f'Ignoring {source} raw data that is all zeros.')
+                return False
             thisGFA.setraw(data['data'], name=camera)
         except ValueError as e:
             logging.error(f'Failed to process {source} raw data: {e}')
