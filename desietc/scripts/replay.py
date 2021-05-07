@@ -125,7 +125,7 @@ def etcoffline(args):
 
     # Initialize the global ETC algorithm.
     ETC = desietc.etc.ETCAlgorithm(
-        args.sky_calib, args.gfa_calib, args.psf_pixels, args.max_dither, args.num_dither,
+        args.sky_calib, args.gfa_calib, args.psf_pixels, args.guide_pixels, args.max_dither, args.num_dither,
         args.Ebv_coef, args.X_coef, args.ffrac_ref, args.nbad_threshold, args.nll_threshold,
         args.avg_secs, args.avg_min_values, args.grid_resolution, args.parallel)
 
@@ -218,7 +218,9 @@ def main():
     parser.add_argument('--watch-interval', type=float, metavar='T', default=2,
         help='Interval in seconds to check for new exposures with --watch')
     parser.add_argument('--psf-pixels', type=int, default=25,
-        help='Size of PSF stamp to use for guide star measurements')
+        help='Size of stamp to use for acquisition image PSF measurements (must be odd)')
+    parser.add_argument('--guide-pixels', type=int, default=31,
+        help='Size of stamp to use for guide star measurements (must be odd)')
     parser.add_argument('--max-dither', type=float, default=7,
         help='Maximum dither in pixels to use for guide star fits')
     parser.add_argument('--num-dither', type=int, default=1200,

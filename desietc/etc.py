@@ -42,7 +42,7 @@ class ETCAlgorithm(object):
     SECS_PER_DAY = 86400
     BUFFER_NAME = 'ETC_{0}_buffer'
 
-    def __init__(self, sky_calib, gfa_calib, psf_pixels=25, max_dither=7, num_dither=1200,
+    def __init__(self, sky_calib, gfa_calib, psf_pixels=25, guide_pixels=31, max_dither=7, num_dither=1200,
                  Ebv_coef=2.165, X_coef=0.114, ffrac_ref=0.56, nbad_threshold=100, nll_threshold=100,
                  avg_secs=300, avg_min_values=8, grid_resolution=0.5, min_exptime_secs=0, parallel=True):
         """Initialize once per session.
@@ -54,7 +54,9 @@ class ETCAlgorithm(object):
         gfa_calib : str
             Path to the GFA camera calibration file to use.
         psf_pixels : int
-            Size of postage stamp to use for PSF measurements. Must be odd.
+            Size of stamp to use for acquisition image PSF measurements. Must be odd.
+        guide_pixels : int
+            Size of stamp to use for guide star measurements. Must be odd.
         max_dither : float
             Maximum dither to use in pixels relative to PSF centroid.
         num_dither : int
