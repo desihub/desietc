@@ -107,16 +107,22 @@ class ETCAlgorithm(object):
         if psf_pixels % 2 == 0:
             raise ValueError('psf_pixels must be odd.')
         psf_grid = np.arange(psf_pixels + 1) - psf_pixels / 2
-        self.GMM = desietc.gmm.GMMFit(psf_grid, psf_grid)
-        self.xdither, self.ydither = desietc.util.diskgrid(num_dither, max_dither, alpha=2)
+        self.GMMpsf = desietc.gmm.GMMFit(psf_grid, psf_grid)
         self.psf_pixels = psf_pixels
         psf_stacksize = desietc.gfa.GFACamera.psf_stacksize
         if self.psf_pixels > psf_stacksize:
             raise ValueError(f'psf_pixels must be <= {psf_stacksize}.')
-        # Use a smaller stamp for fitting the PSF.
+        # Use a smaller stamp for PSF measurements.
         ntrim = (psf_stacksize - self.psf_pixels) // 2
         self.psf_inset = slice(ntrim, ntrim + self.psf_pixels)
         self.measure = desietc.util.PSFMeasure(psf_stacksize)
+        # Initialize guide star analysis.
+        if guide_pixels % 2 == 0:
+            raise ValueError('guide_pixels must be odd.')
+        self.guide_pixels = guide_pixels
+        guide_grid = np.arange(guide_pixels + 1) - guide_pixels / 2
+        self.GMMguide = desietc.gmm.GMMFit(guide_grid, guide_grid)
+        self.xdither, self.ydither = desietc.util.diskgrid(num_dither, max_dither, alpha=2)
         # Initialize analysis results.
         self.exp_data = {}
         self.num_guide_frames = 0
@@ -220,7 +226,7 @@ class ETCAlgorithm(object):
                 self.pipes[camera], child = context.Pipe()
                 self.processes[camera] = context.Process(
                     target=ETCAlgorithm.gfa_process, daemon=True, args=(
-                        camera, self.gfa_calib, self.GMM, self.psf_inset, self.measure, child))
+                        camera, self.gfa_calib, self.GMMpsf, self.psf_inset, self.measure, child))
                 self.processes[camera].start()
         logging.info(f'Initialized {len(self.GFAs)} GFA processes.')
 
@@ -408,7 +414,7 @@ class ETCAlgorithm(object):
                 pending.append(camera)
             else:
                 self.acquisition_data[camera], self.psf_stack[camera] = self.measure_psf(
-                    self.GFAs[camera], self.GMM, self.psf_inset, self.measure)
+                    self.GFAs[camera], self.GMMpsf, self.psf_inset, self.measure)
             ncamera += 1
         # Calculate the atmospheric extintion factor to use.
         X = desietc.util.cos_zenith_to_airmass(np.sin(np.deg2rad(hdr['MOUNTEL'])))
@@ -454,9 +460,9 @@ class ETCAlgorithm(object):
             if len(gmm_params) == 0:
                 logging.warning(f'PSF measurement failed for {camera}.')
                 continue
-            psf_model[camera] = self.GMM.predict(gmm_params)
+            psf_model[camera] = self.GMMpsf.predict(gmm_params)
             # Precompute dithered renderings of the model for fast guide frame fits.
-            self.dithered_model[camera] = self.GMM.dither(gmm_params, self.xdither, self.ydither)
+            self.dithered_model[camera] = self.GMMguide.dither(gmm_params, self.xdither, self.ydither)
         # Update the current FWHM, FFRAC values now.
         self.seeing, ffrac_psf = 0., 0.
         if np.any(np.isfinite(fwhm_vec)):
@@ -493,7 +499,7 @@ class ETCAlgorithm(object):
             logging.warning(f'Overwriting previous guide stars for {self.exptag}.')
         max_rsq = (0.5 * fiber_diam_um / pixel_size_um) ** 2
         profile = lambda x, y: 1.0 * (x ** 2 + y ** 2 < max_rsq)
-        halfsize = self.psf_pixels // 2
+        halfsize = self.guide_pixels // 2
         self.guide_stars = {}
         self.fiber_templates = {}
         nstars = []
@@ -526,7 +532,7 @@ class ETCAlgorithm(object):
                 # Calculate an antialiased fiber template for FFRAC calculations.
                 fiber_dx, fiber_dy = x0 - ix, y0 - iy
                 fiber = desietc.util.make_template(
-                    self.psf_pixels, profile, dx=fiber_dx, dy=fiber_dy, normalized=False)
+                    self.guide_pixels, profile, dx=fiber_dx, dy=fiber_dy, normalized=False)
                 stars.append(dict(
                     x0=np.float32(x0), y0=np.float32(y0), rmag=np.float32(rmag),
                     nelec_rate=np.float32(nelec_rate),
@@ -592,7 +598,7 @@ class ETCAlgorithm(object):
                 DW = thisGFA.ivar[yslice, xslice]
                 # Estimate the actual centroid in pixels, flux in electrons and
                 # constant background level in electrons / pixel.
-                dx, dy, flux, bg, nll, best_fit = self.GMM.fit_dithered(
+                dx, dy, flux, bg, nll, best_fit = self.GMMguide.fit_dithered(
                     self.xdither, self.ydither, dithered, D, DW)
                 # Calculate centroid offset relative to the target fiber center.
                 dx -= star['fiber_dx']
