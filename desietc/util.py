@@ -12,6 +12,8 @@ import numpy as np
 
 import scipy.ndimage
 import scipy.interpolate
+import scipy.linalg
+import scipy.signal
 
 
 def fit_spots(data, ivar, profile, area=1):
@@ -1041,3 +1043,52 @@ def robust_median(X, axis=0, zcut=3.5):
     good = np.abs(Z) <= zcut * MAD
     X[~good] = np.nan
     return np.nanmedian(X, axis=axis)
+
+
+def pwlinear_solve(t, dt, yint):
+    """Calculate the piecewise linear function y(t) passing through points (t[i], y[i])
+    with integrals yint[i] = Integrate[y[t], {t,t[i]-dt[i]/2,t[i]+dt[i]/2}].
+
+    Parameters
+    ----------
+    t : array
+        1D array of points at the center of each integral.
+    dt : array
+        1D array of widths for each integral.
+    yint : array
+        1D array of integral values.
+
+    Returns
+    -------
+    array
+        1D array y[i] such that yint[i] = Integrate[y[t], {t,t[i]-dt[i]/2,t[i]+dt[i]/2}]
+        when y(t) is piecewise linear through (t[i],y[i]) and constant below and above
+        the endpoints.
+    """
+    dt = np.asarray(dt)
+    assert len(dt) == len(t)
+    assert len(dt) == len(yint)
+    Dt = np.diff(t)
+    dt2 = dt ** 2 / 8
+    hi = dt2[1:] / Dt
+    lo = dt2[:-1] / Dt
+    banded = np.zeros((3, len(dt)))
+    banded[1] = dt
+    banded[1,:-1] -= hi
+    banded[1,1:] -= lo
+    banded[0,1:] = hi
+    banded[2,:-1] = lo
+    return scipy.linalg.solve_banded((1,1), banded, yint)
+
+
+_blur_kernel = np.array([
+    [1.8584491e-07, 4.3132287e-04, 1.8588798e-07],
+    [4.3132226e-04, 9.9827397e-01, 4.3132226e-04],
+    [1.8588798e-07, 4.3132287e-04, 1.8584491e-07]], dtype=float32)
+
+def blur(D, W):
+    """Apply a weighted 0.15-pixel Gaussian blur to reduce the impact of any
+    isolated pixels with large ivar"""
+    DWconv = scipy.signal.convolve(D * W, _blur_kernel, mode='same')
+    Wconv = scipy.signal.convolve(W, _blur_kernel, mode='same')
+    return np.divide(DWconv, Wconv, out=np.zeros_like(D), where=Wconv>0), Wconv

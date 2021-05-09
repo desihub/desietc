@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## Added
  - GFA pixel to CS5 transforms.
  - Implement platescale interpolator.
+ - 0.15 pixel blur to minimize impact of isolated pixels with large ivar.
+ - piece-wise linear correction for GFA,SKY deadtime.
 ## Changed
  - Improved method to calculate synthetic fiber profile centered on a guide star.
 
