@@ -1084,7 +1084,7 @@ def pwlinear_solve(t, dt, yint):
 _blur_kernel = np.array([
     [1.8584491e-07, 4.3132287e-04, 1.8588798e-07],
     [4.3132226e-04, 9.9827397e-01, 4.3132226e-04],
-    [1.8588798e-07, 4.3132287e-04, 1.8584491e-07]], dtype=float32)
+    [1.8588798e-07, 4.3132287e-04, 1.8584491e-07]], dtype=np.float32)
 
 def blur(D, W):
     """Apply a weighted 0.15-pixel Gaussian blur to reduce the impact of any
