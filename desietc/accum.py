@@ -344,7 +344,9 @@ class Accumulator(object):
         exposure time, accumulated signal and background rates, and their nominal values
         and MW transparency specified in the last call to :meth:`setup_exposure`.
         """
-        sig_factor = self.MW_transp * signal
+        # The factor of (1.038 / 1.107) = 0.93767 is to correct for the larger mean
+        # ETC/SPEC ratio with the new algorithms.
+        sig_factor = self.MW_transp * signal * 0.93767
         rdnoise = self.rdnoise_1ks * 1000 / np.maximum(0.1, realtime)
         bg_factor = (background + rdnoise) / (1 + self.rdnoise_1ks)
         return scale * realtime * sig_factor ** 2 / bg_factor
