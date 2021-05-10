@@ -178,6 +178,7 @@ class ETCAlgorithm(object):
         # Initialize exposure accumulator.
         self.accum = desietc.accum.Accumulator(
             sig_buffer=self.thru_measurements, bg_buffer=self.sky_measurements,
+            thru_psf_buffer=self.thru_psf_buffer,
             grid_resolution=grid_resolution, min_exptime_secs=min_exptime_secs)
         # Initialize the SKY camera processor.
         self.SKY = desietc.sky.SkyCamera(calib_name=sky_calib)
