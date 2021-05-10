@@ -773,10 +773,19 @@ class MeasurementBuffer(object):
         if not np.any(sel):
             return np.full_like(mjd_grid, self.default_value)
         mjd_sel = 0.5 * (self.entries[sel]['mjd1'] + self.entries[sel]['mjd2'])
+        dmjd_sel = self.entries[sel]['mjd2'] - self.entries[sel]['mjd1']
         value_sel = self.entries[sel]['value']
+        # Values might not be recorded in time order so fix that now.
         iorder = np.argsort(mjd_sel)
+        mjd_sel = mjd_sel[iorder]
+        dmjd_sel = dmjd_sel[iorder]
+        value_sel = value_sel[iorder]
+        # The measurements are integrals over each exposure with some deadtime between them.
+        # Correct for this deadtime by calculating a piece-wise linear approximation to
+        # the instantaneous value that matches the measured integrals.
+        value_sel_corrected = pwlinear_solve(mjd_sel, dmjd_sel, value_sel * dmjd_sel)
         # Use linear interpolation with constant extrapolation beyond the endpoints.
-        return np.interp(mjd_grid, mjd_sel[iorder], value_sel[iorder])
+        return np.interp(mjd_grid, mjd_sel, value_sel_corrected)
 
     def trend(self, mjd):
         """Return the linear trend in values over (mjd - recent, mjd).
