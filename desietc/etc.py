@@ -531,8 +531,7 @@ class ETCAlgorithm(object):
                 yslice, xslice = (ylo, yhi), (xlo, xhi)
                 # Calculate an antialiased fiber template for FFRAC calculations.
                 fiber_dx, fiber_dy = x0 - ix, y0 - iy
-                fiber = desietc.util.make_template(
-                    self.guide_pixels, profile, dx=fiber_dx, dy=fiber_dy, normalized=False)
+                fiber = desietc.gfa.get_fiber_profile(x0, y0, camera, self.guide_pixels)
                 stars.append(dict(
                     x0=np.float32(x0), y0=np.float32(y0), rmag=np.float32(rmag),
                     nelec_rate=np.float32(nelec_rate),
