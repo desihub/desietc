@@ -123,6 +123,10 @@ class ETCAlgorithm(object):
         guide_grid = np.arange(guide_pixels + 1) - guide_pixels / 2
         self.GMMguide = desietc.gmm.GMMFit(guide_grid, guide_grid)
         self.xdither, self.ydither = desietc.util.diskgrid(num_dither, max_dither, alpha=2)
+        # Create the mask of background pixels.
+        bg_radius = 11 # pixels
+        BGprofile = lambda x, y: 1.0 * ((x ** 2 + y ** 2 > bg_radius ** 2))
+        self.BGmask = (desietc.util.make_template(guide_pixels, BGprofile, dx=0, dy=0, normalized=False) > 0.5)
         # Initialize analysis results.
         self.exp_data = {}
         self.num_guide_frames = 0
@@ -569,6 +573,7 @@ class ETCAlgorithm(object):
             return False
         # Loop over cameras with acquisition results.
         mjd_obs, exptime, camera_transp, camera_ffrac = [], [], [], []
+        star_fluxsum, star_profsum, star_ffracs, star_fluxnorm = [], [], [], []
         each_ffrac, each_transp = np.zeros(self.ngfa, np.float32), np.zeros(self.ngfa, np.float32)
         each_dx, each_dy = np.zeros(self.ngfa, np.float32), np.zeros(self.ngfa, np.float32)
         for icam, camera in enumerate(desietc.gfa.GFACamera.guide_names):
@@ -595,6 +600,11 @@ class ETCAlgorithm(object):
                 xslice, yslice = slice(*star['xslice']), slice(*star['yslice'])
                 D = thisGFA.data[yslice, xslice]
                 DW = thisGFA.ivar[yslice, xslice]
+                FIBER = templates[istar]
+                fluxnorm = star['nelec_rate'] * self.exptime
+
+                ###### Original PSF model fit
+
                 # Estimate the actual centroid in pixels, flux in electrons and
                 # constant background level in electrons / pixel.
                 dx, dy, flux, bg, nll, best_fit = self.GMMguide.fit_dithered(
@@ -603,31 +613,52 @@ class ETCAlgorithm(object):
                 dx -= star['fiber_dx']
                 dy -= star['fiber_dy']
                 # Calculate the corresponding fiber fraction for this star.
-                ffrac = np.sum(templates[istar] * best_fit)
+                ffrac = np.sum(FIBER * best_fit)
                 # Calculate the transparency as the ratio of measured / predicted electrons.
-                transp = flux / (star['nelec_rate'] * self.exptime)
+                transp = flux / fluxnorm
                 star_transp.append(transp)
                 star_ffrac.append(ffrac)
                 star_dx.append(dx)
                 star_dy.append(dy)
+
+                ###### New pixel-level analysis
+
+                # Blur by 0.15 pixel to reduce artifacts from isolated pixels with large ivar.
+                D, DW = desietc.util.blur(D, DW)
+                # Estimate and subtract the flat background level.
+                bg_per_pixel = np.median(D[self.BGmask])
+                D -= bg_per_pixel
+                # Sum the signal flux over the full stamp.
+                star_fluxsum.append(D.sum())
+                # Sum the signal flux over the fiber profile.
+                star_profsum.append((D * FIBER).sum())
+                # Calculate fiber fractions.
+                star_ffracs.append(desietc.util.get_fiber_fractions(D, FIBER))
+                # Calculate the expected total PSF flux with transparency=1.
+                star_fluxnorm.append(fluxnorm)
+
+                logging.info(f'{camera}[{fnum}] {star_fluxsum[-1]:.1f} {star_profsum[-1]:.1f} {star_fluxnorm[-1]:.1f} {star_ffracs[-1][0]:.4f} {star_ffracs[-1][1]:.4f} {star_ffracs[-1][2]:.4f}')
+
                 nstar += 1
+
             camera_transp.append(np.nanmedian(star_transp))
             camera_ffrac.append(np.nanmedian(star_ffrac))
             # Prepare the auxiliary data saved to the ETC json file.
-            if nstar > 0:
+            if len(star_dx) > 0:
                 each_ffrac[icam] = camera_ffrac[-1]
                 each_transp[icam] = camera_transp[-1]
                 each_dx[icam] = np.nanmean(star_dx)
                 each_dy[icam] = np.nanmean(star_dy)
                 logging.debug(
                     f'{camera}[{fnum}] ffrac={each_ffrac[icam]:.3f} transp={each_transp[icam]:.3f} ' +
-                    f'dx={each_dx[icam]:.2f} dy={each_dy[icam]:.2f} nstar={nstar}.')
+                    f'dx={each_dx[icam]:.2f} dy={each_dy[icam]:.2f} nstar={len(star_dx)}.')
             mjd_obs.append(self.mjd_obs)
             exptime.append(self.exptime)
             ncamera += 1
         # Did we get any useful data?
         if ncamera == 0:
             return False
+
         # Combine all cameras.
         self.transp_obs = np.nanmedian(camera_transp) if np.any(np.isfinite(camera_transp)) else 0.
         ffrac_psf = np.nanmedian(camera_ffrac) if np.any(np.isfinite(camera_ffrac)) else 0.
