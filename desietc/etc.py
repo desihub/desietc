@@ -151,6 +151,7 @@ class ETCAlgorithm(object):
             BGS=np.array([ 2.20152076, -5.2956353 , 13.20529484, -19.77502959, 16.57364863, -7.14848631, 1.23474732])
         )
         # Initialize running averages of ffrac and transp.
+        self.thru_psf_buffer = desietc.util.MeasurementBuffer(1000, 1)
         self.ffrac_buffer = desietc.util.MeasurementBuffer(1000, 1)
         self.transp_buffer = desietc.util.MeasurementBuffer(1000, 1)
         self.ffrac_avg = None
@@ -704,13 +705,14 @@ class ETCAlgorithm(object):
         self.thru_measurements.add(
             mjd_start, mjd_stop, self.thru_sbprof_rel, 0.01,
             aux_data=(each_ffrac, each_transp, each_dx, each_dy))
+        self.thru_psf_buffer.add(mjd_start, mjd_stop, self.thru_psf, 0.1)
         # Update our accumulated signal if the shutter is open.
         if self.accum.shutter_is_open:
             mjd_now = desietc.util.date_to_mjd(timestamp, utc_offset=0)
             self.accum.update('GFA', mjd_stop, mjd_now)
         # Update running averages.
         self.transp_buffer.add(mjd_start, mjd_stop, self.transp_zenith, 0.1)
-        self.ffrac_buffer.add(mjd_start, mjd_stop, self.rel_ffrac_sbprof, 0.1)
+        self.ffrac_buffer.add(mjd_start, mjd_stop, self.ffrac_psf / 0.56198, 0.1)
         self.transp_avg = self.transp_buffer.average(mjd_stop, self.avg_secs, self.avg_min_values)
         self.ffrac_avg = self.ffrac_buffer.average(mjd_stop, self.avg_secs, self.avg_min_values)
         # Report timing.
