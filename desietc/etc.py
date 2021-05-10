@@ -665,16 +665,14 @@ class ETCAlgorithm(object):
             return False
 
         # Combine all cameras...
-
+        '''
         ### Original PSF model fit
         self.transp_obs = np.nanmedian(camera_transp) if np.any(np.isfinite(camera_transp)) else 0.
         ffrac_psf = np.nanmedian(camera_ffrac) if np.any(np.isfinite(camera_ffrac)) else 0.
         # Calculate relative FFRAC for different profiles.
         self.set_rel_ffrac(ffrac_psf)
         thru = self.transp_obs * self.rel_ffrac_sbprof
-
-        ### New pixel-level analysis
-
+        '''
         self.transp_obs = desietc.util.robust_median(star_fluxsum[:nstar] / star_fluxnorm[:nstar])
         self.thru_psf = desietc.util.robust_median(star_profsum[:nstar] / star_fluxnorm[:nstar])
         self.ffrac_psf = self.thru_psf / self.transp_obs
@@ -682,16 +680,29 @@ class ETCAlgorithm(object):
         bgs_ratio = desietc.util.robust_median(star_ffracs[:nstar,2] / star_ffracs[:nstar,0])
         self.thru_elg = self.thru_psf * elg_ratio
         self.thru_bgs = self.thru_psf * bgs_ratio
-        logging.info(f'[{fnum}] {self.transp_obs:.4f} {self.ffrac_psf:.4f} {self.thru_psf:.4f} {self.thru_elg:.4f} {self.thru_bgs:.4f}')
+        #logging.debug(f'[{fnum}] {self.transp_obs:.4f} {self.ffrac_psf:.4f} {self.thru_psf:.4f} {self.thru_elg:.4f} {self.thru_bgs:.4f}')
+
+        # Calculate the throughput for the specified source profile *relative* to nominal conditions.
+        # The constants below were calculated with GalSim for the nominal 1.1" Moffat profile with beta=3.5
+        # convolved with a hlr=0.45" Sersic n=1 (ELG) or a hlr=1.5" Sersic n=4 (BGS) round profile.
+        sbprof = self.exp_data['sbprof']
+        if sbprof == 'ELG':
+            self.thru_sbprof_rel = self.thru_elg / 0.41220
+        elif sbprof == 'BGS':
+            self.thru_sbprof_rel = self.thru_bgs / 0.18985
+        elif sbprof == 'FLT':
+            self.thru_sbprof_rel = self.transp_obs
+        else:
+            self.thru_sbprof_rel = self.thru_psf / 0.56198
 
         # Adjust the transparency to X=1.
         self.transp_zenith = self.transp_obs / self.atm_extinction
         # Record this measurement.
-        logging.info(f'Guide transp={self.transp_obs:.3f}, ffrac={self.ffrac_psf:.3f}, thru={thru:.3f}.')
+        logging.info(f'Guide transp={self.transp_obs:.3f}, PSF-ffrac={self.ffrac_psf:.3f}, {sbprof}-thru-rel={self.thru_sbprof_rel:.3f}.')
         mjd_start, mjd_stop = self.get_mjd_range(mjd_obs, exptime, f'guide[{fnum}]')
         # Use constant error until we have a proper estimate.
         self.thru_measurements.add(
-            mjd_start, mjd_stop, thru, 0.01,
+            mjd_start, mjd_stop, self.thru_sbprof_rel, 0.01,
             aux_data=(each_ffrac, each_transp, each_dx, each_dy))
         # Update our accumulated signal if the shutter is open.
         if self.accum.shutter_is_open:
