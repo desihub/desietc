@@ -551,7 +551,9 @@ class ETCAlgorithm(object):
         if len(self.guide_stars) == 0:
             logging.error(f'No usable guide stars for {self.exptag}.')
             return False
-        nstars_msg = '+'.join([str(n) for n in nstars]) + '=' + str(np.sum(nstars))
+        nstars_tot = np.sum(nstars)
+        self.guide_stars['nstars'] = nstars_tot
+        nstars_msg = '+'.join([str(n) for n in nstars]) + '=' + str(nstars_tot)
         logging.info(f'Using {nstars_msg} guide stars for {self.exptag}.')
         return True
 
@@ -571,9 +573,13 @@ class ETCAlgorithm(object):
         if self.guide_stars is None:
             logging.error('Ignoring guide frame before guide stars.')
             return False
+        nstars_tot = self.guide_stars['nstars']
+        star_fluxsum = np.zeros(nstars_tot)
+        star_profsum = np.zeros(nstars_tot)
+        star_fluxnorm = np.zeros(nstars_tot)
+        star_ffracs = np.zeros((nstars_tot, 3))
         # Loop over cameras with acquisition results.
         mjd_obs, exptime, camera_transp, camera_ffrac = [], [], [], []
-        star_fluxsum, star_profsum, star_ffracs, star_fluxnorm = [], [], [], []
         each_ffrac, each_transp = np.zeros(self.ngfa, np.float32), np.zeros(self.ngfa, np.float32)
         each_dx, each_dy = np.zeros(self.ngfa, np.float32), np.zeros(self.ngfa, np.float32)
         for icam, camera in enumerate(desietc.gfa.GFACamera.guide_names):
@@ -626,18 +632,17 @@ class ETCAlgorithm(object):
                 # Blur by 0.15 pixel to reduce artifacts from isolated pixels with large ivar.
                 D, DW = desietc.util.blur(D, DW)
                 # Estimate and subtract the flat background level.
-                bg_per_pixel = np.median(D[self.BGmask])
+                bg_per_pixel = desietc.util.robust_median(D[self.BGmask])
                 D -= bg_per_pixel
                 # Sum the signal flux over the full stamp.
-                star_fluxsum.append(D.sum())
+                star_fluxsum[nstar] = D.sum()
                 # Sum the signal flux over the fiber profile.
-                star_profsum.append((D * FIBER).sum())
+                star_profsum[nstar] = (D * FIBER).sum()
                 # Calculate fiber fractions.
-                star_ffracs.append(desietc.util.get_fiber_fractions(D, FIBER))
+                star_ffracs[nstar] = desietc.util.get_fiber_fractions(D, FIBER)
                 # Calculate the expected total PSF flux with transparency=1.
-                star_fluxnorm.append(fluxnorm)
-
-                logging.info(f'{camera}[{fnum}] {star_fluxsum[-1]:.1f} {star_profsum[-1]:.1f} {star_fluxnorm[-1]:.1f} {star_ffracs[-1][0]:.4f} {star_ffracs[-1][1]:.4f} {star_ffracs[-1][2]:.4f}')
+                star_fluxnorm[nstar] = fluxnorm
+                #logging.debug(f'{camera}[{fnum}] {star_fluxsum[-1]:.1f} {star_profsum[-1]:.1f} {star_fluxnorm[-1]:.1f} {star_ffracs[-1][0]:.4f} {star_ffracs[-1][1]:.4f} {star_ffracs[-1][2]:.4f}')
 
                 nstar += 1
 
@@ -659,12 +664,26 @@ class ETCAlgorithm(object):
         if ncamera == 0:
             return False
 
-        # Combine all cameras.
+        # Combine all cameras...
+
+        ### Original PSF model fit
         self.transp_obs = np.nanmedian(camera_transp) if np.any(np.isfinite(camera_transp)) else 0.
         ffrac_psf = np.nanmedian(camera_ffrac) if np.any(np.isfinite(camera_ffrac)) else 0.
         # Calculate relative FFRAC for different profiles.
         self.set_rel_ffrac(ffrac_psf)
         thru = self.transp_obs * self.rel_ffrac_sbprof
+
+        ### New pixel-level analysis
+
+        self.transp_obs = desietc.util.robust_median(star_fluxsum[:nstar] / star_fluxnorm[:nstar])
+        self.thru_psf = desietc.util.robust_median(star_profsum[:nstar] / star_fluxnorm[:nstar])
+        self.ffrac_psf = self.thru_psf / self.transp_obs
+        elg_ratio = desietc.util.robust_median(star_ffracs[:nstar,1] / star_ffracs[:nstar,0])
+        bgs_ratio = desietc.util.robust_median(star_ffracs[:nstar,2] / star_ffracs[:nstar,0])
+        self.thru_elg = self.thru_psf * elg_ratio
+        self.thru_bgs = self.thru_psf * bgs_ratio
+        logging.info(f'[{fnum}] {self.transp_obs:.4f} {self.ffrac_psf:.4f} {self.thru_psf:.4f} {self.thru_elg:.4f} {self.thru_bgs:.4f}')
+
         # Adjust the transparency to X=1.
         self.transp_zenith = self.transp_obs / self.atm_extinction
         # Record this measurement.
