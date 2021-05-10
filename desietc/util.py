@@ -760,7 +760,7 @@ class MeasurementBuffer(object):
         nsel = np.count_nonzero(sel)
         return np.mean(self.entries[sel]['value']) if nsel >= min_values else None
 
-    def sample_grid(self, mjd_grid):
+    def sample_grid(self, mjd_grid, field='value'):
         """Sample measurements on a the specified MJD grid.
 
         Use measurements that lie outside the grid up to self.padding seconds.
@@ -774,7 +774,7 @@ class MeasurementBuffer(object):
             return np.full_like(mjd_grid, self.default_value)
         mjd_sel = 0.5 * (self.entries[sel]['mjd1'] + self.entries[sel]['mjd2'])
         dmjd_sel = self.entries[sel]['mjd2'] - self.entries[sel]['mjd1']
-        value_sel = self.entries[sel]['value']
+        value_sel = self.entries[sel][field]
         # Values might not be recorded in time order so fix that now.
         iorder = np.argsort(mjd_sel)
         mjd_sel = mjd_sel[iorder]

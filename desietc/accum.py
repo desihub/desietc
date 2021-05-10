@@ -53,7 +53,6 @@ class Accumulator(object):
             ('src', np.int32),
             ('signal', np.float32),
             ('background', np.float32),
-            ('throughput', np.float32),
             ('efftime', np.float32),
             ('realtime', np.float32),
             ('remaining', np.float32),
@@ -245,13 +244,16 @@ class Accumulator(object):
         # Calculate the mean signal and background during this shutter open period.
         self.signal = np.mean(self.sig_grid[past])
         self.background = np.mean(self.bg_grid[past])
-        # Calculate the (un-normalized) PSF throughput since the most recent shutter opening.
-        self.throughput = np.mean(self.thru_psf_buffer.sample_grid(self.mjd_grid[past]))
+        # Calculate means of auxiliary signal quantities during this shutter open period.
+        self.aux_mean = {}
+        for aux_name in ('thru_psf', 'ffrac_psf', 'ffrac_elg', 'ffrac_bgs'):
+           self.aux_mean[aux_name] = np.mean(
+               self.sig_buffer.sample_grid(self.mjd_grid[past], field=aux_name))
         # Calculate the accumulated effective exposure time for this shutter opening in seconds.
         self.realtime = (mjd_now - mjd_open) * self.SECS_PER_DAY
         self.efftime = self.get_efftime(self.realtime, self.signal, self.background)
         logging.info(f'shutter[{self.nopen}] treal={self.realtime:.1f}s, teff={self.efftime:.1f}s' +
-            f' [+{prev_teff:.1f}s] using bg={self.background:.3f}, sig={self.signal:.3f}, thru={self.throughput:.3f}.')
+            f' [+{prev_teff:.1f}s] using bg={self.background:.3f}, sig={self.signal:.3f}, thru={self.aux_mean["thru_psf"]:.3f}.')
         self.realtime_tot = self.realtime + prev_treal
         self.efftime_tot = self.efftime + prev_teff
         # Have we reached the cutoff time?
@@ -335,7 +337,7 @@ class Accumulator(object):
         elif self.ntranscript < self.max_transcript:
             src = self.SOURCES.get(src, -1)
             self.transcript[self.ntranscript] = (
-                mjd_now, mjd_src, src, self.signal, self.background, self.throughput,
+                mjd_now, mjd_src, src, self.signal, self.background,
                 self.efftime, self.realtime, self.remaining, self.next_split)
         self.ntranscript += 1
 

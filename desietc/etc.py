@@ -164,10 +164,16 @@ class ETCAlgorithm(object):
         # Initialize buffers to record our signal- and sky-rate measurements.
         self.thru_measurements = desietc.util.MeasurementBuffer(
             maxlen=1000, default_value=1, aux_dtype=[
-                ('ffrac', np.float32, (self.ngfa,)),  # fiber fraction measured from single GFA
-                ('transp', np.float32, (self.ngfa,)), # transparency measured from single GFA
-                ('dx', np.float32, (self.ngfa,)),     # mean x shift of centroid from single GFA in pixels
-                ('dy', np.float32, (self.ngfa,)),     # mean y shift of centroid from single GFA in pixels
+                ('ffrac_gfa', np.float32, (self.ngfa,)),  # fiber fraction measured from single GFA
+                ('transp_gfa', np.float32, (self.ngfa,)), # transparency measured from single GFA
+                ('dx_gfa', np.float32, (self.ngfa,)),     # mean x shift of centroid from single GFA in pixels
+                ('dy_gfa', np.float32, (self.ngfa,)),     # mean y shift of centroid from single GFA in pixels
+                ('transp_obs', np.float32),               # Observed transparency averaged over all guide stars
+                ('transp_zenith', np.float32),            # Zenith transparency averaged over all guide stars
+                ('ffrac_psf', np.float32),                # FFRAC for PSF profile averaged over all guide stars
+                ('ffrac_elg', np.float32),                # FFRAC for ELG profile averaged over all guide stars
+                ('ffrac_bgs', np.float32),                # FFRAC for BGS profile averaged over all guide stars
+                ('thru_psf', np.float32),                 # TRANSP*FFRAC for PSF profile
             ])
         self.sky_measurements = desietc.util.MeasurementBuffer(
             maxlen=200, default_value=1, padding=900, aux_dtype=[
@@ -682,6 +688,8 @@ class ETCAlgorithm(object):
         bgs_ratio = desietc.util.robust_median(star_ffracs[:nstar,2] / star_ffracs[:nstar,0])
         self.thru_elg = self.thru_psf * elg_ratio
         self.thru_bgs = self.thru_psf * bgs_ratio
+        self.ffrac_elg = self.ffrac_psf * elg_ratio
+        self.ffrac_bgs = self.ffrac_psf * bgs_ratio
         #logging.debug(f'[{fnum}] {self.transp_obs:.4f} {self.ffrac_psf:.4f} {self.thru_psf:.4f} {self.thru_elg:.4f} {self.thru_bgs:.4f}')
 
         # Calculate the throughput for the specified source profile *relative* to nominal conditions.
@@ -705,7 +713,9 @@ class ETCAlgorithm(object):
         # Use constant error until we have a proper estimate.
         self.thru_measurements.add(
             mjd_start, mjd_stop, self.thru_sbprof_rel, 0.01,
-            aux_data=(each_ffrac, each_transp, each_dx, each_dy))
+            aux_data=(each_ffrac, each_transp, each_dx, each_dy,
+                      self.transp_obs, self.transp_zenith,
+                      self.ffrac_psf, self.ffrac_elg, self.ffrac_bgs, self.thru_psf))
         self.thru_psf_buffer.add(mjd_start, mjd_stop, self.thru_psf, 0.1)
         # Update our accumulated signal if the shutter is open.
         if self.accum.shutter_is_open:
@@ -907,6 +917,8 @@ class ETCAlgorithm(object):
         self.exp_data['realtime'] = np.float32(self.accum.realtime)
         self.exp_data['signal'] = np.float32(self.accum.signal)
         self.exp_data['background'] = np.float32(self.accum.background)
+        for aux_name in ('thru_psf', 'ffrac_psf', 'ffrac_elg', 'ffrac_bgs'):
+            self.exp_data[aux_name] = np.float32(self.accum.aux_mean[aux_name])
         logging.info(f'Shutter close[{self.accum.nclose}] at {timestamp} after {self.accum.realtime:.1f}s ' +
             f'with actual teff={self.accum.efftime:.1f}s')
 
