@@ -17,8 +17,7 @@ class Accumulator(object):
 
     SOURCES = dict(OPEN=0, GFA=1, SKY=2, TICK=3, CLOSE=4)
 
-    def __init__(self, sig_buffer, bg_buffer, thru_psf_buffer,
-                 grid_resolution, min_exptime_secs=0, max_transcript=10000):
+    def __init__(self, sig_buffer, bg_buffer, grid_resolution, min_exptime_secs=0, max_transcript=10000):
         """Initialize an effective exposure time accumulator.
 
         Parameters
@@ -29,8 +28,6 @@ class Accumulator(object):
         bg_buffer : MeasurementBuffer
             Buffer containing recent background sky-level measurements
             normalized to one for nominal conditions.
-        thru_psf_buffer : MeasurementBuffer
-            Buffer containing recent (un-normalized) PSF throughput measurements.
         min_exptime_secs : float
             Minimum allowed spectrograph exposure time in seconds. A stop or split
             request will never be issued until this interval has elapsed after
@@ -40,7 +37,6 @@ class Accumulator(object):
         """
         self.sig_buffer = sig_buffer
         self.bg_buffer = bg_buffer
-        self.thru_psf_buffer = thru_psf_buffer
         self.grid_resolution = grid_resolution
         self.min_exptime_secs = min_exptime_secs
         self.reset()
@@ -246,7 +242,7 @@ class Accumulator(object):
         self.background = np.mean(self.bg_grid[past])
         # Calculate means of auxiliary signal quantities during this shutter open period.
         self.aux_mean = {}
-        for aux_name in ('thru_psf', 'ffrac_psf', 'ffrac_elg', 'ffrac_bgs'):
+        for aux_name in ('transp_obs', 'transp_zenith', 'ffrac_psf', 'ffrac_elg', 'ffrac_bgs', 'thru_psf'):
            self.aux_mean[aux_name] = np.mean(
                self.sig_buffer.sample_grid(self.mjd_grid[past], field=aux_name))
         # Calculate the accumulated effective exposure time for this shutter opening in seconds.

@@ -151,7 +151,6 @@ class ETCAlgorithm(object):
             BGS=np.array([ 2.20152076, -5.2956353 , 13.20529484, -19.77502959, 16.57364863, -7.14848631, 1.23474732])
         )
         # Initialize running averages of ffrac and transp.
-        self.thru_psf_buffer = desietc.util.MeasurementBuffer(1000, 1)
         self.ffrac_buffer = desietc.util.MeasurementBuffer(1000, 1)
         self.transp_buffer = desietc.util.MeasurementBuffer(1000, 1)
         self.ffrac_avg = None
@@ -184,7 +183,6 @@ class ETCAlgorithm(object):
         # Initialize exposure accumulator.
         self.accum = desietc.accum.Accumulator(
             sig_buffer=self.thru_measurements, bg_buffer=self.sky_measurements,
-            thru_psf_buffer=self.thru_psf_buffer,
             grid_resolution=grid_resolution, min_exptime_secs=min_exptime_secs)
         # Initialize the SKY camera processor.
         self.SKY = desietc.sky.SkyCamera(calib_name=sky_calib)
@@ -716,7 +714,6 @@ class ETCAlgorithm(object):
             aux_data=(each_ffrac, each_transp, each_dx, each_dy,
                       self.transp_obs, self.transp_zenith,
                       self.ffrac_psf, self.ffrac_elg, self.ffrac_bgs, self.thru_psf))
-        self.thru_psf_buffer.add(mjd_start, mjd_stop, self.thru_psf, 0.1)
         # Update our accumulated signal if the shutter is open.
         if self.accum.shutter_is_open:
             mjd_now = desietc.util.date_to_mjd(timestamp, utc_offset=0)
@@ -917,7 +914,7 @@ class ETCAlgorithm(object):
         self.exp_data['realtime'] = np.float32(self.accum.realtime)
         self.exp_data['signal'] = np.float32(self.accum.signal)
         self.exp_data['background'] = np.float32(self.accum.background)
-        for aux_name in ('thru_psf', 'ffrac_psf', 'ffrac_elg', 'ffrac_bgs'):
+        for aux_name in ('transp_obs', 'transp_zenith', 'ffrac_psf', 'ffrac_elg', 'ffrac_bgs', 'thru_psf'):
             self.exp_data[aux_name] = np.float32(self.accum.aux_mean[aux_name])
         logging.info(f'Shutter close[{self.accum.nclose}] at {timestamp} after {self.accum.realtime:.1f}s ' +
             f'with actual teff={self.accum.efftime:.1f}s')
