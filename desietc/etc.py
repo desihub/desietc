@@ -519,6 +519,8 @@ class ETCAlgorithm(object):
                 # Convert from PlateMaker indexing convention to (0,0) centered in bottom-left pixel.
                 x0 = pm_info[i]['COL'] - 0.5
                 y0 = pm_info[i]['ROW'] - 0.5
+                RA = pm_info[i]['RA']
+                DEC = pm_info[i]['DEC']
                 rmag = pm_info[i]['MAG']
                 # Convert flux to predicted detected electrons per second in the
                 # GFA filter with nominal zenith atmospheric transmission.
@@ -536,6 +538,7 @@ class ETCAlgorithm(object):
                 fiber = desietc.gfa.get_fiber_profile(x0, y0, camera, self.guide_pixels)
                 stars.append(dict(
                     x0=np.float32(x0), y0=np.float32(y0), rmag=np.float32(rmag),
+                    RA=np.float32(RA), DEC=np.float32(DEC),
                     nelec_rate=np.float32(nelec_rate),
                     fiber_dx=np.float32(fiber_dx), fiber_dy=np.float32(fiber_dy),
                     yslice=yslice, xslice=xslice))
@@ -550,7 +553,7 @@ class ETCAlgorithm(object):
             logging.error(f'No usable guide stars for {self.exptag}.')
             return False
         nstars_tot = np.sum(nstars)
-        self.guide_stars['nstars'] = nstars_tot
+        self.exp_data['nstars'] = nstars_tot
         nstars_msg = '+'.join([str(n) for n in nstars]) + '=' + str(nstars_tot)
         logging.info(f'Using {nstars_msg} guide stars for {self.exptag}.')
         return True
@@ -571,7 +574,7 @@ class ETCAlgorithm(object):
         if self.guide_stars is None:
             logging.error('Ignoring guide frame before guide stars.')
             return False
-        nstars_tot = self.guide_stars['nstars']
+        nstars_tot = self.exp_data['nstars']
         star_fluxsum = np.zeros(nstars_tot)
         star_profsum = np.zeros(nstars_tot)
         star_fluxnorm = np.zeros(nstars_tot)
