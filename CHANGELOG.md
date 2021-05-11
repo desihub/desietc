@@ -6,7 +6,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.1.6] - Unreleased
+## [0.1.6] - 2021-05-10
+Version with new GFA processing algorithms used for 20210510 testing.
+EFFTIME normalization should be roughly the same as before, but with
+smaller scatter.  No changes the sky level analysis or read noise model.
 ## Added
  - GFA pixel to CS5 transforms.
  - Implement platescale interpolator.
