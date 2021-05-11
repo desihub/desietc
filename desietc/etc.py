@@ -92,7 +92,6 @@ class ETCAlgorithm(object):
         """
         self.Ebv_coef = Ebv_coef
         self.X_coef = X_coef
-        self.ffrac_ref = ffrac_ref
         self.nbad_threshold = nbad_threshold
         self.nll_threshold = nll_threshold
         self.avg_secs = avg_secs
@@ -142,15 +141,6 @@ class ETCAlgorithm(object):
         self.transp_obs = None
         self.transp_zenith = None
         self.skylevel = None
-        # Initialize relative fiber fraction calculations.
-        self.rel_ffrac = dict(PSF=0, ELG=0, BGS=0, FLT=0)
-        self.rel_ffrac_coefs = dict(
-            # 6-th order polynomial coefs c0 + c1 * x + ... with x = PSF FFRAC / ffrac_ref
-            # fit to the ratios ELG/PSF and BGS/PSF using data from
-            # /global/cfs/cdirs/cosmo/www/temp/ameisner/fracflux_moffat_3.5.with_elg_bgs-1.52asec.fits
-            ELG=np.array([ 1.38599847, -1.01135014, 1.99737017, -3.4756245 , 3.61460758, -1.90242666,  0.3925208]),
-            BGS=np.array([ 2.20152076, -5.2956353 , 13.20529484, -19.77502959, 16.57364863, -7.14848631, 1.23474732])
-        )
         # Initialize variables used for telemetry.
         self.ffrac_avg = None
         self.transp_avg = None
@@ -481,8 +471,7 @@ class ETCAlgorithm(object):
         if np.any(np.isfinite(fwhm_vec)):
             self.seeing = np.nanmedian(fwhm_vec)
         if np.any(np.isfinite(ffrac_vec)):
-            ffrac_psf = np.nanmedian(ffrac_vec)
-        self.set_rel_ffrac(ffrac_psf)
+            self.ffrac_psf = np.nanmedian(ffrac_vec)
         self.exp_data.update(dict(acq_fwhm=np.float32(self.seeing), acq_ffrac=np.float32(self.ffrac_psf)))
         logging.info(f'Acquisition image quality using {nstars_tot} stars: ' +
             f'FWHM={self.seeing:.2f}", FFRAC={self.ffrac_psf:.3}.')
@@ -1000,37 +989,3 @@ class ETCAlgorithm(object):
                 logging.info(f'Wrote {fname} for {self.exptag}')
         except Exception as e:
             logging.error(f'save_exposure: error saving json: {e}')
-
-    def set_rel_ffrac(self, ffrac_psf):
-        """Convert an absolute FFRAC for PSF-like objects into FFRAC values
-        relative to nominal seeing for different source models (sbprof).
-        """
-        # Remember the absolute PSF value.
-        self.ffrac_psf = ffrac_psf
-        # Normalize the PSF value to nominal seeing.
-        self.rel_ffrac['PSF'] = ffrac_psf / self.ffrac_ref
-        # Clip the normalized PSF value to the range where our polynomial fits are valid.
-        x = np.clip(self.rel_ffrac['PSF'], 0.08781, 1.71781)
-        if x != self.rel_ffrac['PSF']:
-            logging.warning(f'Clipped relative PSF FFRAC {self.rel_ffrac["PSF"]:.3f} to {x:.3f}.')
-        # Use polynomial fits to convert normalized PSF value to other source models.
-        ncoef = len(self.rel_ffrac_coefs['ELG'])
-        xpow = x ** (1 + np.arange(ncoef))
-        for sbprof, coefs in self.rel_ffrac_coefs.items():
-            self.rel_ffrac[sbprof] = coefs.dot(xpow)
-        self.rel_ffrac['FLT'] = 1.
-        # Record the value for the current source model or ELG by default.
-        sbprof = 'ELG'
-        try:
-            sbprof = self.exp_data.get('sbprof', 'ELG')
-        except:
-            logging.error('Failed to get current source model (sbprof).')
-        self.rel_ffrac_sbprof = self.rel_ffrac[sbprof]
-        '''
-        msg = f'ffrac_psf={self.ffrac_psf:.5f} => relative'
-        for name, value in self.rel_ffrac.items():
-            if name == sbprof:
-                name = '*' + name
-            msg += f' {name}={value:.5f}'
-        logging.info(msg)
-        '''
