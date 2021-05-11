@@ -187,8 +187,8 @@ def main():
                 time.sleep(1)
             return 0
         elif cmd == 's':
-            path = pathlib.Path('/Users/david/Data/DESI/20201218/')
-            expid = 68630
+            path = pathlib.Path('/Users/david/Data/DESI/20210420/')
+            expid = 85640
             assets = desietc.offline.fetch_exposure(path, expid, only_complete=True)
             nframes = len(assets['frames'])
             print(app.start_exposure(assets, **options))

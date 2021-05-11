@@ -752,13 +752,13 @@ class MeasurementBuffer(object):
             mask &= self.entries['mjd1'] < mjd2
         return mask
 
-    def average(self, mjd, interval_secs, min_values):
+    def average(self, mjd, interval_secs, min_values, field='value'):
         """Return the average of values recorded up to inteval_secs before mjd,
         or None if less than min_values have been recorded.
         """
         sel = self.inside(mjd - interval_secs / self.SECS_PER_DAY, mjd)
         nsel = np.count_nonzero(sel)
-        return np.mean(self.entries[sel]['value']) if nsel >= min_values else None
+        return np.mean(self.entries[sel][field]) if nsel >= min_values else None
 
     def sample_grid(self, mjd_grid, field='value'):
         """Sample measurements on a the specified MJD grid.
@@ -783,7 +783,11 @@ class MeasurementBuffer(object):
         # The measurements are integrals over each exposure with some deadtime between them.
         # Correct for this deadtime by calculating a piece-wise linear approximation to
         # the instantaneous value that matches the measured integrals.
-        value_sel_corrected = pwlinear_solve(mjd_sel, dmjd_sel, value_sel * dmjd_sel)
+        try:
+            value_sel_corrected = pwlinear_solve(mjd_sel, dmjd_sel, value_sel * dmjd_sel)
+        except Exception as e:
+            print(f'pwlinear_solve failed: {e}')
+            value_sel_corrected = value_sel
         # Use linear interpolation with constant extrapolation beyond the endpoints.
         return np.interp(mjd_grid, mjd_sel, value_sel_corrected)
 
@@ -1075,9 +1079,13 @@ def pwlinear_solve(t, dt, yint):
         the endpoints.
     """
     dt = np.asarray(dt)
+    if len(dt) == 1:
+        return yint / dt
     assert len(dt) == len(t)
     assert len(dt) == len(yint)
     Dt = np.diff(t)
+    if np.any(Dt <= 0):
+        return yint / dt
     dt2 = dt ** 2 / 8
     hi = dt2[1:] / Dt
     lo = dt2[:-1] / Dt

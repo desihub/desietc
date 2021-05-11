@@ -41,7 +41,7 @@ These are all [ISO 8601](https://en.wikipedia.org/wiki/ISO_8601) formatted strin
 
 ## Observing conditions updated after each GFA or SKY frame:
 
-FFRAC below refers to the relative fiber acceptance fraction, which is a dimensionless quantity that estimates the fraction of light entering a typical fiber relative to nominal seeing conditions (1.1").
+FFRAC below refers to the relative fiber acceptance fraction, which is a dimensionless quantity that estimates the fraction of light entering a typical fiber.
 
 TRANSP below refers to the atmospheric transparency, which is a dimensionless quantity equal to 1 for nominal atmospheric extinction. Values are estimated from the observed flux of guide stars with known magnitudes and corrected to airmass 1 (zenith).
 
@@ -51,10 +51,10 @@ The FFRAC and TRANSP averages below combine all measurements over the past two m
  - `ffrac_psf` (float): FFRAC for a PSF-like source (star, quasar).
  - `ffrac_elg` (float): FFRAC for a nominal ELG target with a round exponential profile of 0.45" half-light radius.
  - `ffrac_bgs` (float): FFRAC for a nominal BGS target with a round DeVaucouleur profile of 1.50" half-light radius.
- - `ffrac` (float): FFRAC appropriate for the `sbprof` specified for this tile.
- - `ffrac_avg` (float): Average of recent FFRAC measurements.
+ - `ffrac_avg` (float): Average of recent `ffrac_psf` measurements relative to nominal conditions (1.1").
  - `transp` (float): Zenith atmospheric transparency.
  - `transp_avg` (float): Average of recent TRANSP measurements.
+ - `thru_avg` (float): Average of recent TRANSP * FFRAC measurements relative to nominal conditions (1.1").
  - `skylevel` (float): Current sky level relative to nominal zenith dark sky conditions.
 
 ## Accumulated exposure-time tracking:

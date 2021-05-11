@@ -151,10 +151,14 @@ class ETCAlgorithm(object):
             BGS=np.array([ 2.20152076, -5.2956353 , 13.20529484, -19.77502959, 16.57364863, -7.14848631, 1.23474732])
         )
         # Initialize running averages of ffrac and transp.
-        self.ffrac_buffer = desietc.util.MeasurementBuffer(1000, 1)
-        self.transp_buffer = desietc.util.MeasurementBuffer(1000, 1)
+        ##self.ffrac_buffer = desietc.util.MeasurementBuffer(1000, 1)
+        ##self.transp_buffer = desietc.util.MeasurementBuffer(1000, 1)
         self.ffrac_avg = None
         self.transp_avg = None
+        self.thru_avg = None
+        self.ffrac_psf = None
+        self.ffrac_elg = None
+        self.ffrac_bgs = None
         # Initialize call counters.
         self.reset_counts()
         # How many GUIDE and SKY cameras do we expect?
@@ -719,10 +723,15 @@ class ETCAlgorithm(object):
             mjd_now = desietc.util.date_to_mjd(timestamp, utc_offset=0)
             self.accum.update('GFA', mjd_stop, mjd_now)
         # Update running averages.
-        self.transp_buffer.add(mjd_start, mjd_stop, self.transp_zenith, 0.1)
-        self.ffrac_buffer.add(mjd_start, mjd_stop, self.ffrac_psf / 0.56198, 0.1)
-        self.transp_avg = self.transp_buffer.average(mjd_stop, self.avg_secs, self.avg_min_values)
-        self.ffrac_avg = self.ffrac_buffer.average(mjd_stop, self.avg_secs, self.avg_min_values)
+        ##self.transp_buffer.add(mjd_start, mjd_stop, self.transp_zenith, 0.1)
+        ##self.ffrac_buffer.add(mjd_start, mjd_stop, self.ffrac_psf / 0.56198, 0.1)
+        self.transp_avg = self.thru_measurements.average(mjd_stop, self.avg_secs, self.avg_min_values, field='transp_zenith')
+        self.ffrac_avg = self.thru_measurements.average(mjd_stop, self.avg_secs, self.avg_min_values, field='ffrac_psf')
+        if self.ffrac_avg != None:
+            self.ffrac_avg /= 0.56198
+        self.thru_avg = self.thru_measurements.average(mjd_stop, self.avg_secs, self.avg_min_values, field='thru_psf')
+        if self.thru_avg != None:
+            self.thru_avg /= 0.56198
         # Report timing.
         elapsed = time.time() - start
         logging.info(f'Guide frame processing took {elapsed:.2f}s for {nstar} stars in {ncamera} cameras.')
