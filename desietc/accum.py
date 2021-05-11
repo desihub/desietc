@@ -339,7 +339,7 @@ class Accumulator(object):
 
         return True
 
-    def get_efftime(self, realtime, signal, background, scale=(0.56 / 0.435)**2):
+    def get_efftime(self, realtime, signal, background, scale=(0.56 / 0.435)**2 / 1.07):
         """Calculate the effective exposure time corresponding to the specified real
         exposure time, accumulated signal and background rates, and their nominal values
         and MW transparency specified in the last call to :meth:`setup_exposure`.
