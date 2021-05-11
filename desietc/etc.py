@@ -41,6 +41,7 @@ class ETCAlgorithm(object):
 
     SECS_PER_DAY = 86400
     BUFFER_NAME = 'ETC_{0}_buffer'
+    FFRAC_NOM = dict(PSF=0.56198, ELG=0.41220, BGS=0.18985)
 
     def __init__(self, sky_calib, gfa_calib, psf_pixels=25, guide_pixels=31, max_dither=7, num_dither=1200,
                  Ebv_coef=2.165, X_coef=0.114, ffrac_ref=0.56, nbad_threshold=100, nll_threshold=100,
@@ -150,9 +151,7 @@ class ETCAlgorithm(object):
             ELG=np.array([ 1.38599847, -1.01135014, 1.99737017, -3.4756245 , 3.61460758, -1.90242666,  0.3925208]),
             BGS=np.array([ 2.20152076, -5.2956353 , 13.20529484, -19.77502959, 16.57364863, -7.14848631, 1.23474732])
         )
-        # Initialize running averages of ffrac and transp.
-        ##self.ffrac_buffer = desietc.util.MeasurementBuffer(1000, 1)
-        ##self.transp_buffer = desietc.util.MeasurementBuffer(1000, 1)
+        # Initialize variables used for telemetry.
         self.ffrac_avg = None
         self.transp_avg = None
         self.thru_avg = None
@@ -675,14 +674,6 @@ class ETCAlgorithm(object):
             return False
 
         # Combine all cameras...
-        '''
-        ### Original PSF model fit
-        self.transp_obs = np.nanmedian(camera_transp) if np.any(np.isfinite(camera_transp)) else 0.
-        ffrac_psf = np.nanmedian(camera_ffrac) if np.any(np.isfinite(camera_ffrac)) else 0.
-        # Calculate relative FFRAC for different profiles.
-        self.set_rel_ffrac(ffrac_psf)
-        thru = self.transp_obs * self.rel_ffrac_sbprof
-        '''
         self.transp_obs = desietc.util.robust_median(star_fluxsum[:nstar] / star_fluxnorm[:nstar])
         self.thru_psf = desietc.util.robust_median(star_profsum[:nstar] / star_fluxnorm[:nstar])
         self.ffrac_psf = self.thru_psf / self.transp_obs
@@ -699,13 +690,13 @@ class ETCAlgorithm(object):
         # convolved with a hlr=0.45" Sersic n=1 (ELG) or a hlr=1.5" Sersic n=4 (BGS) round profile.
         sbprof = self.exp_data['sbprof']
         if sbprof == 'ELG':
-            self.thru_sbprof_rel = self.thru_elg / 0.41220
+            self.thru_sbprof_rel = self.thru_elg / self.FFRAC_NOM['ELG']
         elif sbprof == 'BGS':
-            self.thru_sbprof_rel = self.thru_bgs / 0.18985
+            self.thru_sbprof_rel = self.thru_bgs / self.FFRAC_NOM['BGS']
         elif sbprof == 'FLT':
             self.thru_sbprof_rel = self.transp_obs
         else:
-            self.thru_sbprof_rel = self.thru_psf / 0.56198
+            self.thru_sbprof_rel = self.thru_psf / self.FFRAC_NOM['PSF']
 
         # Adjust the transparency to X=1.
         self.transp_zenith = self.transp_obs / self.atm_extinction
@@ -723,15 +714,13 @@ class ETCAlgorithm(object):
             mjd_now = desietc.util.date_to_mjd(timestamp, utc_offset=0)
             self.accum.update('GFA', mjd_stop, mjd_now)
         # Update running averages.
-        ##self.transp_buffer.add(mjd_start, mjd_stop, self.transp_zenith, 0.1)
-        ##self.ffrac_buffer.add(mjd_start, mjd_stop, self.ffrac_psf / 0.56198, 0.1)
         self.transp_avg = self.thru_measurements.average(mjd_stop, self.avg_secs, self.avg_min_values, field='transp_zenith')
         self.ffrac_avg = self.thru_measurements.average(mjd_stop, self.avg_secs, self.avg_min_values, field='ffrac_psf')
         if self.ffrac_avg != None:
-            self.ffrac_avg /= 0.56198
+            self.ffrac_avg /= self.FFRAC_NOM['PSF']
         self.thru_avg = self.thru_measurements.average(mjd_stop, self.avg_secs, self.avg_min_values, field='thru_psf')
         if self.thru_avg != None:
-            self.thru_avg /= 0.56198
+            self.thru_avg /= self.FFRAC_NOM['PSF']
         # Report timing.
         elapsed = time.time() - start
         logging.info(f'Guide frame processing took {elapsed:.2f}s for {nstar} stars in {ncamera} cameras.')
