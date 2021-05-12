@@ -738,7 +738,14 @@ class ETCAlgorithm(object):
                 continue
             if not self.process_camera_header(data[camera]['header'], f'{camera}[{fnum}]'):
                 continue
-            camera_flux, camera_dflux = self.SKY.setraw(data[camera]['data'], name=camera)
+            raw_data = data[camera]['data']
+            if raw_data.shape != (2047, 3072):
+                logging.error(f'Invalid {camera} image shape for frame {fnum}.')
+                continue
+            if np.all(raw_data == 0):
+                logging.warning(f'Ignoring {camera} all-zero image for frame {fnum}.')
+                continue
+            camera_flux, camera_dflux = self.SKY.setraw(raw_data, name=camera)
             logging.warning(f'Hardcoding EXPTIME=60s (was {self.exptime:.1f}s).')
             self.exptime = 60
             camera_flux /= self.exptime
