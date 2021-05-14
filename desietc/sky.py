@@ -150,7 +150,7 @@ class SkyCamera(object):
         self.bgfitter = BGFitter()
 
     def setraw(self, raw, name, gain=2.5, saturation=65500, refit=True, pullcut=5, chisq_max=5, ndrop_max=2,
-               masked=True, adjust=False):
+               masked=True, finetune=True):
         """
         """
         if name not in self.slices:
@@ -210,13 +210,17 @@ class SkyCamera(object):
         calib = self.calibs[name]
         cflux = self.flux[:N] / calib
         cfluxerr = self.fluxerr[:N] / calib
+        if finetune:
+            coef = finetune_coef[icamera, :N]
+            pow = finetune_pow[icamera, :N]
+            cflux = coef * cflux ** pow
+            cfluxerr = coef * cfluxerr ** pow
         # Which fibers should be used?
         if masked:
             keep = fiber_mask[icamera, :N] > 0
             cflux = cflux[keep]
             cfluxerr = cfluxerr[keep]
             N = len(cflux)
-        ##logging.info(f'{icamera} {np.round(cflux, 2)}')
         # Calculate the weighted mean over fibers (marginalized over bg levels) and its error.
         wgt = cfluxerr ** -2
         used = np.ones(N, bool)
