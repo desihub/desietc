@@ -99,6 +99,30 @@ def load_calib_data(name='SKY_calib.fits'):
     return names, slices, masks, spots, calibs
 
 
+# Fine tuning coefficients derived from fitting the trends of individual fibers vs the spectroscopic
+# r-band sky using data from Mar-Apr 2021.  The fit is linear in log space, so the adjustment model is:
+#  x --> coef * x ** pow
+finetune_coef = np.array([
+    [0.62397108, 0.        , 0.7552137 , 0.93242162, 0.95308126,
+     0.97305782, 0.87329783, 1.09370934, 1.12080438, 0.        ],
+    [0.        , 0.70029763, 0.91706983, 0.85841961, 0.91394301,
+     1.00810978, 0.91657536, 0.        , 0.        , 0.        ]])
+
+finetune_pow = np.array([
+    [1.08673508, 1.        , 1.06715913, 1.01187676, 1.0178157 ,
+     1.02464004, 1.02520429, 1.01357766, 1.00232129, 1.        ],
+    [1.        , 1.08950204, 1.00924252, 1.01807379, 1.01857049,
+     1.04251868, 1.02630379, 1.        , 1.        , 1.        ]])
+
+def finetune_adjust(x, icamera, ifiber):
+    return finetune_coef[icamera, ifiber] * x ** finetune_pow[icamera, ifiber]
+
+## Mask of fibers to use for each camera.
+fiber_mask = np.array([
+    [1,0,1,1,1,1,1,1,1,0],
+    [0,1,1,1,1,1,1,0,0,0]])
+
+
 class SkyCamera(object):
     """
     """
@@ -125,11 +149,13 @@ class SkyCamera(object):
         # Initialize background fitting.
         self.bgfitter = BGFitter()
 
-    def setraw(self, raw, name, gain=2.5, saturation=65500, refit=True, pullcut=5, chisq_max=5, ndrop_max=2):
+    def setraw(self, raw, name, gain=2.5, saturation=65500, refit=True, pullcut=5, chisq_max=5, ndrop_max=2,
+               masked=True, adjust=False):
         """
         """
         if name not in self.slices:
             raise ValueError('Invalid SKY name: {0}.'.format(name))
+        icamera = self.sky_names.index(name)
         slices = self.slices[name]
         # Copy stamps for each spot into self.data.
         N = self.ndata = len(slices)
@@ -180,10 +206,18 @@ class SkyCamera(object):
                                    self.flux[:N].reshape(-1, 1, 1) * self.spots[name])
         # Calculate the corresponding pull images.
         self.pull[:N] = (self.data[:N] - self.model[:N]) * np.sqrt(self.ivar[:N])
-        # Calculate the weighted mean of calibrated fluxes (marginalized over bg levels) and its error.
+        # Apply per-fiber calibrations.
         calib = self.calibs[name]
         cflux = self.flux[:N] / calib
         cfluxerr = self.fluxerr[:N] / calib
+        # Which fibers should be used?
+        if masked:
+            keep = fiber_mask[icamera, :N] > 0
+            cflux = cflux[keep]
+            cfluxerr = cfluxerr[keep]
+            N = len(cflux)
+        ##logging.info(f'{icamera} {np.round(cflux, 2)}')
+        # Calculate the weighted mean over fibers (marginalized over bg levels) and its error.
         wgt = cfluxerr ** -2
         used = np.ones(N, bool)
         snr = self.flux[:N] / self.fluxerr[:N]
