@@ -63,6 +63,7 @@ class Accumulator(object):
         self.efftime = self.realtime = self.efftime_tot = self.realtime_tot = 0.
         self.signal = self.background = 0.
         self.remaining = self.next_split = self.proj_efftime = 0.
+        self.nsplit_remaining = 1
         self.nopen = self.nclose = 0
         self.shutter_is_open = False
         self.shutter_open = []
@@ -305,16 +306,21 @@ class Accumulator(object):
             logging.info(f'Will stop in {self.remaining:.1f}s at teff={self.proj_efftime:.1f}s' +
                 f' (target={self.req_efftime:.1f}s), treal={treal_stop:.1f}s (max={self.max_remaining:.1f}s).')
             # Calculate how many cosmic splits are remaining if none exceeds the split maximum.
-            nsplit_remaining = int(np.ceil((mjd_stop - mjd_open) * self.SECS_PER_DAY / self.cosmics_split_time))
+            # This value is frozen once we reach half of the max split time.
+            if self.realtime < self.cosmics_split_time:
+                self.nsplit_remaining = int(np.ceil((mjd_stop - mjd_open) * self.SECS_PER_DAY / self.cosmics_split_time))
             # Calculate when the next split should be.
-            mjd_split = mjd_open + (mjd_stop - mjd_open) / nsplit_remaining
+            mjd_split = mjd_open + (mjd_stop - mjd_open) / self.nsplit_remaining
             # Enforce the minimum exposure time.
             if mjd_split < mjd_min_exptime:
                 logging.warning(f'Delaying split until min exptime of {self.min_exptime_secs}s.')
                 mjd_split = mjd_min_exptime
             self.next_split = (mjd_split - mjd_now) * self.SECS_PER_DAY
-            if self.action is None and nsplit_remaining > 1:
-                logging.info(f'Next split ({self.nopen} of {self.nclose+nsplit_remaining}) in {self.next_split:.1f}s.')
+            if self.next_split > self.cosmics_split_time:
+                logging.warning(f'Clipping next_split from {self.next_split:.1f}s to {self.cosmics_split_time:.1f}s')
+                self.next_split = self.cosmics_split_time
+            if self.action is None and self.nsplit_remaining > 1:
+                logging.info(f'Next split ({self.nopen} of {self.nclose+self.nsplit_remaining}) in {self.next_split:.1f}s.')
                 if self.splittable and self.next_split <= 0:
                     self.action = ('split', 'cosmic split')
             # Are we about to stop or split?
