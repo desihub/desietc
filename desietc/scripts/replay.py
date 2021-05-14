@@ -235,9 +235,9 @@ def main():
         help='Maximum allowed bad overscan pixels before warning')
     parser.add_argument('--nll-threshold', type=float, default=10,
         help='Maximum allowed GMM fit NLL value before warning')
-    parser.add_argument('--avg-secs', type=float, default=120,
+    parser.add_argument('--avg-secs', type=float, default=60,
         help='Compute running averages over this time interval in seconds.')
-    parser.add_argument('--avg-min-values', type=int, default=4,
+    parser.add_argument('--avg-min-values', type=int, default=3,
         help='A running average requires at least this many values.')
     parser.add_argument('--grid-resolution', type=float, default=0.5,
         help='Resolution of ETC calculations in seconds')

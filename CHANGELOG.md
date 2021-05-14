@@ -10,8 +10,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Version used for the official survey start on 20210514.
 ## Added
 - Checks for valid SkyCam data.
-- Masking of bad SkyCam fibers.
+- Masking of bad SkyCam fibers 1,9 on SKYCAM0 and 0 on SKYCAM1.
 - Fine tuning of SkyCam fiber calibrations.
+## Changed
+- Average quantities over 60s instead of 240s.
 
 ## [0.1.7] - 2021-05-11
 ## Added
