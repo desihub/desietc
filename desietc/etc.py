@@ -319,6 +319,7 @@ class ETCAlgorithm(object):
             return False
         if 'EXPTIME' not in header:
             logging.error(f'Missing EXPTIME keyword in {source}.')
+            return False
         exptime = header['EXPTIME']
         if exptime is None or exptime <= 0:
             logging.error(f'Invalid EXPTIME {exptime} from {source}.')
