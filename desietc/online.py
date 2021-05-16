@@ -267,8 +267,11 @@ class OnlineETC():
                     # Process a sky frame if available.
                     sky_image = self.call_for_sky_image()
                     if sky_image:
-                        self.ETCalg.process_sky_frame(sky_image['image'], get_utcnow())
-                        have_new_telemetry = True
+                        try:
+                            self.ETCalg.process_sky_frame(sky_image['image'], get_utcnow())
+                            have_new_telemetry = True
+                        except Exception as e:
+                            logging.error(f'process_sky_frame failed: {e}')
 
                     if need_acq_image:
                         # Process the acquisition image if available.
@@ -293,8 +296,11 @@ class OnlineETC():
                         # We have PSF models and guide stars: process a guide frame if available.
                         gfa_image = self.call_for_gfa_image()
                         if gfa_image:
-                            self.ETCalg.process_guide_frame(gfa_image['image'], get_utcnow())
-                            have_new_telemetry = True
+                            try:
+                                self.ETCalg.process_guide_frame(gfa_image['image'], get_utcnow())
+                                have_new_telemetry = True
+                            except Exception as e:
+                                logging.error(f'process_guide_frame failed: {e}')
 
                     # Is there an action to take associated with new telemetry?
                     if have_new_telemetry and self.ETCalg.accum.action is not None:
