@@ -345,6 +345,20 @@ class Accumulator(object):
 
         return True
 
+    def save_transcript(self):
+        # Replace 64-bit MJD fields with 32-bit offsets in seconds relative to the initial MJD value.
+        mjd0 = float(self.transcript['mjd'][0])
+        N = self.ntranscript
+        D = dict(
+            mjd0=mjd0,
+            dt=np.float32((self.transcript[:N]['mjd'] - mjd0) * self.SECS_PER_DAY),
+            dt_src=np.float32((self.transcript[:N]['mjd_src'] - mjd0) * self.SECS_PER_DAY))
+        for field in self.transcript.dtype.names:
+            if field in ('mjd', 'mjd_src'):
+                continue
+            D[field] = self.transcript[:N][field]
+        return D
+
     def get_efftime(self, realtime, signal, background, scale=(0.56 / 0.435)**2 / 1.07):
         """Calculate the effective exposure time corresponding to the specified real
         exposure time, accumulated signal and background rates, and their nominal values

@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - night_to_midnight utility.
 ## Changed
 - mjd_to_night returns an int instead of str (changes type in json header).
+- downgrade "Hardcoding EXPTIME=60s" from warning to info.
+- more compact "accum" section in the output JSON.
 ## Fixed
 - protect against negative SkyCam fiber flux leading to efftime=NaN.
 

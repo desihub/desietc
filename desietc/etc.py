@@ -747,7 +747,7 @@ class ETCAlgorithm(object):
                 logging.warning(f'Ignoring {camera} all-zero image for frame {fnum}.')
                 continue
             camera_flux, camera_dflux = self.SKY.setraw(raw_data, name=camera)
-            logging.warning(f'Hardcoding EXPTIME=60s (was {self.exptime:.1f}s).')
+            logging.info(f'Hardcoding EXPTIME=60s (was {self.exptime:.1f}s).')
             self.exptime = 60
             camera_flux /= self.exptime
             camera_dflux /= self.exptime
@@ -986,7 +986,7 @@ class ETCAlgorithm(object):
                 ),
                 thru=self.thru_measurements.save(mjd),
                 sky=self.sky_measurements.save(mjd),
-                accum=self.accum.transcript[:self.accum.ntranscript],
+                accum=self.accum.save_transcript(),
             )
         except Exception as e:
             logging.error(f'save_exposure: error building output dict: {e}')
