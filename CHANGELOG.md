@@ -14,7 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - downgrade "Hardcoding EXPTIME=60s" from warning to info.
 - more compact "accum" section in the output JSON.
 ## Fixed
-- protect against negative SkyCam fiber flux leading to efftime=NaN.
+- protect against negative SkyCam fiber flux leading to skylevel=NaN.
+- use np.nanmean to protect against NaNs in accumulator.
 
 ## [0.1.9] - 2021-05-16
 ## Added

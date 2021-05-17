@@ -239,12 +239,12 @@ class Accumulator(object):
         self.sig_grid[past] = self.sig_buffer.sample_grid(self.mjd_grid[past])
         self.bg_grid[past] = self.bg_buffer.sample_grid(self.mjd_grid[past])
         # Calculate the mean signal and background during this shutter open period.
-        self.signal = np.mean(self.sig_grid[past])
-        self.background = np.mean(self.bg_grid[past])
+        self.signal = np.nanmean(self.sig_grid[past])
+        self.background = np.nanmean(self.bg_grid[past])
         # Calculate means of auxiliary signal quantities during this shutter open period.
         self.aux_mean = {}
         for aux_name in ('transp_obs', 'transp_zenith', 'ffrac_psf', 'ffrac_elg', 'ffrac_bgs', 'thru_psf'):
-           self.aux_mean[aux_name] = np.mean(
+           self.aux_mean[aux_name] = np.nanmean(
                self.sig_buffer.sample_grid(self.mjd_grid[past], field=aux_name))
         # Calculate the accumulated effective exposure time for this shutter opening in seconds.
         self.realtime = (mjd_now - mjd_open) * self.SECS_PER_DAY
