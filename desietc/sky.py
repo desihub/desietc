@@ -213,11 +213,11 @@ class SkyCamera(object):
         if finetune:
             coef = finetune_coef[icamera, :N]
             pow = finetune_pow[icamera, :N]
-            cflux = coef * cflux ** pow
-            cfluxerr = coef * cfluxerr ** pow
+            cflux = coef * np.maximum(0, cflux) ** pow
+            cfluxerr = coef * np.maximum(0, cfluxerr) ** pow
         # Which fibers should be used?
         if masked:
-            keep = fiber_mask[icamera, :N] > 0
+            keep = (fiber_mask[icamera, :N] > 0) & (cfluxerr > 0)
             cflux = cflux[keep]
             cfluxerr = cfluxerr[keep]
             N = len(cflux)
