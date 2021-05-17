@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.1.10] - Unreleased
 ## Added
 - night_to_midnight utility.
+- grab more fiberassign header keywords.
 ## Changed
 - mjd_to_night returns an int instead of str (changes type in json header).
 - downgrade "Hardcoding EXPTIME=60s" from warning to info.

@@ -934,7 +934,8 @@ class ETCAlgorithm(object):
         header = fitsio.read_header(fname, ext=0)
         # Check for required keywords.
         self.fassign_data = {}
-        for key in ('TILEID', 'TILERA', 'TILEDEC', 'FIELDROT'):
+        for key in ('TILEID', 'TILERA', 'TILEDEC', 'FIELDROT', 'SURVEY',
+                    'FA_SURV', 'FAPRGRM', 'SBPROF', 'GOALTYPE', 'EBVFAC'):
             if key not in header:
                 logging.warning(f'Fiberassign file is missing header keyword {key}.')
                 self.fassign_data[key] = None
