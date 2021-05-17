@@ -866,7 +866,18 @@ def mjd_to_night(mjd):
     date = mjd_to_date(mjd, utc_offset=-7)
     if date.hour < 12:
         date -= datetime.timedelta(days=1)
-    return date.strftime('%Y%m%d')
+    return int(date.strftime('%Y%m%d'))
+
+
+def night_to_midnight(night, utc_offset):
+    """Convert YYYYMMDD into a datetime representing midnight. Use utc_offset=0 for a
+    result with midnight.hour==0 or utc_offset=-7 for the KPNO local time.
+    """
+    night = str(night)
+    if len(night) != 8:
+        raise ValueError('night_to_midnight: expected an integer of the form YYYYMMDD.')
+    year, month, day = int(night[0:4]), int(night[4:6]), int(night[6:8])
+    return datetime.datetime(year, month, day, 12) + datetime.timedelta(hours=12 + utc_offset)
 
 
 class NumpyEncoder(json.JSONEncoder):

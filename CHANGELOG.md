@@ -7,6 +7,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [0.1.10] - Unreleased
+## Added
+- night_to_midnight utility.
+## Changed
+- mjd_to_night returns an int instead of str (changes type in json header).
 ## Fixed
 - protect against negative SkyCam fiber flux leading to efftime=NaN.
 
