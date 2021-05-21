@@ -451,8 +451,6 @@ class OnlineETC():
         # ETC effective exposure time tracking.
         etc_status['last_updated'] = self.ETCalg.accum.last_updated
         etc_status['last_mjd'] = self.ETCalg.accum.last_mjd
-        etc_status['signal'] = np.float32(self.ETCalg.accum.signal)
-        etc_status['background'] = np.float32(self.ETCalg.accum.background)
         etc_status['efftime'] = np.float32(self.ETCalg.accum.efftime)
         etc_status['realtime'] = np.float32(self.ETCalg.accum.realtime)
         etc_status['efftime_tot'] = np.float32(self.ETCalg.accum.efftime_tot)
