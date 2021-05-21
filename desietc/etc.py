@@ -174,6 +174,12 @@ class ETCAlgorithm(object):
                 ('thru_psf', np.float32),                 # TRANSP*FFRAC for PSF profile
                 ('thru_elg', np.float32),                 # TRANSP*FFRAC for ELG profile
                 ('thru_bgs', np.float32),                 # TRANSP*FFRAC for BGS profile
+                ('speed_dark', np.float32),               # Speed for ELG profile with 2-min averaging
+                ('speed_bright', np.float32),             # Speed for BGS profile with 2-min averaging
+                ('speed_backup', np.float32),             # Speed for PSF profile with 2-min averaging
+                ('speed_dark_nts', np.float32),           # Speed for ELG profile with 20-min averaging
+                ('speed_bright_nts', np.float32),         # Speed for BGS profile with 20-min averaging
+                ('speed_backup_nts', np.float32),         # Speed for PSF profile with 20-min averaging
             ])
         self.sky_measurements = desietc.util.MeasurementBuffer(
             maxlen=200, default_value=1, padding=900, aux_dtype=[
@@ -710,7 +716,8 @@ class ETCAlgorithm(object):
             aux_data=(each_ffrac, each_transp, each_dx, each_dy,
                       self.transp_obs, self.transp_zenith,
                       self.ffrac_psf, self.ffrac_elg, self.ffrac_bgs,
-                      self.thru_psf, self.thru_elg, self.thru_bgs))
+                      self.thru_psf, self.thru_elg, self.thru_bgs,
+                      0., 0., 0., 0., 0., 0.)) # speeds are filled in below
         # Update our accumulated signal if the shutter is open.
         if self.accum.shutter_is_open:
             mjd_now = desietc.util.date_to_mjd(timestamp, utc_offset=0)
@@ -755,7 +762,11 @@ class ETCAlgorithm(object):
             f'bright {(self.speed_bright or -1):.3f} ({(self.speed_bright_nts or -1):.3f}) ' +
             f'backup {(self.speed_backup or -1):.3f} ({(self.speed_backup_nts or -1):.3f}) ' +
             f'using sky {(skylevel_now or -1):.3f} ({(skylevel_nts or -1):.3f})')
-
+        # Save speeds to the JSON file.
+        self.thru_measurements.set_last(
+            speed_dark=(self.speed_dark or -1), speed_dark_nts=(self.speed_dark_nts or -1),
+            speed_bright=(self.speed_bright or -1), speed_bright_nts=(self.speed_bright_nts or -1),
+            speed_backup=(self.speed_backup or -1), speed_backup_nts=(self.speed_backup_nts or -1))
         # Report timing.
         elapsed = time.time() - start
         logging.info(f'Guide frame processing took {elapsed:.2f}s for {nstar} stars in {ncamera} cameras.')
