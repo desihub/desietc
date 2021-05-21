@@ -148,6 +148,12 @@ class ETCAlgorithm(object):
         self.ffrac_psf = None
         self.ffrac_elg = None
         self.ffrac_bgs = None
+        self.speed_dark = None
+        self.speed_dark_nts = None
+        self.speed_bright = None
+        self.speed_bright_nts = None
+        self.speed_backup = None
+        self.speed_backup_nts = None
         # Initialize call counters.
         self.reset_counts()
         # How many GUIDE and SKY cameras do we expect?
@@ -717,6 +723,20 @@ class ETCAlgorithm(object):
         self.thru_avg = self.thru_measurements.average(mjd_stop, self.avg_secs, self.avg_min_values, field='thru_psf')
         if self.thru_avg != None:
             self.thru_avg /= self.FFRAC_NOM['PSF']
+        # Update speed values for each profile.
+        if self.skylevel is not None:
+            avg_secs, min_values = 120, 3
+            num_dark = self.thru_measurements.average(mjd_stop, avg_secs, min_values, field='thru_elg')
+            if num_dark is not None:
+                self.speed_dark = (num_dark / (self.FFRAC_NOM['ELG'] * self.atm_extinction)) ** 2 / self.skylevel
+            num_bright = self.thru_measurements.average(mjd_stop, avg_secs, min_values, field='thru_bgs')
+            if num_bright is not None:
+                self.speed_bright = (num_bright / (self.FFRAC_NOM['BGS'] * self.atm_extinction)) ** 2 / self.skylevel
+            num_backup = self.thru_measurements.average(mjd_stop, avg_secs, min_values, field='thru_psf')
+            if num_backup is not None:
+                self.speed_backup = (num_backup / (self.FFRAC_NOM['PSF'] * self.atm_extinction)) ** 2 / self.skylevel
+        logging.info(f'Speeds: dark {(self.speed_dark or -1):.3f} bright {(self.speed_bright or -1):.3f} backup {(self.speed_backup or -1):.3f}')
+
         # Report timing.
         elapsed = time.time() - start
         logging.info(f'Guide frame processing took {elapsed:.2f}s for {nstar} stars in {ncamera} cameras.')
