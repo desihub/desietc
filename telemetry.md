@@ -57,14 +57,29 @@ The FFRAC and TRANSP averages below combine all measurements over the past two m
  - `thru_avg` (float): Average of recent TRANSP * FFRAC measurements relative to nominal conditions (1.1").
  - `skylevel` (float): Current sky level relative to nominal zenith dark sky conditions.
 
+## Survey speeds updated after each GFA frame:
+
+Survey speed is calculated separately for ELG (dark), BGS (bright) and PSF (backup) profiles and reflects
+conditions at airmass 1 and with no galactic dust extinction. Speeds do not account for read noise or
+source shot noise.
+See [here](https://desi.lbl.gov/trac/wiki/SurveyOps/SurveySpeed#SurveySpeed) for details.
+
+The variables ending with `_nts` are averaged over 20 minutes for Next Tile Selector (NTS) decisions.
+The other variables have the same defintion but are averaged over 2 minutes.
+
+ - `speed_dark` (float): speed calculated with the ELG profile and 2-min averaging.
+ - `speed_bright` (float): speed calculated with the BGS profile and 2-min averaging.
+ - `speed_backup` (float): speed calculated with the PSF profile and 2-min averaging.
+ - `speed_dark_nts` (float): speed calculated with the ELG profile and 20-min averaging.
+ - `speed_bright_nts` (float): speed calculated with the BGS profile and 20-min averaging.
+ - `speed_backup_nts` (float): speed calculated with the PSF profile and 20-min averaging.
+
 ## Accumulated exposure-time tracking:
 
 These quanties are updated after each new GFA or SKYCAM frame is analyzed while the spectrograph shutters are open, then stay constant while the shutter is closed, until the next exposure sequence starts.
 
  - `last_updated` (str): The ISO format datetime string corresponding to `last_mjd`.
  - `last_mjd` (float): The MJD of the last update to any accumulated values.
- - `signal` (float): The accumulated relative signal (`ffrac * transp`) since the shutter was last opened. Does not included MW dust extinction but does include atmospheric extinction.
- - `background` (float): The accumulated relative background (`skylevel`) since the shutter was last opened.
  - `efftime` (float): The effective exposure time in seconds accumulated since the shutter was last opened.
  - `realtime` (float): The real exposure time in seconds accumulated since the shutter was last opened. Should never reach `cosmics_split` when splits are enabled.
  - `efftime_tot` (float): Same as `efftime` but also including any previous cosmic splits for this tile. The exposure stops once this reaches `req_efftime`.
