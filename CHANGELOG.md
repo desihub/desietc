@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.1.11] - Unreleased
 ## Added
 - record per-frame FFRAC*TRANSP for ELG, BGS profiles.
+- calculate dark/bright/backup speeds with 2- and 20-min averaging.
+- save speeds to json file and telemetry.
+## Removed
+- signal and background values from the telemetry.
 
 ## [0.1.10] - 2021-05-17
 ## Added
