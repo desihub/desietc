@@ -441,6 +441,12 @@ class OnlineETC():
         etc_status['transp_avg'] = np.float32(self.ETCalg.transp_avg)
         etc_status['thru_avg'] = np.float32(self.ETCalg.thru_avg)
         etc_status['skylevel'] = np.float32(self.ETCalg.skylevel)
+        etc_status['speed_dark'] = np.float32(self.ETCalg.speed_dark)
+        etc_status['speed_bright'] = np.float32(self.ETCalg.speed_bright)
+        etc_status['speed_backup'] = np.float32(self.ETCalg.speed_backup)
+        etc_status['speed_dark_nts'] = np.float32(self.ETCalg.speed_dark_nts)
+        etc_status['speed_bright_nts'] = np.float32(self.ETCalg.speed_bright_nts)
+        etc_status['speed_backup_nts'] = np.float32(self.ETCalg.speed_backup_nts)
 
         # ETC effective exposure time tracking.
         etc_status['last_updated'] = self.ETCalg.accum.last_updated
