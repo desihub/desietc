@@ -166,6 +166,8 @@ class ETCAlgorithm(object):
                 ('ffrac_elg', np.float32),                # FFRAC for ELG profile averaged over all guide stars
                 ('ffrac_bgs', np.float32),                # FFRAC for BGS profile averaged over all guide stars
                 ('thru_psf', np.float32),                 # TRANSP*FFRAC for PSF profile
+                ('thru_elg', np.float32),                 # TRANSP*FFRAC for ELG profile
+                ('thru_bgs', np.float32),                 # TRANSP*FFRAC for BGS profile
             ])
         self.sky_measurements = desietc.util.MeasurementBuffer(
             maxlen=200, default_value=1, padding=900, aux_dtype=[
@@ -701,7 +703,8 @@ class ETCAlgorithm(object):
             mjd_start, mjd_stop, self.thru_sbprof_rel, 0.01,
             aux_data=(each_ffrac, each_transp, each_dx, each_dy,
                       self.transp_obs, self.transp_zenith,
-                      self.ffrac_psf, self.ffrac_elg, self.ffrac_bgs, self.thru_psf))
+                      self.ffrac_psf, self.ffrac_elg, self.ffrac_bgs,
+                      self.thru_psf, self.thru_elg, self.thru_bgs))
         # Update our accumulated signal if the shutter is open.
         if self.accum.shutter_is_open:
             mjd_now = desietc.util.date_to_mjd(timestamp, utc_offset=0)
