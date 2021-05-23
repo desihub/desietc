@@ -6,7 +6,7 @@ Documentation for the variables reported by the `OnlineETC.get_status` method th
 
  - `img_proc` (bool): Image processing is active for observing a single tile, possibly with cosmic splits.
  - `etc_proc` (bool): The spectrograph shutters are open.
- - `etc_ready` ((bool)): The ETC algorithm is ready and operating normally.
+ - `etc_ready` (bool): The ETC algorithm is ready and operating normally.
 
 ## Timestamps of exposure state transitions:
 
