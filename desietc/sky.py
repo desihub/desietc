@@ -201,6 +201,9 @@ class SkyCamera(object):
             self.fluxerr[:N] = np.sqrt(cov[:, 0, 0])
             #assert np.all(cov[:, 1, 1] > 0)
             self.bgerr[:N] = np.sqrt(cov[:, 1, 1])
+        # Give up if we have invalid fluxes or errors.
+        if not np.all((self.fluxerr[:N] > 0) & np.isfinite(self.flux[:N])):
+            return None, None
         # Calculate the best-fit model for each fiber.
         self.model[:N] = (self.bgfit[:N].reshape(-1, 1, 1) +
                                    self.flux[:N].reshape(-1, 1, 1) * self.spots[name])

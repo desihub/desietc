@@ -800,6 +800,9 @@ class ETCAlgorithm(object):
                 logging.warning(f'Ignoring {camera} all-zero image for frame {fnum}.')
                 continue
             camera_flux, camera_dflux = self.SKY.setraw(raw_data, name=camera)
+            if camera_flux is None:
+                logging.warning(f'Failed to estimate {camera} skylevel for frame {fnum}.')
+                continue
             logging.info(f'Hardcoding EXPTIME=60s (was {self.exptime:.1f}s).')
             self.exptime = 60
             camera_flux /= self.exptime
@@ -815,6 +818,9 @@ class ETCAlgorithm(object):
             mjd_obs.append(self.mjd_obs)
             exptime.append(self.exptime)
             ncamera += 1
+        if ivar == 0:
+            logging.error(f'Failed to measure the skylevel for frame {fnum}.')
+            return False
         # Calculate the weighted average sky flux over all cameras.
         flux /= ivar
         dflux = ivar ** -0.5
