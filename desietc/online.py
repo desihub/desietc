@@ -370,6 +370,22 @@ class OnlineETC():
             self.etc_ready.clear()
             logging.info('ETC: processing thread exiting after shutdown.')
 
+    def get_exposure_summary(self, expid):
+        """Return the ETC exposure summary dictionary for the specified exposure ID.
+        Returns an empty dictionary if there is no information available.
+
+        All dictionary keywords are upper case with a maximum length of 8.
+        The dictionary is json serializable, so all values are plain python types.
+
+        The header dictionary for an exposure is available shortly after our
+        `stop_etc` method is called (but not immediately since it is generated
+        asynchronously in our worker thread).  The generated header is stored
+        and normally available for the duration of this instance (unless our worker
+        thread has to be restarted).
+        """
+        header = {}
+        return header
+
     def get_status(self):
         """Return the current ETC status.
 
