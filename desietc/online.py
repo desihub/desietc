@@ -383,8 +383,7 @@ class OnlineETC():
         and normally available for the duration of this instance (unless our worker
         thread has to be restarted).
         """
-        header = {}
-        return header
+        return self.ETCalg.exposure_summary.get(expid, {})
 
     def get_status(self):
         """Return the current ETC status.
