@@ -29,13 +29,6 @@ import desietc.accum
 import desietc.util
 import desietc.plot
 
-# TODO:
-# - estimate GFA thru errors & use stars from all GFAs together
-# - ignore GFAs with flagged issues (noise, ...)?
-# - save git hash / version to json output
-# - save cpu timing to json
-# - truncate digits for np.float32 json output
-# - warn if SNR is decreasing.
 
 class ETCAlgorithm(object):
 
@@ -156,6 +149,8 @@ class ETCAlgorithm(object):
         self.speed_backup_nts = None
         # Initialize call counters.
         self.reset_counts()
+        # Initialize per-exposure summaries.
+        self.exposure_summary = {}
         # How many GUIDE and SKY cameras do we expect?
         self.ngfa = len(desietc.gfa.GFACamera.guide_names)
         self.nsky = len(desietc.sky.SkyCamera.sky_names)
@@ -973,8 +968,39 @@ class ETCAlgorithm(object):
         self.exp_data['background'] = np.float32(self.accum.background)
         for aux_name in ('transp_obs', 'transp_zenith', 'ffrac_psf', 'ffrac_elg', 'ffrac_bgs', 'thru_psf'):
             self.exp_data[aux_name] = np.float32(self.accum.aux_mean[aux_name])
+        # Save a summary of this exposure.
+        self.save_exposure_summary()
         logging.info(f'Shutter close[{self.accum.nclose}] at {timestamp} after {self.accum.realtime:.1f}s ' +
             f'with actual teff={self.accum.efftime:.1f}s')
+
+    def save_exposure_summary(self):
+        """Keywords are documented in header.md
+        """
+        expid = self.exp_data['expid']
+        if not (expid > 0):
+            logging.error(f'Invalid expid {expid} in save_exposure_summary.')
+            return
+        if expid in self.exposure_summary:
+            logging.error(f'Overwriting exposure summary for {expid}.')
+        summary = dict(
+            ETCTEFF=np.float32(self.accum.efftime),
+            ETCREAL=np.float32(self.accum.realtime),
+            ETCPREV=np.float32(np.sum(self.accum.shutter_teff[:-2])),
+            ETCSPLIT=len(self.accum.shutter_teff),
+            ETCPROF=self.exp_data['sbprof'],
+            ETCTRANS=np.float32(self.accum.aux_mean['transp_obs']),
+            ETCTHRUP=np.float32(self.accum.aux_mean['thru_psf'] / self.FFRAC_NOM['PSF']),
+            ETCTHRUE=np.float32(self.accum.aux_mean['thru_elg'] / self.FFRAC_NOM['ELG']),
+            ETCTHRUB=np.float32(self.accum.aux_mean['thru_bgs'] / self.FFRAC_NOM['BGS']),
+            ETCFRACP=np.float32(self.accum.aux_mean['thru_psf'] / self.accum.aux_mean['transp_obs']),
+            ETCFRACE=np.float32(self.accum.aux_mean['thru_elg'] / self.accum.aux_mean['transp_obs']),
+            ETCFRACB=np.float32(self.accum.aux_mean['thru_bgs'] / self.accum.aux_mean['transp_obs']),
+            ETCSKY=np.float32(self.accum.background),
+            ACQFWHM=np.float32(self.exp_data['acq_ffrac']),
+        )
+        # Use a roundtrip through json to convert all values to native types.
+        summary = json.loads(json.dumps(summary, cls=desietc.util.NumpyEncoder))
+        self.exposure_summary[expid] = summary
 
     def stop_exposure(self, timestamp):
         """
@@ -1038,6 +1064,7 @@ class ETCAlgorithm(object):
                 fassign=self.fassign_data,
                 acquisition=self.acquisition_data,
                 guide_stars=self.guide_stars,
+                header=self.exposure_summary.get(self.exp_data['expid'], {}),
                 shutter=dict(
                     open=self.accum.shutter_open,
                     close=self.accum.shutter_close,

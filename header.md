@@ -7,7 +7,7 @@ The following quantities are normally written (by ICS) to the FITS header of HDU
 - **ETCPREV** [float]: Cummulative effective time, in seconds, of any previous exposures of this tile in the current visit.
 - **ETCSPLIT** [int]: Split sequence number for this visit of the current tile, starting at 1.
 - **ETCPROF** [string]: Source surface brightness profile used for the ETC effective time calculation. Must be one of "PSF", "ELG", "BGS".
-- **ETCTRANS** [float]: Average of TRANSP over the exposure. Normalized to 1 for nominal conditions.
+- **ETCTRANS** [float]: Average of observed TRANSP over the exposure. Normalized to 1 for nominal conditions. Note that this value is not corrected to zenith extinction.
 - **ETCTHRUP** [float]: Average of FFRAC*TRANSP over the exposure with FFRAC calculated for a PSF source profile. Normalized to 1 for nominal conditions.
 - **ETCTHRUE** [float]: Average of FFRAC*TRANSP over the exposure with FFRAC calculated for a ELG source profile. Normalized to 1 for nominal conditions.
 - **ETCTHRUB** [float]: Average of FFRAC*TRANSP over the exposure with FFRAC calculated for a BGS source profile. Normalized to 1 for nominal conditions.
