@@ -159,6 +159,7 @@ class OfflineETCApp:
             names = desietc.sky.SkyCamera.sky_names if ftype == 'sky' else desietc.gfa.GFACamera.guide_names
             fnum = self.get('frames')[self.next_frame]['num']
             self.last_frame += 1
+            time.sleep(0.5)
             set_mjd_now(self.get('frames')[self.last_frame]['stop'])
             return dict(image=desietc.offline.fits_to_online(path, names, fnum))
         else:
@@ -196,6 +197,9 @@ def main():
             print(app.open_shutter())
         elif cmd == 'c':
             print(app.close_shutter())
+        elif cmd == 'h':
+            expid = int(argv[1]) if argc > 1 else None
+            print(app.etc.get_exposure_summary(expid))
         elif cmd == 't':
             print(app.stop())
         elif cmd == 'f':
