@@ -983,6 +983,7 @@ class ETCAlgorithm(object):
         if expid in self.exposure_summary:
             logging.error(f'Overwriting exposure summary for {expid}.')
         summary = dict(
+            ETCVERS=self.git or 'unknown',
             ETCTEFF=np.float32(self.accum.efftime),
             ETCREAL=np.float32(self.accum.realtime),
             ETCPREV=np.float32(np.sum(self.accum.shutter_teff[:-2])),
