@@ -997,7 +997,7 @@ class ETCAlgorithm(object):
             ETCFRACE=np.float32(self.accum.aux_mean['thru_elg'] / self.accum.aux_mean['transp_obs']),
             ETCFRACB=np.float32(self.accum.aux_mean['thru_bgs'] / self.accum.aux_mean['transp_obs']),
             ETCSKY=np.float32(self.accum.background),
-            ACQFWHM=np.float32(self.exp_data['acq_ffrac']),
+            ACQFWHM=np.float32(self.exp_data['acq_fwhm']),
         )
         # Use a roundtrip through json to convert all values to native types.
         summary = json.loads(json.dumps(summary, cls=desietc.util.NumpyEncoder))
