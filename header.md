@@ -1,6 +1,15 @@
 # ETC FITS Header Keywords
 
-The following quantities are normally written (by ICS) to the FITS header of HDU-1 (extname "SPEC") in `desi-nnnnnnnn.fits.gz` files. They are also written to the online exposures database. All keywords have a maximum length of 8 characters.
+The following per-exposure quantities are normally written (by ICS) to the FITS header of HDU-1 (extname "SPEC") in `desi-nnnnnnnn.fits.gz` files. They are also written to the online exposures database. All keywords have a maximum length of 8 characters.
+
+These values were first written by desietc tag 0.1.12, which was first used on sky for exposure 90129 on 20210528. To inspect these values, use e.g.
+```
+fitsheader -e SPEC -k "ETC*" -k ACQFWHM desi-00090129.fits.fz
+```
+or, to [query the exposures database](https://replicator.desi.lbl.gov/QE/DESI/app/query?sql_statement=select%20ID,ETCTEFF,ETCREAL%20from%20exposure%20where%20id=90129) use e.g.
+```
+select ID,ETCTEFF,ETCREAL from exposure where id=90129
+```
 
 - **ETCVERS** [str]: Version string identifying which git commit of the desietc package was used.
 - **ETCTEFF** [float]: Effective time of this exposure, in seconds, estimated by the ETC for the source profile specified in ETCPROF.
