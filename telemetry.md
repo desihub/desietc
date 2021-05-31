@@ -2,6 +2,14 @@
 
 Documentation for the variables reported by the `OnlineETC.get_status` method that are normally archived to the [ICS telemetry database](https://replicator.desi.lbl.gov/TV3/app/T/index).
 
+ETC telemetry updates occur when a visit (sequence of split exposures on the same tile) is active, as signaled by calls to the `start` and `stop` methods of `OnlineETC`. During a visit, updates are triggered when:
+ - The spectrograph shutters open or close, as signaled by calls to `start_etc` and `stop_etc`.
+ - A new SkyCam exposure is processed.
+ - The initial GFA acquisition exposure is processed.
+ - The spectrograph shutters are open and:
+   - a new GFA exposure is processed, or
+   - more than 2 seconds have elapsed since the last update.
+
 ## Flags that control the exposure state machine:
 
  - `img_proc` (bool): Image processing is active for observing a single tile, possibly with cosmic splits.
