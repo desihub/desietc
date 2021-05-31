@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.1.13] - Unreleased
 ## Added
 - Description of when ETC telemetry is updated.
+## Changed
+- Reset speeds to None when there is no recent sky/gfa data.
 ## Fixed
 - save FWHM instead of FFRAC to ACQFWHM.
 

@@ -728,6 +728,7 @@ class ETCAlgorithm(object):
         # Update speed values for each profile.
         # "Instantaneous" quantities are 2-min averages over FFRAC_XXX * TRANSP.
         avg_secs, min_values = 120, 3
+        self.speed_dark = self.speed_bright = self.speed_backup = None
         skylevel_now = self.sky_measurements.average(mjd_stop, avg_secs, 1, field='value')
         if skylevel_now is not None:
             num_dark = self.thru_measurements.average(mjd_stop, avg_secs, min_values, field='thru_elg')
@@ -741,6 +742,7 @@ class ETCAlgorithm(object):
                 self.speed_backup = (num_backup / (self.FFRAC_NOM['PSF'] * self.atm_extinction)) ** 2 / skylevel_now
         # Values for NTS are 20-min averages.
         avg_secs, min_values = 1200, 3
+        self.speed_dark_nts = self.speed_bright_nts = self.speed_backup_nts = None
         skylevel_nts = self.sky_measurements.average(mjd_stop, avg_secs, 1, field='value')
         if skylevel_nts is not None:
             num_dark = self.thru_measurements.average(mjd_stop, avg_secs, min_values, field='thru_elg')
