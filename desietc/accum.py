@@ -359,10 +359,13 @@ class Accumulator(object):
             D[field] = self.transcript[:N][field]
         return D
 
-    def get_efftime(self, realtime, signal, background, scale=1.3618014901561835):
+    def get_efftime(self, realtime, signal, background, scale=1.11537):
         """Calculate the effective exposure time corresponding to the specified real
         exposure time, accumulated signal and background rates, and their nominal values
         and MW transparency specified in the last call to :meth:`setup_exposure`.
+
+        The default scale was set in issue #4 to match (on average) LRG_EFFTIME_DARK
+        calculated for main survey dark tiles during 20210514 - 20211005.
         """
         sig_factor = self.MW_transp * signal
         rdnoise = self.rdnoise_1ks * 1000 / np.maximum(0.1, realtime)
