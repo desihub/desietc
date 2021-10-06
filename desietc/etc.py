@@ -503,7 +503,7 @@ class ETCAlgorithm(object):
         logging.info(f'Acquisition processing took {elapsed:.2f}s for {ncamera} cameras.')
         return True
 
-    def set_guide_stars(self, pm_info, zeropoint=27.06, fiber_diam_um=107, pixel_size_um=15):
+    def set_guide_stars(self, pm_info, zeropoint=26.92, fiber_diam_um=107, pixel_size_um=15):
         """Specify the guide star locations and magnitudes to use when analyzing
         each guide frame.  These are normally calculated by PlateMaker.
         """

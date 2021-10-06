@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Description of when ETC telemetry is updated.
 ## Changed
 - Reset speeds to None when there is no recent sky/gfa data.
+- Change GFA zeropoint from 27.06 to 26.92 to increase transparencies by 14% and better match the offline analysis.
 ## Fixed
 - save FWHM instead of FFRAC to ACQFWHM.
 
