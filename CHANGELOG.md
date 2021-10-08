@@ -11,6 +11,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Description of when ETC telemetry is updated.
 ## Changed
 - Reset speeds to None when there is no recent sky/gfa data.
+- Change GFA zeropoint from 27.06 to 26.92 to increase transparencies by 14% and better match the offline analysis.
+- Add aircorrection=X**1.75 factor to all speed calculations.
+- Rescale EFFTIME so that it increases by 6.0% to match the offline LRG_EFFTIME_DARK during 20210514-20211005 (after correcting for the 14% increase in transparency).
 ## Fixed
 - save FWHM instead of FFRAC to ACQFWHM.
 
