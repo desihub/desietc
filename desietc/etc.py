@@ -730,7 +730,6 @@ class ETCAlgorithm(object):
             self.thru_avg /= self.FFRAC_NOM['PSF']
         # Update speed values for each profile.
         # "Instantaneous" quantities are 2-min averages over FFRAC_XXX * TRANSP.
-        aircorrection = self.exp_data['aircorrection']
         avg_secs, min_values = 120, 3
         self.speed_dark = self.speed_bright = self.speed_backup = None
         skylevel_now = self.sky_measurements.average(mjd_stop, avg_secs, 1, field='value')
@@ -738,13 +737,13 @@ class ETCAlgorithm(object):
         if skylevel_now is not None:
             num_dark = self.thru_measurements.average(mjd_stop, avg_secs, min_values, field='thru_elg')
             if num_dark is not None:
-                self.speed_dark = (num_dark / (self.FFRAC_NOM['ELG'] * self.atm_extinction)) ** 2 * aircorrection / skylevel_now
+                self.speed_dark = (num_dark / (self.FFRAC_NOM['ELG'] * self.atm_extinction)) ** 2 * aircorrect_now / skylevel_now
             num_bright = self.thru_measurements.average(mjd_stop, avg_secs, min_values, field='thru_bgs')
             if num_bright is not None:
-                self.speed_bright = (num_bright / (self.FFRAC_NOM['BGS'] * self.atm_extinction)) ** 2 * aircorrection / skylevel_now
+                self.speed_bright = (num_bright / (self.FFRAC_NOM['BGS'] * self.atm_extinction)) ** 2 * aircorrect_now / skylevel_now
             num_backup = self.thru_measurements.average(mjd_stop, avg_secs, min_values, field='thru_psf')
             if num_backup is not None:
-                self.speed_backup = (num_backup / (self.FFRAC_NOM['PSF'] * self.atm_extinction)) ** 2 * aircorrection / skylevel_now
+                self.speed_backup = (num_backup / (self.FFRAC_NOM['PSF'] * self.atm_extinction)) ** 2 * aircorrect_now / skylevel_now
         # Values for NTS are 20-min averages.
         avg_secs, min_values = 1200, 3
         self.speed_dark_nts = self.speed_bright_nts = self.speed_backup_nts = None
@@ -753,19 +752,19 @@ class ETCAlgorithm(object):
         if skylevel_nts is not None:
             num_dark = self.thru_measurements.average(mjd_stop, avg_secs, min_values, field='thru_elg')
             if num_dark is not None:
-                self.speed_dark_nts = (num_dark / (self.FFRAC_NOM['ELG'] * self.atm_extinction)) ** 2 * aircorrection / skylevel_nts
+                self.speed_dark_nts = (num_dark / (self.FFRAC_NOM['ELG'] * self.atm_extinction)) ** 2 * aircorrect_nts / skylevel_nts
             num_bright = self.thru_measurements.average(mjd_stop, avg_secs, min_values, field='thru_bgs')
             if num_bright is not None:
-                self.speed_bright_nts = (num_bright / (self.FFRAC_NOM['BGS'] * self.atm_extinction)) ** 2 * aircorrection / skylevel_nts
+                self.speed_bright_nts = (num_bright / (self.FFRAC_NOM['BGS'] * self.atm_extinction)) ** 2 * aircorrect_nts / skylevel_nts
             num_backup = self.thru_measurements.average(mjd_stop, avg_secs, min_values, field='thru_psf')
             if num_backup is not None:
-                self.speed_backup_nts = (num_backup / (self.FFRAC_NOM['PSF'] * self.atm_extinction)) ** 2 * aircorrection / skylevel_nts
+                self.speed_backup_nts = (num_backup / (self.FFRAC_NOM['PSF'] * self.atm_extinction)) ** 2 * aircorrect_nts / skylevel_nts
         logging.info(
             f'Speeds: dark {(self.speed_dark or -1):.3f} ({(self.speed_dark_nts or -1):.3f}) ' +
             f'bright {(self.speed_bright or -1):.3f} ({(self.speed_bright_nts or -1):.3f}) ' +
             f'backup {(self.speed_backup or -1):.3f} ({(self.speed_backup_nts or -1):.3f}) ' +
             f'using sky {(skylevel_now or -1):.3f} ({(skylevel_nts or -1):.3f}) ' +
-            f'and aircorrection X**1.75={aircorrection:.3f}')
+            f'aircorrect X**1.75={aircorrect_now:.3f} ({aircorrect_nts:.3f})')
         # Save speeds to the JSON file.
         self.thru_measurements.set_last(
             speed_dark=(self.speed_dark or -1), speed_dark_nts=(self.speed_dark_nts or -1),

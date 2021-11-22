@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.1.14] - Unreleased
 ## Changed
 - Use MW_transp=1 when the fiberassign FAPRGRM is "BACKUP". Fixes [#8](https://github.com/desihub/desietc/issues/8).
+- Use 2,20-min average airmass correction factors in speeds. Fixes [#9](https://github.com/desihub/desietc/issues/9).
 
 ## [0.1.13] - 2021-10-07
 ## Added
