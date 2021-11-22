@@ -169,6 +169,7 @@ class ETCAlgorithm(object):
                 ('thru_psf', np.float32),                 # TRANSP*FFRAC for PSF profile
                 ('thru_elg', np.float32),                 # TRANSP*FFRAC for ELG profile
                 ('thru_bgs', np.float32),                 # TRANSP*FFRAC for BGS profile
+                ('aircorrect', np.float32),               # Airmass correction factor for speed calculations
                 ('speed_dark', np.float32),               # Speed for ELG profile with 2-min averaging
                 ('speed_bright', np.float32),             # Speed for BGS profile with 2-min averaging
                 ('speed_backup', np.float32),             # Speed for PSF profile with 2-min averaging
@@ -713,6 +714,7 @@ class ETCAlgorithm(object):
                       self.transp_obs, self.transp_zenith,
                       self.ffrac_psf, self.ffrac_elg, self.ffrac_bgs,
                       self.thru_psf, self.thru_elg, self.thru_bgs,
+                      self.exp_data['aircorrection'], # constant during an exposure for now, but could update for tracking
                       0., 0., 0., 0., 0., 0.)) # speeds are filled in below
         # Update our accumulated signal if the shutter is open.
         if self.accum.shutter_is_open:
@@ -732,6 +734,7 @@ class ETCAlgorithm(object):
         avg_secs, min_values = 120, 3
         self.speed_dark = self.speed_bright = self.speed_backup = None
         skylevel_now = self.sky_measurements.average(mjd_stop, avg_secs, 1, field='value')
+        aircorrect_now = self.thru_measurements.average(mjd_stop, avg_secs, 1, field='aircorrect') or 1.0
         if skylevel_now is not None:
             num_dark = self.thru_measurements.average(mjd_stop, avg_secs, min_values, field='thru_elg')
             if num_dark is not None:
@@ -746,6 +749,7 @@ class ETCAlgorithm(object):
         avg_secs, min_values = 1200, 3
         self.speed_dark_nts = self.speed_bright_nts = self.speed_backup_nts = None
         skylevel_nts = self.sky_measurements.average(mjd_stop, avg_secs, 1, field='value')
+        aircorrect_nts = self.thru_measurements.average(mjd_stop, avg_secs, 1, field='aircorrect') or 1.0
         if skylevel_nts is not None:
             num_dark = self.thru_measurements.average(mjd_stop, avg_secs, min_values, field='thru_elg')
             if num_dark is not None:
