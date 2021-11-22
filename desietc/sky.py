@@ -149,7 +149,7 @@ class SkyCamera(object):
         # Initialize background fitting.
         self.bgfitter = BGFitter()
 
-    def setraw(self, raw, name, gain=2.5, saturation=65500, refit=True, pullcut=5, chisq_max=5, ndrop_max=2,
+    def setraw(self, raw, name, gain=2.5, saturation=65500, refit=True, pullcut=5, chisq_max=5, ndrop_max=3,
                masked=True, finetune=True):
         """
         """
@@ -230,7 +230,7 @@ class SkyCamera(object):
         snr = self.flux[:N] / self.fluxerr[:N]
         order = np.argsort(snr)[::-1]
         self.ndrop = 0
-        while self.ndrop < ndrop_max:
+        while self.ndrop <= ndrop_max:
             ivar = np.sum(wgt[used])
             meanflux = np.sum(wgt[used] * cflux[used]) / ivar
             self.chisq = np.sum(((cflux[used] - meanflux) / cfluxerr[used]) ** 2) / (N - self.ndrop)
