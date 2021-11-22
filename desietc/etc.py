@@ -1016,7 +1016,7 @@ class ETCAlgorithm(object):
     def read_fiberassign(self, fname):
         """
         """
-        self.fassign_data = dict(MW_transp=1)
+        self.fassign_data = {}
         if not pathlib.Path(fname).exists():
             logging.error(f'Non-existent fiberassign file: {fname}.')
             return False
@@ -1038,15 +1038,19 @@ class ETCAlgorithm(object):
         # Calculate the median EBV of non-sky targets.
         sel = (fassign['OBJTYPE'] == 'TGT') & np.isfinite(fassign['EBV'])
         ntarget = np.count_nonzero(sel)
-        if ntarget < 100:
-            logging.warning(f'Fiberassignment for tile {tileid} only has {ntarget} targets.')
-            return False
         if ntarget > 0:
+            if ntarget < 100:
+                logging.warning(f'Fiberassignment for tile {tileid} only has {ntarget} non-sky targets.')
             Ebv = np.median(fassign[sel]['EBV'])
         else:
             Ebv = 0.
-        # Calculate the corresponding MW transparency factor.
-        MW_transp = 10 ** (-self.Ebv_coef * Ebv / 2.5)
+            logging.warning('Seting Ebv=0 since no non-sky targets found.')
+        # Calculate the corresponding MW transparency factor unless this is the backup program.
+        if self.fassign_data['FAPRGRM'] != 'BACKUP':
+            MW_transp = 10 ** (-self.Ebv_coef * Ebv / 2.5)
+        else:
+            MW_transp = 1.
+            logging.info('Setting MW_transp=1 for backup program.')
         # Save what we need later and will write to our json file.
         self.fassign_data.update(dict(ntarget=ntarget, Ebv=Ebv, MW_transp=MW_transp))
         logging.info(f'Tile {tileid} has {ntarget} targets with median(Ebv)={Ebv:.5f} and MW transp {MW_transp:.5f}.')
