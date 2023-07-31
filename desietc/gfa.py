@@ -87,7 +87,7 @@ def load_calib_data(name='GFA_calib.fits'):
                 data[gfa][key] = hdr.get(key, -1)
             master_zero[gfa] = hdus['ZERO{0}'.format(gfanum)].read().copy()
             master_dark[gfa] = hdus['DARK{0}'.format(gfanum)].read().copy()
-            pixel_mask[gfa] = hdus['MASK{0}'.format(gfanum)].read().astype(np.bool)
+            pixel_mask[gfa] = hdus['MASK{0}'.format(gfanum)].read().astype(bool)
     logging.info('Loaded GFA calib data from {0}'.format(name))
     return data, master_zero, master_dark, pixel_mask
 
