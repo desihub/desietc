@@ -6,10 +6,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.1.15] - Unreleased
+## [0.1.15] - 2023-07-31
+## Changed
+- Globally increase calculated effective times by a factor of 1.05. See [#11](https://github.com/desihub/desietc/issues/11) for details.
 ## Fixed
 - Replace np.bool with bool because of numpy [deprecation introduced in numpy 1.20.0](https://numpy.org/devdocs/release/1.20.0-notes.html#using-the-aliases-of-builtin-types-like-np-int-is-deprecated).
-- Globally increase calculated effective times by a factor of 1.05. See [#11](https://github.com/desihub/desietc/issues/11) for details.
 
 ## [0.1.14] - 2021-11-22
 ## Changed
