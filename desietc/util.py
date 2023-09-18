@@ -7,6 +7,7 @@ import datetime
 import json
 import pathlib
 import subprocess
+import os
 
 import numpy as np
 
@@ -1160,3 +1161,55 @@ def get_fiber_fractions(PSF, FIBER):
     ELG = scipy.signal.convolve(PSF, _ELG_kernel, mode='same')
     BGS = scipy.signal.convolve(PSF, _BGS_kernel, mode='same')
     return np.sum(PSF * FIBER) / PSFsum, np.sum(ELG * FIBER) / PSFsum, np.sum(BGS * FIBER) / PSFsum
+
+
+class ETCExposure(object):
+    """Utility class for reading the per-exposure json file written by the ETC.
+    """
+    class TimeSeries: pass
+
+    utc_offset = -7
+    mjd_epoch = np.datetime64('1858-11-17', 'ms') + utc_offset * np.timedelta64(3600000, 'ms')
+    onesec = np.timedelta64(1000, 'ms')
+
+    @staticmethod
+    def get_timestamps(mjd0, dt):
+        dt = np.asarray(dt)
+        return ETCExposure.mjd_epoch + mjd0 * np.timedelta64(86400000, 'ms') + dt * ETCExposure.onesec
+
+    @staticmethod
+    def load(night, expid, datadir=None):
+        datadir = datadir or os.getenv('DESI_SPECTRO_DATA') or '.'
+        path = pathlib.Path(datadir)
+        if not path.exists():
+            raise RuntimeError(f'Invalid datadir: {datadir}')
+        path = path / str(night)
+        if not path.exists():
+            raise RuntimeError(f'Invalid night: {night}')
+        path = path / str(expid).zfill(8)
+        if not path.exists():
+            raise RuntimeError(f'Invalid expid: {expid} for {night}')
+
+    def __init__(self, filename):
+        """Initialize the ETC exposure data from a saved json file
+        """
+        with open(filename) as f:
+            self.data = json.load(f)
+        for block in self.data.keys():
+            if block in ('thru','sky','accum'):
+                # Expand time series data into an attribute object.
+                setattr(self, block, ETCExposure.TimeSeries())
+                timeseries = getattr(self, block)
+                mjd0 = self.data[block]['mjd0']
+                for k in self.data[block].keys():
+                    if k == 'mjd0':
+                        continue
+                    if k.startswith('dt'):
+                        name = 't'+k[2:]
+                        # Convert deltas into numpy 64-bit local timestamps.
+                        setattr(timeseries, name, ETCExposure.get_timestamps(mjd0, self.data[block][k]))
+                    # Convert all timeseries values to float32 numpy arrays (including dt* arrays)
+                    setattr(timeseries, k, np.array(self.data[block][k], np.float32))
+            else:
+                # Attach sub-dict as attribute of this object.
+                setattr(self, block, self.data[block])
