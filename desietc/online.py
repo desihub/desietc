@@ -285,7 +285,7 @@ class OnlineETC():
                             have_new_telemetry = True
                             need_acq_image = False
 
-                    if need_stars:
+                    if need_stars and not need_acq_image:
                         # Process the PlateMaker guide stars if available.
                         pm_info = self.call_for_pm_info()
                         if pm_info:

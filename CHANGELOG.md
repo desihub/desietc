@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.1.17] - Unreleased
 ## Added
  - Utility class for reading per-exposure json files written by the online ETC.
+## Fixed
+ - Protect against rare race condition seen on 20231018 where pm_info came before acquisition_image.
 
 ## [0.1.16] - 2023-08-11
 ## Fixed
