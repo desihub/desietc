@@ -148,10 +148,47 @@ class SkyCamera(object):
         self.pull = np.empty((maxstamps, stampsize, stampsize), np.float32)
         # Initialize background fitting.
         self.bgfitter = BGFitter()
+    
+    
+    
+    def setraw_final(self, raw, name, gain=2.5, saturation=65500, refit=False, pullcut=5, chisq_max=5, ndrop_max=3,
+           masked=True, finetune=True, Temperature=None, Temp_correc_coef=np.array([
+    [0.91, 0.007],
+    [0.91, 0.006]])):
+        """Fit images of a spot to estimate the spot flux and background level as well as the position offset 
+        from the reference profile.
 
-    def setraw(self, raw, name, gain=2.5, saturation=65500, refit=True, pullcut=5, chisq_max=5, ndrop_max=3,
-               masked=True, finetune=True):
-        """
+        Parameters
+        ----------
+        raw : array
+            Array of shape (...,ny,nx) with the raw data to reduce.
+        name : string
+            Either 'SKYCAM0' or 'SKYCAM1' depending on the sky monitoring camera considered.
+        gain : scalar
+            gain of the sky monitoring camera
+        saturation : scalar
+            Value of a pixel above which we consider it a saturated pixel.
+        refit : bool
+            Wether are not we apply a refit procedure
+        pullcut : scalar
+            Threshold value to mask pixel with extreme pulls in the refit procedure.
+        chis_max : scalar
+            Threshold chi square value used for the weighted average flux computation.
+        ndrop_max : scalar
+            Maximum number of sky monitoring fibers that can be dropped for the weighted average flux computation.
+        masked : bool
+            True if we mask the broken sky monitoring fibers
+        finetune : bool
+            Apply the finetuning correction on the sky flux if True.
+        Temperature : scalar
+            Temperature measured during the same exposure as the raw data.
+        Temp_correc_coeff : array
+            Array of shape (...,2,2) corres^ponding to the temperature linear fit.
+        Returns
+        -------
+        tuple
+            Tuple (meanflux, ivar ** -0.5, spot_offsets) where menflux and ivar**-0.5 are scalars,
+            and spot_offsets is an array of shape (...,nf,2) where nf is the number of sky monitoring fibers                           (10 for SKYCAM0 and 7 for SKYCAM1) with elements [...,i,0] = i-th spot position_offset(x direction) and                   [...,i,1] = i-th spot position_offset(y direction)
         """
         if name not in self.slices:
             raise ValueError('Invalid SKY name: {0}.'.format(name))
@@ -176,7 +213,7 @@ class SkyCamera(object):
             # Mask known hot pixels.
             self.ivar[k][self.masks[name][k]] = 0
         # Fit for the spot flux and background level.
-        self.flux[:N], self.bgfit[:N], cov = desietc.util.fit_spots(
+        self.flux[:N], self.bgfit[:N], cov, spot_offsets = desietc.util.fit_spots_newer(
             self.data[:N], self.ivar[:N], self.spots[name])
         self.fluxerr[:N] = np.sqrt(cov[:, 0, 0])
         self.bgerr[:N] = np.sqrt(cov[:, 1, 1])
@@ -195,15 +232,26 @@ class SkyCamera(object):
             # Apply the original + new masking.
             self.ivar[:N] *= self.valid[:N]
             # Refit
-            self.flux[:N], self.bgfit[:N], cov = desietc.util.fit_spots(
+            self.flux[:N], self.bgfit[:N], cov, spot_offsets = desietc.util.fit_spots_newer(
                 self.data[:N], self.ivar[:N], self.spots[name])
             #assert np.all(cov[:, 0, 0] > 0)
             self.fluxerr[:N] = np.sqrt(cov[:, 0, 0])
             #assert np.all(cov[:, 1, 1] > 0)
             self.bgerr[:N] = np.sqrt(cov[:, 1, 1])
+        # Compute the average spot profile position offset
+        if masked:
+            dx = np.ones(N)*np.mean(spot_offsets[fiber_mask[icamera, :N] > 0][:,0])
+            dy = np.ones(N)*np.mean(spot_offsets[fiber_mask[icamera, :N] > 0][:,1])
+        else:
+            dx = np.ones(N)*np.mean(spot_offsets[:,0])
+            dy =  np.ones(N)*np.mean(spot_offsets[:,1])
+        shifted_profiles = desietc.util.shifted_profile(self.spots[name], dx, dy)
+        # Doing a final fit using the mean profile position offset over the different spot    
+        self.flux[:N], self.bgfit[:N], cov = desietc.util.fit_spots(
+                self.data[:N], self.ivar[:N], shifted_profiles)
         # Give up if we have invalid fluxes or errors.
         if not np.all((self.fluxerr[:N] > 0) & np.isfinite(self.flux[:N])):
-            return None, None
+            return None, None, None
         # Calculate the best-fit model for each fiber.
         self.model[:N] = (self.bgfit[:N].reshape(-1, 1, 1) +
                                    self.flux[:N].reshape(-1, 1, 1) * self.spots[name])
@@ -240,4 +288,13 @@ class SkyCamera(object):
             idrop = order[self.ndrop]
             used[idrop] = False
             self.ndrop += 1
-        return meanflux, ivar ** -0.5
+
+        # Apply the temperature correction if measured
+        if Temperature is not None:
+            try:
+                if (Temperature > -10) and (Temperature < 35):
+                    meanflux = meanflux/(Temp_correc_coef[icamera,0] + Temp_correc_coef[icamera,1]*Temperature)
+                    ivar = (Temp_correc_coef[icamera,0] + Temp_correc_coef[icamera,1]*Temperature)**2*ivar
+            except:
+                pass
+        return meanflux, ivar ** -0.5, spot_offsets

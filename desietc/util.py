@@ -13,6 +13,7 @@ import numpy as np
 
 import scipy.ndimage
 import scipy.interpolate
+from scipy.interpolate import RegularGridInterpolator
 import scipy.linalg
 import scipy.signal
 
@@ -61,6 +62,148 @@ def fit_spots(data, ivar, profile, area=1):
     # Calculate the covariance of (f, b).
     cov = np.stack((np.stack((M22, -M12), axis=-1), np.stack((-M12, M11), axis=-1)), axis=-1)
     return f, b, cov
+
+
+def shifted_profile(profile, dx, dy):
+    """Shift a reference profile with translations along the x and y axis.
+
+    All inputs are nominally 2D but can have other shapes as long as
+    they broadcast correctly. Input arrays with >2 dimensions are assumed
+    to have the pixels indexed along their last 2 dimensions.
+
+    Parameters
+    ----------
+    profile : array
+        Array of shape (...,ny,nx) with the spot profile(s) to use.
+    dx : array
+        Array of shape (...)
+        Position shift of the input profile to be applied in the x direction.
+    dy : array
+        Array of shape (...)
+        Position shift of the input profile to be applied in the y direction.
+
+    Returns
+    -------
+    array
+        Array (Shifted_profile) has shape (...,ny,nx) and is the profile whose position have been translated by dx
+        in the x direction and dy in the y direction.
+    """
+    nf = profile.shape[0] 
+    nx = profile.shape[1]
+    ny = profile.shape[2]
+    shifted_profile = np.zeros(profile.shape)
+    x, y =  np.meshgrid(np.linspace(0, nx-1, nx), np.linspace(0, ny-1, ny), indexing='ij')
+    for i in range(nf):
+        interp = RegularGridInterpolator((np.linspace(0, nx-1, nx), np.linspace(0, ny-1, ny)), profile[i], bounds_error=False, fill_value=0)
+        shifted_profile[i] = interp((x - dx[i], y - dy[i]))
+    return shifted_profile
+
+
+def residual(data, ivar, profile, flux, background, area):
+    return np.sum(ivar*(data - profile*flux - area*background)**2)
+
+def fit_spots_newer(data, ivar, profile, area=1):
+    """Fit images of a spot to estimate the spot flux and background level as well as the position offset 
+    from the reference profile.
+
+    All inputs are nominally 2D but can have other shapes as long as
+    they broadcast correctly. Input arrays with >2 dimensions are assumed
+    to have the pixels indexed along their last 2 dimensions.
+
+    Parameters
+    ----------
+    data : array
+        Array of shape (...,ny,nx) with the data to fit.
+    ivar : array
+        Array of shape (...,ny,nx) with the corresponding ivars.
+    profile : array
+        Array of shape (...,ny,nx) with the spot profile(s) to use.
+    area : scalar or array
+        Area of each pixel used to predict its background level as b * area.
+        Either a scalar or an array of shape (...,ny, nx).
+
+    Returns
+    -------
+    tuple
+        Tuple (f, b, cov, offsets) where f and b are arrays of shape (...),
+        cov has shape (...,2,2) with elements [...,0,0] = var(f),
+        [...,1,1] = var(b) and [...,0,1] = [...,1,0] = cov(f,b) and offsets has shape (...,2) with elements
+        [...,0] = position_offseft(x direction) and [...,1] = position_offseft(y direction)
+    """
+    npar = 4 # flux,bkg,dx,dy
+    nf = profile.shape[0] # Number of sky monitoring fibers (10 for SkyCam0 and 7 for SkyCam1)
+    nx = profile.shape[1]
+    ny = profile.shape[2]
+    
+    flux = np.zeros(nf)
+    bkg = np.zeros(nf)
+    dx = np.zeros(nf)
+    dy = np.zeros(nf)
+    eps = 0.1
+
+    # Set the matrices that will verify: M [delta_params] = A, and other variable used in the minimisation
+    M = np.zeros((npar, npar))
+    A = np.zeros(npar)
+    der = np.zeros((npar,nf,nx,ny))
+    cov = np.zeros((nf,2,2))
+    prev_chi2 = 0 # Residual of the previous step (set to 0)
+    spots_to_fit = list(range(nf))
+    for step in range(10):
+        der[0] = shifted_profile(profile,dx,dy)
+        der[1] = np.ones((nf,nx,ny))*area
+        for i in spots_to_fit:
+            if step == 0:
+                Model = der[0][i]*flux[i] + area*bkg[i]
+                for p in range(npar):
+                    for q in range(p,npar):
+                        M[q,p] = M[p,q] = np.sum(ivar[i]*der[p][i]*der[q][i])
+                    A[p] = np.sum(ivar[i]*der[p][i]*(data[i] - Model))
+                # Setting the diagonal to one everywhere it is null (ie in the dx, dy related blocks) 
+                M[2:,2:] = np.diag(np.ones(2))
+
+            else:
+                der[2][i] = flux[i]*((shifted_profile(profile,dx+eps,dy)[i]-der[0][i])/eps)
+                der[3][i] = flux[i]*((shifted_profile(profile,dx,dy+eps)[i]-der[0][i])/eps)
+                Model = der[0][i]*flux[i] + area*bkg[i]
+                for p in range(npar):
+                    for q in range(p,npar):
+                        M[q,p] = M[p,q] = np.sum(ivar[i]*der[p][i]*der[q][i])
+                    A[p] = np.sum(ivar[i]*der[p][i]*(data[i] - Model))
+
+            # Solve the matrix system
+            if np.linalg.det(M) !=0:
+                M_inv = np.linalg.inv(M)
+                Sol = np.dot(M_inv, A)
+                # Search for a missed minimum of the chi2 function
+                alpha_opt = 1
+                new_profile = shifted_profile(profile, dx + Sol[2], dy + Sol[3])[i]
+                new_chi2 = residual(data[i], ivar[i], new_profile, flux[i]+Sol[0], bkg[i]+Sol[1], area)
+                try:
+                    for alpha in np.linspace(0, 1, int(10*max(abs(Sol[2]),abs(Sol[3])))):
+                        if alpha != 0:
+                            new_profile = shifted_profile(profile, dx + alpha*Sol[2], dy + alpha*Sol[3])[i]
+                            chi2 = residual(data[i], ivar[i], new_profile, flux[i]+alpha*Sol[0], bkg[i]+alpha*Sol[1], area)
+                            if chi2 < new_chi2:
+                                alpha_opt = alpha
+                                new_chi2 = chi2
+                except:
+                    pass
+                # Add to each parameter their "optimal" increment
+                flux[i] += alpha_opt*Sol[0]
+                bkg[i] += alpha_opt*Sol[1]
+                dx[i] += alpha_opt*Sol[2] 
+                dy[i] += alpha_opt*Sol[3]
+                # Break i-th spot loop if its minimisation is satisfying or gives unrealistic dx and/or dy
+                if (abs(prev_chi2 - new_chi2) < 0.1) or (abs(dx[i]) > 6) or (abs(dy[i]) > 6):
+                    spots_to_fit.remove(i)
+                # Store the residual at this step
+                prev_chi2 = new_chi2
+                # Calculate the covariance of (f, b).
+                cov[i] = M_inv[:2,:2]        
+        
+    offsets = np.stack((dx, dy), axis=-1)
+    return flux, bkg, cov, offsets
+
 
 
 def get_significance(D, W, smoothing=2.5, downsampling=2, medfiltsize=5):
