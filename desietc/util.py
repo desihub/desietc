@@ -99,7 +99,30 @@ def shifted_profile(profile, dx, dy):
     return shifted_profile
 
 
-def residual(data, ivar, profile, flux, background, area):
+def residual(data, ivar, profile, flux, background, area=1):
+    """Compute the chi2 residual given the data and the model parameters.
+
+    Parameters
+    ----------
+    data : array
+        Array of shape (...,ny,nx) with the data to fit.
+    ivar : array
+        Array of shape (...,ny,nx) with the corresponding ivars.
+    profile : array
+        Array of shape (...,ny,nx) with the spot profile(s) to use.
+    flux : scalar
+        Value of the flux in the model fitting the data (profile*flux + background*area)
+    background : 
+        Value of the background in the model fitting the data (profile*flux + background*area)
+    area : scalar
+        Area of each pixel used to predict its background level as b * area.
+
+
+    Returns
+    -------
+    scalar
+        Value of the chi2 residual given the data and the model.
+    """
     return np.sum(ivar*(data - profile*flux - area*background)**2)
 
 def fit_spots_newer(data, ivar, profile, area=1):
