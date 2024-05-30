@@ -109,7 +109,7 @@ def residual(data, ivar, profile, flux, background, area=1):
     ivar : array
         Array of shape (...,ny,nx) with the corresponding ivars.
     profile : array
-        Array of shape (...,ny,nx) with the spot profile(s) to use.
+        Array of shape (...,ny,nx) with the spot profile to use.
     flux : scalar
         Value of the flux in the model fitting the data (profile*flux + background*area)
     background : 
