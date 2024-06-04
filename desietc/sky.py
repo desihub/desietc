@@ -148,14 +148,12 @@ class SkyCamera(object):
         self.pull = np.empty((maxstamps, stampsize, stampsize), np.float32)
         # Initialize background fitting.
         self.bgfitter = BGFitter()
-    
-    
-    
+        
     def setraw(self, raw, name, gain=2.5, saturation=65500, refit=False, pullcut=5, chisq_max=5, ndrop_max=3,
            masked=True, finetune=True, Temperature=None, Temp_correc_coef=np.array([
     [0.91, 0.007],
-    [0.91, 0.006]])):
-        """Fit images of a spot to estimate the spot flux and background level as well as the position offset 
+    [0.91, 0.006]]), return_offsets=False):
+        """Fit images of a spot to estimate the spot flux and background level as well as the position offset
         from the reference profile.
 
         Parameters
@@ -213,7 +211,7 @@ class SkyCamera(object):
             # Mask known hot pixels.
             self.ivar[k][self.masks[name][k]] = 0
         # Fit for the spot flux and background level.
-        self.flux[:N], self.bgfit[:N], cov, spot_offsets = desietc.util.fit_spots_newer(
+        self.flux[:N], self.bgfit[:N], cov, spot_offsets = desietc.util.fit_spots_flux_and_pos(
             self.data[:N], self.ivar[:N], self.spots[name])
         self.fluxerr[:N] = np.sqrt(cov[:, 0, 0])
         self.bgerr[:N] = np.sqrt(cov[:, 1, 1])
@@ -232,7 +230,7 @@ class SkyCamera(object):
             # Apply the original + new masking.
             self.ivar[:N] *= self.valid[:N]
             # Refit
-            self.flux[:N], self.bgfit[:N], cov, spot_offsets = desietc.util.fit_spots_newer(
+            self.flux[:N], self.bgfit[:N], cov, spot_offsets = desietc.util.fit_spots_flux_and_pos(
                 self.data[:N], self.ivar[:N], self.spots[name])
             #assert np.all(cov[:, 0, 0] > 0)
             self.fluxerr[:N] = np.sqrt(cov[:, 0, 0])
@@ -246,12 +244,15 @@ class SkyCamera(object):
             dx = np.ones(N)*np.mean(spot_offsets[:,0])
             dy =  np.ones(N)*np.mean(spot_offsets[:,1])
         shifted_profiles = desietc.util.shifted_profile(self.spots[name], dx, dy)
-        # Doing a final fit using the mean profile position offset over the different spot    
+        # Doing a final fit using the mean profile position offset over the different spot
         self.flux[:N], self.bgfit[:N], cov = desietc.util.fit_spots(
                 self.data[:N], self.ivar[:N], shifted_profiles)
         # Give up if we have invalid fluxes or errors.
         if not np.all((self.fluxerr[:N] > 0) & np.isfinite(self.flux[:N])):
-            return None, None, None
+            if return_offsets:
+                return None, None, None
+            else:
+                return None, None
         # Calculate the best-fit model for each fiber.
         self.model[:N] = (self.bgfit[:N].reshape(-1, 1, 1) +
                                    self.flux[:N].reshape(-1, 1, 1) * self.spots[name])
@@ -297,4 +298,7 @@ class SkyCamera(object):
                     ivar = (Temp_correc_coef[icamera,0] + Temp_correc_coef[icamera,1]*Temperature)**2*ivar
             except:
                 pass
-        return meanflux, ivar ** -0.5, spot_offsets
+        if return_offsets:
+            return meanflux, ivar ** -0.5, spot_offsets
+        else:
+            return meanflux, ivar ** -0.5

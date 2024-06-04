@@ -88,7 +88,7 @@ def shifted_profile(profile, dx, dy):
         Array (Shifted_profile) has shape (...,ny,nx) and is the profile whose position have been translated by dx
         in the x direction and dy in the y direction.
     """
-    nf = profile.shape[0] 
+    nf = profile.shape[0]
     nx = profile.shape[1]
     ny = profile.shape[2]
     shifted_profile = np.zeros(profile.shape)
@@ -99,7 +99,7 @@ def shifted_profile(profile, dx, dy):
     return shifted_profile
 
 
-def residual(data, ivar, profile, flux, background, area=1):
+def get_chi2(data, ivar, profile, flux, background, area=1):
     """Compute the chi2 residual given the data and the model parameters.
 
     Parameters
@@ -112,7 +112,7 @@ def residual(data, ivar, profile, flux, background, area=1):
         Array of shape (...,ny,nx) with the spot profile to use.
     flux : scalar
         Value of the flux in the model fitting the data (profile*flux + background*area)
-    background : 
+    background :
         Value of the background in the model fitting the data (profile*flux + background*area)
     area : scalar
         Area of each pixel used to predict its background level as b * area.
@@ -125,8 +125,8 @@ def residual(data, ivar, profile, flux, background, area=1):
     """
     return np.sum(ivar*(data - profile*flux - area*background)**2)
 
-def fit_spots_newer(data, ivar, profile, area=1):
-    """Fit images of a spot to estimate the spot flux and background level as well as the position offset 
+def fit_spots_flux_and_pos(data, ivar, profile, area=1):
+    """Fit images of a spot to estimate the spot flux and background level as well as the position offset
     from the reference profile.
 
     All inputs are nominally 2D but can have other shapes as long as
@@ -181,7 +181,7 @@ def fit_spots_newer(data, ivar, profile, area=1):
                     for q in range(p,npar):
                         M[q,p] = M[p,q] = np.sum(ivar[i]*der[p][i]*der[q][i])
                     A[p] = np.sum(ivar[i]*der[p][i]*(data[i] - Model))
-                # Setting the diagonal to one everywhere it is null (ie in the dx, dy related blocks) 
+                # Setting the diagonal to one everywhere it is null (ie in the dx, dy related blocks)
                 M[2:,2:] = np.diag(np.ones(2))
 
             else:
@@ -200,12 +200,12 @@ def fit_spots_newer(data, ivar, profile, area=1):
                 # Search for a missed minimum of the chi2 function
                 alpha_opt = 1
                 new_profile = shifted_profile(profile, dx + Sol[2], dy + Sol[3])[i]
-                new_chi2 = residual(data[i], ivar[i], new_profile, flux[i]+Sol[0], bkg[i]+Sol[1], area)
+                new_chi2 = get_chi2(data[i], ivar[i], new_profile, flux[i]+Sol[0], bkg[i]+Sol[1], area)
                 try:
                     for alpha in np.linspace(0, 1, int(10*max(abs(Sol[2]),abs(Sol[3])))):
                         if alpha != 0:
                             new_profile = shifted_profile(profile, dx + alpha*Sol[2], dy + alpha*Sol[3])[i]
-                            chi2 = residual(data[i], ivar[i], new_profile, flux[i]+alpha*Sol[0], bkg[i]+alpha*Sol[1], area)
+                            chi2 = get_chi2(data[i], ivar[i], new_profile, flux[i]+alpha*Sol[0], bkg[i]+alpha*Sol[1], area)
                             if chi2 < new_chi2:
                                 alpha_opt = alpha
                                 new_chi2 = chi2
@@ -214,7 +214,7 @@ def fit_spots_newer(data, ivar, profile, area=1):
                 # Add to each parameter their "optimal" increment
                 flux[i] += alpha_opt*Sol[0]
                 bkg[i] += alpha_opt*Sol[1]
-                dx[i] += alpha_opt*Sol[2] 
+                dx[i] += alpha_opt*Sol[2]
                 dy[i] += alpha_opt*Sol[3]
                 # Break i-th spot loop if its minimisation is satisfying or gives unrealistic dx and/or dy
                 if (abs(prev_chi2 - new_chi2) < 0.1) or (abs(dx[i]) > 6) or (abs(dy[i]) > 6):
@@ -222,8 +222,8 @@ def fit_spots_newer(data, ivar, profile, area=1):
                 # Store the residual at this step
                 prev_chi2 = new_chi2
                 # Calculate the covariance of (f, b).
-                cov[i] = M_inv[:2,:2]        
-        
+                cov[i] = M_inv[:2,:2]
+                
     offsets = np.stack((dx, dy), axis=-1)
     return flux, bkg, cov, offsets
 
