@@ -148,7 +148,7 @@ class SkyCamera(object):
         self.pull = np.empty((maxstamps, stampsize, stampsize), np.float32)
         # Initialize background fitting.
         self.bgfitter = BGFitter()
-        
+
     def setraw(self, raw, name, gain=2.5, saturation=65500, refit=False, pullcut=5, chisq_max=5, ndrop_max=3,
            masked=True, finetune=True, Temperature=None, Temp_correc_coef=np.array([
     [0.91, 0.007],

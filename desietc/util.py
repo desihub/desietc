@@ -157,7 +157,7 @@ def fit_spots_flux_and_pos(data, ivar, profile, area=1):
     nf = profile.shape[0] # Number of sky monitoring fibers (10 for SkyCam0 and 7 for SkyCam1)
     nx = profile.shape[1]
     ny = profile.shape[2]
-    
+
     flux = np.zeros(nf)
     bkg = np.zeros(nf)
     dx = np.zeros(nf)
@@ -223,7 +223,7 @@ def fit_spots_flux_and_pos(data, ivar, profile, area=1):
                 prev_chi2 = new_chi2
                 # Calculate the covariance of (f, b).
                 cov[i] = M_inv[:2,:2]
-                
+
     offsets = np.stack((dx, dy), axis=-1)
     return flux, bkg, cov, offsets
 
