@@ -97,7 +97,6 @@ def shifted_profile(profile, dx, dy):
             normalization = np.sum(shifted_profile[i])
             shifted_profile[i] = shifted_profile[i]/normalization
         except:
-
             pass
     return shifted_profile
 
