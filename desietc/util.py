@@ -67,25 +67,21 @@ def fit_spots(data, ivar, profile, area=1):
 def shifted_profile(profile, dx, dy):
     """Shift a reference profile with translations along the x and y axis.
 
-    All inputs are nominally 2D but can have other shapes as long as
-    they broadcast correctly. Input arrays with >2 dimensions are assumed
-    to have the pixels indexed along their last 2 dimensions.
-
     Parameters
     ----------
     profile : array
-        Array of shape (...,ny,nx) with the spot profile(s) to use.
+        Array of shape (nf,ny,nx) with the spot profile(s) to use.
     dx : array
-        Array of shape (...)
+        Array of shape (nf)
         Position shift of the input profile to be applied in the x direction.
     dy : array
-        Array of shape (...)
+        Array of shape (nf)
         Position shift of the input profile to be applied in the y direction.
 
     Returns
     -------
     array
-        Array (Shifted_profile) has shape (...,ny,nx) and is the profile whose position have been translated by dx
+        Array (Shifted_profile) has shape (nf,ny,nx) and is the profile whose position have been translated by dx
         in the x direction and dy in the y direction.
     """
     nf = profile.shape[0]
@@ -94,7 +90,7 @@ def shifted_profile(profile, dx, dy):
     shifted_profile = np.zeros(profile.shape)
     x, y =  np.meshgrid(np.linspace(0, nx-1, nx), np.linspace(0, ny-1, ny), indexing='ij')
     for i in range(nf):
-        interp = RegularGridInterpolator((np.linspace(0, nx-1, nx), np.linspace(0, ny-1, ny)), profile[i], bounds_error=False, fill_value=0)
+        interp = scipy.interpolate.RegularGridInterpolator((np.linspace(0, nx-1, nx), np.linspace(0, ny-1, ny)), profile[i], bounds_error=False, fill_value=0)
         shifted_profile[i] = interp((x - dx[i], y - dy[i]))
     return shifted_profile
 
@@ -105,11 +101,11 @@ def get_chi2(data, ivar, profile, flux, background, area=1):
     Parameters
     ----------
     data : array
-        Array of shape (...,ny,nx) with the data to fit.
+        Array of shape (ny,nx) with the data to fit.
     ivar : array
-        Array of shape (...,ny,nx) with the corresponding ivars.
+        Array of shape (ny,nx) with the corresponding ivars.
     profile : array
-        Array of shape (...,ny,nx) with the spot profile to use.
+        Array of shape (ny,nx) with the spot profile to use.
     flux : scalar
         Value of the flux in the model fitting the data (profile*flux + background*area)
     background :
@@ -129,29 +125,25 @@ def fit_spots_flux_and_pos(data, ivar, profile, area=1):
     """Fit images of a spot to estimate the spot flux and background level as well as the position offset
     from the reference profile.
 
-    All inputs are nominally 2D but can have other shapes as long as
-    they broadcast correctly. Input arrays with >2 dimensions are assumed
-    to have the pixels indexed along their last 2 dimensions.
-
     Parameters
     ----------
     data : array
-        Array of shape (...,ny,nx) with the data to fit.
+        Array of shape (nf,ny,nx) with the data to fit.
     ivar : array
-        Array of shape (...,ny,nx) with the corresponding ivars.
+        Array of shape (nf,ny,nx) with the corresponding ivars.
     profile : array
-        Array of shape (...,ny,nx) with the spot profile(s) to use.
+        Array of shape (nf,ny,nx) with the spot profile(s) to use.
     area : scalar or array
         Area of each pixel used to predict its background level as b * area.
-        Either a scalar or an array of shape (...,ny, nx).
+        Either a scalar or an array of shape (nf,ny, nx).
 
     Returns
     -------
     tuple
-        Tuple (f, b, cov, offsets) where f and b are arrays of shape (...),
-        cov has shape (...,2,2) with elements [...,0,0] = var(f),
-        [...,1,1] = var(b) and [...,0,1] = [...,1,0] = cov(f,b) and offsets has shape (...,2) with elements
-        [...,0] = position_offseft(x direction) and [...,1] = position_offseft(y direction)
+        Tuple (f, b, cov, offsets) where f and b are arrays of shape (nf),
+        cov has shape (nf,2,2) with elements [...,0,0] = var(f),
+        [...,1,1] = var(b) and [...,0,1] = [...,1,0] = cov(f,b) and offsets has shape (nf,2) with elements
+        [...,0] = position_offset(x direction) and [...,1] = position_offset(y direction)
     """
     npar = 4 # flux,bkg,dx,dy
     nf = profile.shape[0] # Number of sky monitoring fibers (10 for SkyCam0 and 7 for SkyCam1)
