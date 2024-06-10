@@ -92,6 +92,13 @@ def shifted_profile(profile, dx, dy):
     for i in range(nf):
         interp = scipy.interpolate.RegularGridInterpolator((np.linspace(0, nx-1, nx), np.linspace(0, ny-1, ny)), profile[i], bounds_error=False, fill_value=0)
         shifted_profile[i] = interp((x - dx[i], y - dy[i]))
+        # Add a normalisation step as the interpolation might not be flux preserving
+        try:
+            normalization = np.sum(shifted_profile[i])
+            shifted_profile[i] = shifted_profile[i]/normalization
+        except:
+
+            pass
     return shifted_profile
 
 
