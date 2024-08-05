@@ -182,6 +182,8 @@ class SkyCamera(object):
             Temperature measured during the same exposure as the raw data.
         Temp_correc_coeff : array
             Array of shape (...,2,2) corres^ponding to the temperature linear fit.
+        return_offsets : bool
+            If True, return the spot position offsets.
         Returns
         -------
         tuple
