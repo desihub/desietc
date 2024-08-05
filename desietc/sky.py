@@ -149,7 +149,7 @@ class SkyCamera(object):
         # Initialize background fitting.
         self.bgfitter = BGFitter()
 
-    def setraw(self, raw, name, gain=2.5, saturation=65500, refit=False, pullcut=5, chisq_max=5, ndrop_max=3,
+    def setraw(self, raw, name, gain=2.5, saturation=65500, refit=True, pullcut=5, chisq_max=5, ndrop_max=3,
            masked=True, finetune=True, Temperature=None, Temp_correc_coef=np.array([
     [0.905, 0.007],
     [0.941, 0.003]]), return_offsets=False):
