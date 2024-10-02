@@ -1049,7 +1049,7 @@ class ETCAlgorithm(object):
             Ebv = 0.
             logging.warning('Seting Ebv=0 since no non-sky targets found.')
         # Calculate the corresponding MW transparency factor unless this is the backup program.
-        if self.fassign_data['FAPRGRM'] != 'BACKUP':
+        if self.fassign_data['FAPRGRM'] != 'backup':
             MW_transp = 10 ** (-self.Ebv_coef * Ebv / 2.5)
         else:
             MW_transp = 1.
