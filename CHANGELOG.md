@@ -8,11 +8,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.19] - 2024-10-16
+### Changed
+- Make default SkyCam processing identical to pre 0.1.18, i.e. refit by default and do not apply centroid fitting or temperature corrections. Centroid fitting is not ready to deploy yet since it runs too slowly. Temperature corrections will require new plumbing with ICS.
+### Fixed
+- Set MW transparency to one during the backup program. This was supposed to be already implemented, but assumed the wrong case for the program name.
+
 ## [0.1.18] - 2024-06-12
 ### Added
+- A version string, so that `desietc.__version__` is now defined.
 - Utility function allowing for translations of the reference spot profiles
 - New version of the fit_spot function implementing the fitting of the spots position offset in addition to the sky flux and background. Correcting for errors on the flux measurement due to shift in the spots position.
-- A linear temperature correction have been added to the updated setraw function.  
+- A linear temperature correction have been added to the updated setraw function.
 ### Changed
 - The setraw function, computing the reduced flux from the raw data, was updated to account for the spot position fitting step.
 

@@ -40,9 +40,10 @@ def fit_spots(data, ivar, profile, area=1):
     Returns
     -------
     tuple
-        Tuple (f, b, cov) where f and b are arrays of shape (...) and
+        Tuple (f, b, cov, None) where f and b are arrays of shape (...) and
         cov has shape (...,2,2) with elements [...,0,0] = var(f),
         [...,1,1] = var(b) and [...,0,1] = [...,1,0] = cov(f,b).
+        The final None is for compatibility with fit_spots_flux_and_pos().
     """
     # Calculate the matrix elements for the linear problem
     # [ M11 M12 ] [ f ] = [ A1 ]
@@ -61,7 +62,7 @@ def fit_spots(data, ivar, profile, area=1):
     b = (M11 * A2 - M12 * A1)
     # Calculate the covariance of (f, b).
     cov = np.stack((np.stack((M22, -M12), axis=-1), np.stack((-M12, M11), axis=-1)), axis=-1)
-    return f, b, cov
+    return f, b, cov, None
 
 
 def shifted_profile(profile, dx, dy):

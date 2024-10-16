@@ -149,10 +149,10 @@ class SkyCamera(object):
         # Initialize background fitting.
         self.bgfitter = BGFitter()
 
-    def setraw(self, raw, name, gain=2.5, saturation=65500, refit=False, pullcut=5, chisq_max=5, ndrop_max=3,
+    def setraw(self, raw, name, gain=2.5, saturation=65500, refit=True, pullcut=5, chisq_max=5, ndrop_max=3,
            masked=True, finetune=True, Temperature=None, Temp_correc_coef=np.array([
     [0.905, 0.007],
-    [0.941, 0.003]]), return_offsets=False):
+    [0.941, 0.003]]), return_offsets=False, fit_centroids=False):
         """Fit images of a spot to estimate the spot flux and background level as well as the position offset
         from the reference profile.
 
@@ -182,6 +182,10 @@ class SkyCamera(object):
             Temperature measured during the same exposure as the raw data.
         Temp_correc_coeff : array
             Array of shape (...,2,2) corres^ponding to the temperature linear fit.
+        return_offsets : bool
+            If True, return the spot position offsets. Offsets will be None if fit_centroids is False.
+        fit_centroids : bool
+            If True, fit the spot centroids.
         Returns
         -------
         tuple
@@ -210,9 +214,9 @@ class SkyCamera(object):
             self.ivar[k][dead | saturated] = 0
             # Mask known hot pixels.
             self.ivar[k][self.masks[name][k]] = 0
-        # Fit for the spot flux and background level.
-        self.flux[:N], self.bgfit[:N], cov, spot_offsets = desietc.util.fit_spots_flux_and_pos(
-            self.data[:N], self.ivar[:N], self.spots[name])
+        # Fit for the spot flux and background level and (optionally) the spot centroids.
+        fitter = desietc.util.fit_spots_flux_and_pos if fit_centroids else desietc.util.fit_spots
+        self.flux[:N], self.bgfit[:N], cov, spot_offsets = fitter(self.data[:N], self.ivar[:N], self.spots[name])
         self.fluxerr[:N] = np.sqrt(cov[:, 0, 0])
         self.bgerr[:N] = np.sqrt(cov[:, 1, 1])
         if refit:
@@ -230,23 +234,23 @@ class SkyCamera(object):
             # Apply the original + new masking.
             self.ivar[:N] *= self.valid[:N]
             # Refit
-            self.flux[:N], self.bgfit[:N], cov, spot_offsets = desietc.util.fit_spots_flux_and_pos(
-                self.data[:N], self.ivar[:N], self.spots[name])
+            self.flux[:N], self.bgfit[:N], cov, spot_offsets = fitter(self.data[:N], self.ivar[:N], self.spots[name])
             #assert np.all(cov[:, 0, 0] > 0)
             self.fluxerr[:N] = np.sqrt(cov[:, 0, 0])
             #assert np.all(cov[:, 1, 1] > 0)
             self.bgerr[:N] = np.sqrt(cov[:, 1, 1])
-        # Compute the average spot profile position offset
-        if masked:
-            dx = np.ones(N)*np.mean(spot_offsets[fiber_mask[icamera, :N] > 0][:,0])
-            dy = np.ones(N)*np.mean(spot_offsets[fiber_mask[icamera, :N] > 0][:,1])
-        else:
-            dx = np.ones(N)*np.mean(spot_offsets[:,0])
-            dy =  np.ones(N)*np.mean(spot_offsets[:,1])
-        shifted_profiles = desietc.util.shifted_profile(self.spots[name], dx, dy)
-        # Doing a final fit using the mean profile position offset over the different spot
-        self.flux[:N], self.bgfit[:N], cov = desietc.util.fit_spots(
-                self.data[:N], self.ivar[:N], shifted_profiles)
+        if fit_centroids:
+            # Compute the average spot profile position offset
+            if masked:
+                dx = np.ones(N)*np.mean(spot_offsets[fiber_mask[icamera, :N] > 0][:,0])
+                dy = np.ones(N)*np.mean(spot_offsets[fiber_mask[icamera, :N] > 0][:,1])
+            else:
+                dx = np.ones(N)*np.mean(spot_offsets[:,0])
+                dy =  np.ones(N)*np.mean(spot_offsets[:,1])
+            shifted_profiles = desietc.util.shifted_profile(self.spots[name], dx, dy)
+            # Doing a final fit using the mean profile position offset over the different spot
+            self.flux[:N], self.bgfit[:N], cov, _ = desietc.util.fit_spots(
+                    self.data[:N], self.ivar[:N], shifted_profiles)
         # Give up if we have invalid fluxes or errors.
         if not np.all((self.fluxerr[:N] > 0) & np.isfinite(self.flux[:N])):
             if return_offsets:
