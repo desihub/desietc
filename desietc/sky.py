@@ -355,6 +355,11 @@ class SkyCamera(object):
             self.flux[:N], self.bgfit[:N], cov, _ = desietc.util.fit_spots(
                 self.data[:N], self.ivar[:N], shifted_profiles
             )
+            self.fit_dx = dx
+            self.fit_dy = dy
+        else:
+            self.fit_dx = 0
+            self.fit_dy = 0
         # Give up if we have invalid fluxes or errors.
         if not np.all((self.fluxerr[:N] > 0) & np.isfinite(self.flux[:N])):
             if return_offsets:
