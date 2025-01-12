@@ -174,7 +174,12 @@ class SkyCamera(object):
 
     sky_names = "SKYCAM0", "SKYCAM1"
 
-    def __init__(self, calib_name="SKY_calib.fits"):
+    def __init__(
+        self,
+        calib_name="SKY_calib.fits",
+        centroid_grid_size_pixels=5,
+        centroid_ngrid=21,
+    ):
         self.names, self.slices, self.masks, self.spots, self.calibs = load_calib_data(
             calib_name
         )
@@ -194,6 +199,27 @@ class SkyCamera(object):
         self.valid = np.empty((maxstamps, stampsize, stampsize), np.float32)
         self.model = np.empty((maxstamps, stampsize, stampsize), np.float32)
         self.pull = np.empty((maxstamps, stampsize, stampsize), np.float32)
+        # Initialize the grid of offset spots for centroid fitting.
+        if centroid_ngrid > 0:
+            self.centroid_dxy = np.linspace(
+                -centroid_grid_size_pixels, centroid_grid_size_pixels, centroid_ngrid
+            )
+            ny, nx = self.spots[self.sky_names[0]][0].shape
+            self.offsetSpots = {}
+            for cam in self.sky_names:
+                spots = self.spots[cam]
+                self.offsetSpots[cam] = np.zeros(
+                    (len(spots), centroid_ngrid, centroid_ngrid, ny, nx), np.float32
+                )
+            for j in range(centroid_ngrid):
+                dy = self.centroid_dxy[j]
+                for i in range(centroid_ngrid):
+                    dx = self.centroid_dxy[i]
+                    for cam in self.sky_names:
+                        spots = self.spots[cam]
+                        self.offsetSpots[cam][:, j, i] = desietc.util.shifted_profile(
+                            spots, [dx] * len(spots), [dy] * len(spots)
+                        )
         # Initialize background fitting.
         self.bgfitter = BGFitter()
 
