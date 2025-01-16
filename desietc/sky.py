@@ -339,14 +339,14 @@ class SkyCamera(object):
             # assert np.all(cov[:, 1, 1] > 0)
             self.bgerr[:N] = np.sqrt(cov[:, 1, 1])
         if fit_centroids:
+            # Save individual fitted spot offsets.
+            self.spot_offsets = np.array(spot_offsets)
             # Compute the average spot profile position offset
             if masked:
-                dx = np.ones(N) * np.mean(
-                    spot_offsets[fiber_mask[icamera, :N] > 0][:, 0]
-                )
-                dy = np.ones(N) * np.mean(
-                    spot_offsets[fiber_mask[icamera, :N] > 0][:, 1]
-                )
+                mask = fiber_mask[icamera, :N] > 0
+                dx = np.ones(N) * np.mean(spot_offsets[mask][:, 0])
+                dy = np.ones(N) * np.mean(spot_offsets[mask][:, 1])
+                self.spot_offsets[~mask] = np.nan
             else:
                 dx = np.ones(N) * np.mean(spot_offsets[:, 0])
                 dy = np.ones(N) * np.mean(spot_offsets[:, 1])
