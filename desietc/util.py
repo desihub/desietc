@@ -139,6 +139,110 @@ def get_chi2(data, ivar, profile, flux, background, area=1):
     return np.sum(ivar * (data - profile * flux - area * background) ** 2)
 
 
+def fit_spots_flux_and_pos_fast(
+    data, ivar, offset_spots, offset_dxy, area=1, nfine=26, return_grids=False
+):
+    """Fit spot images to simultaneously determine the flux, background level, and centroid offsets.
+
+    Similar to fit_spots_flux_and_pos() but runs much faster using precomputed offset spot images.
+    The fit is performed in two stages: first the flux, background and resulting chi-square are
+    calculated on a grid of centroid offsets. These calculations are fast since the flux and background
+    can be calculated using linear algebra. The minimum chi-square over the offset grid then provides an
+    initial fit over (flux, background, dx, dy) on a fixed coarse grid of (dx,dy).
+
+    If nfine > 0, the second stage uses a 2D bicubic spline over the 5x5 subgrid of centroid offsets
+    centered on the minimum chi-square from the first stage. This provides a refined estimate of (dx,dy)
+    where the chi-square is minimized. The flux and background are then interpolated to this refined
+    grid point on the same 5x5 subgrid. This second stage is not run if the initial minimum is too close
+    to the edge of the offset grid, preventing the 5x5 subgrid from being defined.
+
+    Parameters
+    ----------
+    data : array
+        2D array of spot images with shape (nspots, ny, nx).
+    ivar : array
+        2D array of inverse variance of data with shape (nspots, ny, nx).
+    offset_spots : array
+        Array of offset spot images with shape (nspots, ngrid, ngrid, ny, nx).
+    offset_dxy : array
+        Array of centroid offsets in units of pixels with shape (ngrid,).
+        offset_spots[n,i,j] is the 2D spot image with shape (ny, nx) at centroid offset
+        (offset_dxy[i], offset_dxy[j]).
+    area : scalar or array
+        Area of each pixel used to predict its background level as b * area.
+    nfine : int
+        Number of points to use along dx and dy in the refined 2D bicubic spline fit.
+        Set to zero to prevent this second stage, resulting in faster but less
+        accurate results.
+    return_grids : bool
+        If True, return the chi-square grid and the refined chi-square grid, which
+        are useful for displaying diagnostic plots.
+
+    Returns
+    -------
+    tuple
+        Tuple of (fit_flux, fit_bg, fit_cov, fit_offsets) where fit_flux and fit_bg are the
+        fitted flux and background for each spot with shapes (nspot,), fit_cov is the
+        covariance matrix of (fit_flux, fit_bg) for each spot with shape (nspots, 2, 2),
+        and fit_offsets is the fitted centroid offsets with shape (nspots, 2).
+        If return_grids is True, the tuple also includes (chisq, finegrid, finedx, finedy)
+        where chisq is the initial chi-square grid, finegrid is the refined chi-square grid,
+        and finedx and finedy are the dx and dy offsets used in the refined grid.
+    """
+    # Tabulate chi-square over grid of centroid offsets (applied simultaneously to all spots).
+    ndata = len(data)
+    ngrid = len(offset_dxy)
+    chisq = np.zeros((ngrid, ngrid))
+    flux = np.zeros((ngrid, ngrid, ndata))
+    bg = np.zeros((ngrid, ngrid, ndata))
+    cov = np.zeros((ngrid, ngrid, ndata, 2, 2))
+    for j in range(ngrid):
+        for i in range(ngrid):
+            flux[j, i], bg[j, i], cov[j, i], _ = fit_spots(
+                data, ivar, offset_spots[:, j, i], area=area
+            )
+            model = (
+                bg[j, i].reshape(-1, 1, 1)
+                + flux[j, i].reshape(-1, 1, 1) * offset_spots[:, j, i]
+            )
+            chisq[j, i] = np.sum((data - model) ** 2 * ivar)
+    # Find grid point with minimum chi-square.
+    j, i = np.unravel_index(np.argmin(chisq), chisq.shape)
+    fit_dx = offset_dxy[i]
+    fit_dy = offset_dxy[j]
+    fit_flux = flux[j, i]
+    fit_bg = bg[j, i]
+    fit_cov = cov[j, i]
+    if nfine > 0 and j >= 2 and i >= 2 and j < ngrid - 2 and i < ngrid - 2:
+        # Use a 2D bicubic spline of a 5x5 subgrid to refine the location of the minimum chisq.
+        subgrid = chisq[j - 2 : j + 3, i - 2 : i + 3]
+        subdx = offset_dxy[i - 2 : i + 3]
+        subdy = offset_dxy[j - 2 : j + 3]
+        finedx = np.linspace(subdx[0], subdx[-1], nfine)
+        finedy = np.linspace(subdy[0], subdy[-1], nfine)
+        pts = np.stack(np.meshgrid(finedy, finedx, indexing="ij"), axis=-1)
+        spline = scipy.interpolate.RegularGridInterpolator(
+            (subdy, subdx), subgrid, method="cubic"
+        )
+        finegrid = spline(pts)
+        j2, i2 = np.unravel_index(np.argmin(finegrid), finegrid.shape)
+        fit_dx = finedx[i2]
+        fit_dy = finedy[j2]
+        # Evalute the flux and background at the refined grid point.
+        fit_flux = scipy.interpolate.RegularGridInterpolator(
+            (subdy, subdx), flux[j - 2 : j + 3, i - 2 : i + 3], method="cubic"
+        )((fit_dy, fit_dx))
+        fit_bg = scipy.interpolate.RegularGridInterpolator(
+            (subdy, subdx), bg[j - 2 : j + 3, i - 2 : i + 3], method="cubic"
+        )((fit_dy, fit_dx))
+
+    fit_offsets = np.stack((fit_dx, fit_dy), axis=-1)
+    retval = (fit_flux, fit_bg, fit_cov, fit_offsets)
+    if return_grids:
+        retval += (chisq, finegrid, finedx, finedy)
+    return retval
+
+
 def fit_spots_flux_and_pos(data, ivar, profile, area=1):
     """Fit images of a spot to estimate the spot flux and background level as well as the position offset
     from the reference profile.
