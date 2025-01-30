@@ -239,6 +239,7 @@ class SkyCamera(object):
         Temp_correc_coef=np.array([[0.905, 0.007], [0.941, 0.003]]),
         return_offsets=False,
         fit_centroids=False,
+        fast_centroids=False,
     ):
         """Fit images of a spot to estimate the spot flux and background level as well as the position offset
         from the reference profile.
@@ -257,7 +258,7 @@ class SkyCamera(object):
             Wether are not we apply a refit procedure
         pullcut : scalar
             Threshold value to mask pixel with extreme pulls in the refit procedure.
-        chis_max : scalar
+        chisq_max : scalar
             Threshold chi square value used for the weighted average flux computation.
         ndrop_max : scalar
             Maximum number of sky monitoring fibers that can be dropped for the weighted average flux computation.
@@ -273,10 +274,12 @@ class SkyCamera(object):
             If True, return the spot position offsets. Offsets will be None if fit_centroids is False.
         fit_centroids : bool
             If True, fit the spot centroids.
+        fast_centroids : bool
+            If True, use the fast centroiding method.
         Returns
         -------
         tuple
-            Tuple (meanflux, ivar ** -0.5, spot_offsets) where menflux and ivar**-0.5 are scalars,
+            Tuple (meanflux, ivar ** -0.5, spot_offsets) where meanflux and ivar**-0.5 are scalars,
             and spot_offsets is an array of shape (...,nf,2) where nf is the number of sky monitoring fibers                           (10 for SKYCAM0 and 7 for SKYCAM1) with elements [...,i,0] = i-th spot position_offset(x direction) and                   [...,i,1] = i-th spot position_offset(y direction)
         """
         if name not in self.slices:
@@ -301,18 +304,41 @@ class SkyCamera(object):
             self.ivar[k][dead | saturated] = 0
             # Mask known hot pixels.
             self.ivar[k][self.masks[name][k]] = 0
+        # Which spots are we using?
+        mask = np.ones(N, bool)
+        if masked:
+            mask = fiber_mask[icamera, :N] > 0
         # Fit for the spot flux and background level and (optionally) the spot centroids.
-        fitter = (
-            desietc.util.fit_spots_flux_and_pos
-            if fit_centroids
-            else desietc.util.fit_spots
-        )
-        self.flux[:N], self.bgfit[:N], cov, spot_offsets = fitter(
-            self.data[:N], self.ivar[:N], self.spots[name]
-        )
+        cov = np.zeros((N, 2, 2))
+        if fit_centroids:
+            if fast_centroids:
+                self.flux[:N] = self.bgfit[:N] = 0
+                self.flux[:N][mask], self.bgfit[:N][mask], cov[mask], fit_offsets = (
+                    desietc.util.fit_spots_flux_and_pos_fast(
+                        self.data[:N][mask],
+                        self.ivar[:N][mask],
+                        self.offsetSpots[name][:N][mask],
+                        self.centroid_dxy,
+                    )
+                )
+                self.fit_dx, self.fit_dy = fit_offsets.T
+            else:
+                self.flux[:N], self.bgfit[:N], cov, spot_offsets = (
+                    desietc.util.fit_spots_flux_and_pos(
+                        self.data[:N], self.ivar[:N], self.spots[name]
+                    )
+                )
+                self.spot_offsets = np.array(spot_offsets)
+        else:
+            self.flux[:N], self.bgfit[:N], cov, _ = desietc.util.fit_spots(
+                self.data[:N], self.ivar[:N], self.spots[name]
+            )
+            self.fit_dx, self.fit_dy = 0, 0
+        # Calculate errors on the flux and background level.
         self.fluxerr[:N] = np.sqrt(cov[:, 0, 0])
         self.bgerr[:N] = np.sqrt(cov[:, 1, 1])
         if refit:
+            assert not fit_centroids, "Cannot refit with centroid fitting enabled."
             # Save the original masking due to dead / hot / saturated pixels.
             self.valid[:N] = 1.0 * (self.ivar[:N] > 0)
             # Use the initial fit for an improved estimate of the signal variance.
@@ -331,7 +357,7 @@ class SkyCamera(object):
             # Apply the original + new masking.
             self.ivar[:N] *= self.valid[:N]
             # Refit
-            self.flux[:N], self.bgfit[:N], cov, spot_offsets = fitter(
+            self.flux[:N], self.bgfit[:N], cov, _ = desietc.util.fit_spots(
                 self.data[:N], self.ivar[:N], self.spots[name]
             )
             # assert np.all(cov[:, 0, 0] > 0)
@@ -339,17 +365,14 @@ class SkyCamera(object):
             # assert np.all(cov[:, 1, 1] > 0)
             self.bgerr[:N] = np.sqrt(cov[:, 1, 1])
         if fit_centroids:
-            # Save individual fitted spot offsets.
-            self.spot_offsets = np.array(spot_offsets)
             # Compute the average spot profile position offset
             if masked:
-                mask = fiber_mask[icamera, :N] > 0
-                dx = np.ones(N) * np.mean(spot_offsets[mask][:, 0])
-                dy = np.ones(N) * np.mean(spot_offsets[mask][:, 1])
+                dx = np.ones(N) * np.mean(self.spot_offsets[mask][:, 0])
+                dy = np.ones(N) * np.mean(self.spot_offsets[mask][:, 1])
                 self.spot_offsets[~mask] = np.nan
             else:
-                dx = np.ones(N) * np.mean(spot_offsets[:, 0])
-                dy = np.ones(N) * np.mean(spot_offsets[:, 1])
+                dx = np.ones(N) * np.mean(self.spot_offsets[:, 0])
+                dy = np.ones(N) * np.mean(self.spot_offsets[:, 1])
             shifted_profiles = desietc.util.shifted_profile(self.spots[name], dx, dy)
             # Doing a final fit using the mean profile position offset over the different spot
             self.flux[:N], self.bgfit[:N], cov, _ = desietc.util.fit_spots(
@@ -357,9 +380,6 @@ class SkyCamera(object):
             )
             self.fit_dx = dx[0]
             self.fit_dy = dy[0]
-        else:
-            self.fit_dx = 0
-            self.fit_dy = 0
         # Give up if we have invalid fluxes or errors.
         if not np.all((self.fluxerr[:N] > 0) & np.isfinite(self.flux[:N])):
             if return_offsets:
@@ -367,11 +387,13 @@ class SkyCamera(object):
             else:
                 return None, None
         # Calculate the best-fit model for each fiber.
+        # NOTE: this does not account for the centroid fit!
         self.model[:N] = (
             self.bgfit[:N].reshape(-1, 1, 1)
             + self.flux[:N].reshape(-1, 1, 1) * self.spots[name]
         )
         # Calculate the corresponding pull images.
+        # NOTE: this does not account for the centroid fit!
         self.pull[:N] = (self.data[:N] - self.model[:N]) * np.sqrt(self.ivar[:N])
         # Apply per-fiber calibrations.
         calib = self.calibs[name]
@@ -421,7 +443,8 @@ class SkyCamera(object):
                     ) ** 2 * ivar
             except:
                 pass
+        # TODO: remove return_offsets option and make sure callers use self.fit_dx, self.fit_dy instead
         if return_offsets:
-            return meanflux, ivar**-0.5, spot_offsets
+            return meanflux, ivar**-0.5, self.spot_offsets
         else:
             return meanflux, ivar**-0.5
