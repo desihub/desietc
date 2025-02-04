@@ -308,6 +308,7 @@ class SkyCamera(object):
         mask = np.ones(N, bool)
         if masked:
             mask = fiber_mask[icamera, :N] > 0
+        self.fiber_mask = mask
         # Fit for the spot flux and background level and (optionally) the spot centroids.
         cov = np.zeros((N, 2, 2))
         if fit_centroids:
