@@ -364,7 +364,7 @@ class SkyCamera(object):
             self.fluxerr[:N] = np.sqrt(cov[:, 0, 0])
             # assert np.all(cov[:, 1, 1] > 0)
             self.bgerr[:N] = np.sqrt(cov[:, 1, 1])
-        if fit_centroids:
+        if fit_centroids and not fast_centroids:
             # Compute the average spot profile position offset
             if masked:
                 dx = np.ones(N) * np.mean(self.spot_offsets[mask][:, 0])
