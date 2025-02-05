@@ -434,6 +434,9 @@ class SkyCamera(object):
 
         # Apply the temperature correction if measured
         if Temperature is not None:
+            # Save the values before applying the temperature correction
+            self.flux_notemp = meanflux
+            self.fluxerr_notemp = ivar**-0.5
             try:
                 if (Temperature > -10) and (Temperature < 35):
                     meanflux = meanflux / (
