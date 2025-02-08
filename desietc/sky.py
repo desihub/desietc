@@ -314,13 +314,21 @@ class SkyCamera(object):
         if fit_centroids:
             if fast_centroids:
                 self.flux[:N] = self.bgfit[:N] = 0
-                self.flux[:N][mask], self.bgfit[:N][mask], cov[mask], fit_offsets = (
-                    desietc.util.fit_spots_flux_and_pos_fast(
-                        self.data[:N][mask],
-                        self.ivar[:N][mask],
-                        self.offsetSpots[name][:N][mask],
-                        self.centroid_dxy,
-                    )
+                (
+                    self.flux[:N][mask],
+                    self.bgfit[:N][mask],
+                    cov[mask],
+                    fit_offsets,
+                    self.grid_chisq,
+                    self.grid_fine_chisq,
+                    self.grid_finedx,
+                    self.grid_finedy,
+                ) = desietc.util.fit_spots_flux_and_pos_fast(
+                    self.data[:N][mask],
+                    self.ivar[:N][mask],
+                    self.offsetSpots[name][:N][mask],
+                    self.centroid_dxy,
+                    return_grids=True,
                 )
                 self.fit_dx, self.fit_dy = fit_offsets.T
             else:
