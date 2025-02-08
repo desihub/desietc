@@ -446,8 +446,8 @@ def plotSkyCentroidFit(data, name, SKY, plot_fine=True, slow=True, save=None):
     )
 
     # Plot the chi-square values tabulated on the fixed coarse grid of centroid offsets.
-    dx = SKY.centroid_dxy
-    dy = SKY.centroid_dxy
+    dx = SKY.centroid_dx
+    dy = SKY.centroid_dy
     xpad = (dx[1] - dx[0]) / 2
     ypad = (dy[1] - dy[0]) / 2
     plt.imshow(
