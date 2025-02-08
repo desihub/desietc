@@ -4,6 +4,7 @@ Requires that matplotlib is installed.
 """
 
 import datetime
+import time
 import copy  # for shallow copies of matplotlib colormaps
 
 try:
@@ -419,7 +420,7 @@ def mjd_plot(mjd, *args, axis=None, utc_offset=-7, date_format="%H:%M", **kwargs
     return axis
 
 
-def plotSkyCentroidFit(data, name, plot_fine=True, slow=True, save=None):
+def plotSkyCentroidFit(data, name, SKY, plot_fine=True, slow=True, save=None):
     """Make a plot comparing the slow and fast centroid fit methods for SkyCam data.
 
     See DESI-8945 for examples.
