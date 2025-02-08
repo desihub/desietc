@@ -177,7 +177,7 @@ class SkyCamera(object):
     def __init__(
         self,
         calib_name="SKY_calib.fits",
-        centroid_grid_extent=(-3, 3, -4, 2),
+        centroid_grid_extent=(-3, 3, -2, 4),
         centroid_ngrid=(13, 13),
     ):
         self.names, self.slices, self.masks, self.spots, self.calibs = load_calib_data(
