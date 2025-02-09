@@ -2,6 +2,9 @@
 """
 
 import collections
+import pathlib
+import json
+import warnings
 
 try:
     import DOSlib.logger as logging
@@ -13,6 +16,8 @@ import numpy as np
 
 import scipy.optimize
 import scipy.stats
+
+import pandas as pd
 
 import fitsio
 
@@ -467,3 +472,176 @@ class SkyCamera(object):
             return meanflux, ivar**-0.5, self.spot_offsets
         else:
             return meanflux, ivar**-0.5
+
+
+def get_db_temp(
+    night, DB, table_name="environmentmonitor_dome", col_name="scr_e_wall_coude"
+):
+    """Look up the temperature to use for correcting estimated sky fluxes."""
+    N = str(night)
+    year, month, day = int(N[0:4]), int(N[4:6]), int(N[6:8])
+    start = pd.Timestamp(f"{year}-{month}-{day}T19:00:00+0000")
+    stop = start + pd.Timedelta(1, "day")
+    when = f"time_recorded > timestamp '{start}'"
+    when += f" and time_recorded < timestamp '{stop}'"
+    sql = f"select time_recorded,{col_name} as temp from telemetry.{table_name} where {when} order by time_recorded"
+    temp = DB.query(
+        sql,
+        dates=[
+            "time_recorded",
+        ],
+        maxrows=50000,
+    )
+    return temp
+
+
+def process_night(
+    night,
+    SKY,
+    DB,
+    DATA=pathlib.Path("/global/cfs/cdirs/desi/spectro/data/"),
+    verbose=False,
+):
+    """Process a single night of SkyCam data."""
+
+    # Verify that we have DESI science data for this night
+    sky_exps = set(
+        [
+            path.name[4:12]
+            for path in (DATA / str(night)).glob("????????/sky-????????.fits.fz")
+        ]
+    )
+    desi_exps = set(
+        [
+            path.name[5:13]
+            for path in (DATA / str(night)).glob("????????/desi-????????.fits.fz")
+        ]
+    )
+    good_exps = sorted(sky_exps & desi_exps)
+    nexps = len(good_exps)
+    if nexps == 0:
+        print(f"No exposures found for {night}")
+        return
+    if verbose:
+        print(
+            f"Found {nexps} exposures in {good_exps[0]}-{good_exps[-1]} with DESI and SKY data for {night}"
+        )
+
+    # Initialize the results
+    results = dict(night=night, nexps=nexps, exps=[])
+
+    # Initialize temperature interpolation
+    coude_temp = get_db_temp(night, DB)
+    coude_t = pd.to_datetime(coude_temp["time_recorded"]).astype(np.int64)
+    coude_T = coude_temp["temp"].astype(float)
+    if verbose:
+        print(
+            f"Read {len(coude_t)} temperatures with mean {np.mean(coude_T):.1f}C for {night}"
+        )
+
+    # Loop over exposures
+    for k, exptag in enumerate(good_exps):
+        if verbose:
+            print(f"Processing [{k+1:2d}/{nexps:2d}] {night}/{exptag}...")
+        try:
+            skydata = DATA / str(night) / exptag / f"sky-{exptag}.fits.fz"
+            hdus = fitsio.FITS(str(skydata))
+            nframes = 0
+            for camid, cam in enumerate(("SKYCAM0", "SKYCAM1")):
+
+                meta = pd.DataFrame(
+                    hdus[cam + "T"].read(),
+                )
+                if camid == 0:
+                    # Get the number of SkyCam frames available
+                    nframes = len(meta)
+                    flux = np.zeros((3, 2, nframes))
+                    dflux = np.zeros((3, 2, nframes))
+                    offset = np.zeros((2, 2, nframes))
+                    ##print(f'{night}/{exptag} has {nframes} frames')
+                    # Get the temperature to use from the start of this exposure
+                    tstamps = np.array(
+                        pd.to_datetime(meta["DATE-OBS"]).astype(np.int64)
+                    )
+                    Texp = np.interp(tstamps[0], coude_t, coude_T)
+                    assert np.isfinite(Texp), "Invalid interpolated temperature"
+                    ##print(f'Coude temperature is {Texp:.1f}C')
+                else:
+                    if len(meta) != nframes:
+                        raise RuntimeError(
+                            f"Different number of frames! {nframes} != {len(meta)}"
+                        )
+
+                # Load raw SkyCam data
+                raw = hdus[cam].read()
+                assert raw.ndim == 3, "Is this a sky flat?"
+
+                # Loop over frames
+                for frame in range(nframes):
+                    with warnings.catch_warnings():
+                        warnings.simplefilter("ignore", category=RuntimeWarning)
+                        # Calculate flux in this camera using the old method
+                        flux[0, camid, frame], dflux[0, camid, frame] = SKY.setraw(
+                            raw[frame],
+                            cam,
+                            refit=True,
+                            fit_centroids=False,
+                            Temperature=None,
+                        )
+                        # Calculate flux in this camera using the new method (including temperature correction)
+                        flux[1, camid, frame], dflux[1, camid, frame] = SKY.setraw(
+                            raw[frame],
+                            cam,
+                            refit=False,
+                            fit_centroids=True,
+                            fast_centroids=True,
+                            Temperature=Texp,
+                        )
+                    # Save the flux before the temperature correction is applied
+                    flux[2, camid, frame] = SKY.flux_notemp
+                    dflux[2, camid, frame] = SKY.fluxerr_notemp
+                    # Save the fitted centroid shift
+                    offset[:, camid, frame] = [SKY.fit_dx, SKY.fit_dy]
+
+                # Normalize fluxes to exposure time
+                exptime = np.array(meta.EXPTIME)
+                flux[:, camid] /= exptime
+                dflux[:, camid] /= exptime
+
+            # Combine cameras for each frame
+            assert np.all((dflux > 0) & np.isfinite(dflux)), "Invalid flux errors"
+            ivar = dflux**-2
+            combined = np.sum(flux * ivar, axis=1) / np.sum(ivar, axis=1)
+
+            # Combine frames over the science exposure
+            mean = np.mean(combined, axis=-1)
+
+            # Save results
+            nround = 3
+            expdata = dict(
+                exptag=exptag,
+                Texp=np.round(Texp, nround),
+                mean=np.round(mean, nround),
+                combined=np.round(combined, nround),
+                flux=np.round(flux, nround),
+                dflux=np.round(dflux, nround),
+                offset=np.round(offset, nround),
+            )
+            results["exps"].append(expdata)
+
+            if verbose:
+                print(
+                    f"  {night}/{exptag} N={nframes} T={Texp:.1f}C {np.round(mean,2)}"
+                )
+
+            # if k >= 2:
+            #    break
+
+        except Exception as e:
+            print(f"Skipping {night}/{exptag} with error: {e}")
+
+    fname = f"out/etcsky-{night}.json"
+    with open(fname, "w") as f:
+        json.dump(results, f, cls=desietc.util.NumpyEncoder)
+        if verbose:
+            print(f"Saved results to {fname}")
