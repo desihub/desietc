@@ -8,7 +8,7 @@ are installed (for a direct connection), or else that requests is installed
 
 import collections
 import datetime
-import os.path
+import pathlib
 import io
 
 try:
