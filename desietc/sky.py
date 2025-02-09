@@ -5,6 +5,7 @@ import collections
 import pathlib
 import json
 import warnings
+import time
 
 try:
     import DOSlib.logger as logging
@@ -560,7 +561,7 @@ def process_night(
                     flux = np.zeros((3, 2, nframes))
                     dflux = np.zeros((3, 2, nframes))
                     offset = np.zeros((2, 2, nframes))
-                    ##print(f'{night}/{exptag} has {nframes} frames')
+                    elapsed = np.zeros((2, 2, nframes))
                     # Get the temperature to use from the start of this exposure
                     tstamps = np.array(
                         pd.to_datetime(meta["DATE-OBS"]).astype(np.int64)
@@ -583,6 +584,7 @@ def process_night(
                     with warnings.catch_warnings():
                         warnings.simplefilter("ignore", category=RuntimeWarning)
                         # Calculate flux in this camera using the old method
+                        start = time.time()
                         flux[0, camid, frame], dflux[0, camid, frame] = SKY.setraw(
                             raw[frame],
                             cam,
@@ -590,6 +592,7 @@ def process_night(
                             fit_centroids=False,
                             Temperature=None,
                         )
+                        t1 = time.time()
                         # Calculate flux in this camera using the new method (including temperature correction)
                         flux[1, camid, frame], dflux[1, camid, frame] = SKY.setraw(
                             raw[frame],
@@ -599,11 +602,15 @@ def process_night(
                             fast_centroids=True,
                             Temperature=Texp,
                         )
+                        t2 = time.time()
                     # Save the flux before the temperature correction is applied
                     flux[2, camid, frame] = SKY.flux_notemp
                     dflux[2, camid, frame] = SKY.fluxerr_notemp
                     # Save the fitted centroid shift
                     offset[:, camid, frame] = [SKY.fit_dx, SKY.fit_dy]
+                    # Save timing
+                    elapsed[0, camid, frame] = t1 - start
+                    elapsed[1, camid, frame] = t2 - t1
 
                 # Normalize fluxes to exposure time
                 exptime = np.array(meta.EXPTIME)
@@ -628,6 +635,7 @@ def process_night(
                 flux=np.round(flux, nround),
                 dflux=np.round(dflux, nround),
                 offset=np.round(offset, nround),
+                elapsed=np.round(offset, nround),
             )
             results["exps"].append(expdata)
 
