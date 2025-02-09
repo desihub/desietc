@@ -500,6 +500,8 @@ def process_night(
     SKY,
     DB,
     DATA=pathlib.Path("/global/cfs/cdirs/desi/spectro/data/"),
+    fname="etcsky-{night}.json"
+    nmax=None,
     verbose=False,
 ):
     """Process a single night of SkyCam data."""
@@ -634,14 +636,17 @@ def process_night(
                     f"  {night}/{exptag} N={nframes} T={Texp:.1f}C {np.round(mean,2)}"
                 )
 
-            # if k >= 2:
-            #    break
+            if nmax is not None and k >= nmax:
+               break
 
         except Exception as e:
             print(f"Skipping {night}/{exptag} with error: {e}")
 
-    fname = f"out/etcsky-{night}.json"
-    with open(fname, "w") as f:
-        json.dump(results, f, cls=desietc.util.NumpyEncoder)
-        if verbose:
-            print(f"Saved results to {fname}")
+    if fname is not None:
+        fname = fname.format(night=night)
+        with open(fname, "w") as f:
+            json.dump(results, f, cls=desietc.util.NumpyEncoder)
+            if verbose:
+                print(f"Saved results to {fname}")
+
+    return results
