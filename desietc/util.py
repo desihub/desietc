@@ -221,7 +221,13 @@ def fit_spots_flux_and_pos_fast(
     finegrid = None
     finedx = None
     finedy = None
-    if nfine > 0 and j >= 2 and i >= 2 and j < ngridy - 2 and i < ngridx - 2:
+    if nfine > 0:
+        if j < 2 or i < 2 or j >= ngridy - 2 or i >= ngridx - 2:
+            # The minimum is too close to the edge of the offset grid, so assume this is a bad fit
+            # and instead center on the middle of the grid.
+            i = ngridx // 2 + 1
+            j = ngridy // 2 + 1
+            fit_cov = cov[j, i]
         # Use a 2D bicubic spline of a 5x5 subgrid to refine the location of the minimum chisq.
         subgrid = chisq[j - 2 : j + 3, i - 2 : i + 3]
         subdx = offset_dx[i - 2 : i + 3]
