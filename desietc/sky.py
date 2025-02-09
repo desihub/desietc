@@ -501,6 +501,7 @@ def process_night(
     SKY,
     DB,
     DATA=pathlib.Path("/global/cfs/cdirs/desi/spectro/data/"),
+    fast_centroids=True,
     fname="etcsky-{night}.json",
     nmax=None,
     verbose=False,
@@ -529,9 +530,11 @@ def process_night(
         print(
             f"Found {nexps} exposures in {good_exps[0]}-{good_exps[-1]} with DESI and SKY data for {night}"
         )
+    if nmax is not None:
+        nexps = min(nexps, nmax)
 
     # Initialize the results
-    results = dict(night=night, nexps=nexps, exps=[])
+    results = dict(night=night, nexps=nexps, fast=fast_centroids, exps=[])
 
     # Initialize temperature interpolation
     coude_temp = get_db_temp(night, DB)
@@ -543,7 +546,7 @@ def process_night(
         )
 
     # Loop over exposures
-    for k, exptag in enumerate(good_exps):
+    for k, exptag in enumerate(good_exps[:nexps]):
         if verbose:
             print(f"Processing [{k+1:2d}/{nexps:2d}] {night}/{exptag}...")
         try:
@@ -599,7 +602,7 @@ def process_night(
                             cam,
                             refit=False,
                             fit_centroids=True,
-                            fast_centroids=True,
+                            fast_centroids=fast_centroids,
                             Temperature=Texp,
                         )
                         t2 = time.time()
@@ -635,7 +638,7 @@ def process_night(
                 flux=np.round(flux, nround),
                 dflux=np.round(dflux, nround),
                 offset=np.round(offset, nround),
-                elapsed=np.round(offset, nround),
+                elapsed=np.round(elapsed, nround),
             )
             results["exps"].append(expdata)
 
