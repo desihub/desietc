@@ -501,7 +501,7 @@ def process_night(
     SKY,
     DB,
     DATA=pathlib.Path("/global/cfs/cdirs/desi/spectro/data/"),
-    fname="etcsky-{night}.json"
+    fname="etcsky-{night}.json",
     nmax=None,
     verbose=False,
 ):
@@ -645,7 +645,7 @@ def process_night(
                 )
 
             if nmax is not None and k >= nmax:
-               break
+                break
 
         except Exception as e:
             print(f"Skipping {night}/{exptag} with error: {e}")
