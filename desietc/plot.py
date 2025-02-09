@@ -456,7 +456,7 @@ def plotSkyCentroidFit(data, name, SKY, plot_fine=True, slow=True, save=None):
         interpolation="none",
         extent=(dx[0] - xpad, dx[-1] + xpad, dy[0] - ypad, dy[-1] + ypad),
     )
-    if plot_fine:
+    if plot_fine and SKY.grid_fine_chisq is not None:
         # Superimpose the spline interpolation of the 5x5 grid centered on the coarse-grid min chisq.
         fxpad = (SKY.grid_finedx[1] - SKY.grid_finedx[0]) / 2
         fypad = (SKY.grid_finedy[1] - SKY.grid_finedy[0]) / 2

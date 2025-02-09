@@ -218,6 +218,9 @@ def fit_spots_flux_and_pos_fast(
     fit_flux = flux[j, i]
     fit_bg = bg[j, i]
     fit_cov = cov[j, i]
+    finegrid = None
+    finedx = None
+    finedy = None
     if nfine > 0 and j >= 2 and i >= 2 and j < ngridy - 2 and i < ngridx - 2:
         # Use a 2D bicubic spline of a 5x5 subgrid to refine the location of the minimum chisq.
         subgrid = chisq[j - 2 : j + 3, i - 2 : i + 3]
