@@ -23,6 +23,7 @@ import pandas as pd
 import fitsio
 
 import desietc.util
+import desietc.db
 
 
 class BGFitter(object):
@@ -499,7 +500,7 @@ def get_db_temp(
 def process_night(
     night,
     SKY,
-    DB,
+    DB=None,
     DATA=pathlib.Path("/global/cfs/cdirs/desi/spectro/data/"),
     fast_centroids=True,
     fname="etcsky-{night}.json",
@@ -537,6 +538,8 @@ def process_night(
     results = dict(night=night, nexps=nexps, fast=fast_centroids, exps=[])
 
     # Initialize temperature interpolation
+    if DB is None:
+        DB = desietc.db.DB(http_fallback=False)
     coude_temp = get_db_temp(night, DB)
     coude_t = pd.to_datetime(coude_temp["time_recorded"]).astype(np.int64)
     coude_T = coude_temp["temp"].astype(float)
