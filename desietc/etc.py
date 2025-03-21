@@ -802,7 +802,10 @@ class ETCAlgorithm(object):
             if np.all(raw_data == 0):
                 logging.warning(f'Ignoring {camera} all-zero image for frame {fnum}.')
                 continue
-            camera_flux, camera_dflux = self.SKY.setraw(raw_data, name=camera, Temperature=temperature)
+            camera_flux, camera_dflux = self.SKY.setraw(
+                raw_data, name=camera, Temperature=temperature,
+                # enable fast centroid fitting - see DESI-8945 for details
+                fit_centroids=True, fast_centroids=True)
             if camera_flux is None:
                 logging.warning(f'Failed to estimate {camera} skylevel for frame {fnum}.')
                 continue
