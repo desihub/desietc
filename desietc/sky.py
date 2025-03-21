@@ -350,11 +350,13 @@ class SkyCamera(object):
                     )
                 )
                 self.spot_offsets = np.array(spot_offsets)
+            self.used_centroid_fit = True
         else:
             self.flux[:N], self.bgfit[:N], cov, _ = desietc.util.fit_spots(
                 self.data[:N], self.ivar[:N], self.spots[name]
             )
             self.fit_dx, self.fit_dy = 0, 0
+            self.used_centroid_fit = False
         # Calculate errors on the flux and background level.
         self.fluxerr[:N] = np.sqrt(cov[:, 0, 0])
         self.bgerr[:N] = np.sqrt(cov[:, 1, 1])

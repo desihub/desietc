@@ -827,6 +827,11 @@ class ETCAlgorithm(object):
         # Calculate the weighted average sky flux over all cameras.
         flux /= ivar
         dflux = ivar ** -0.5
+        # Reweight if centroid fitting was used.
+        # See DESI-8945 and the accompanying Jupyter notebook for details.
+        if self.SKY.used_centroid_fit:
+            flux *= 0.931
+            dflux *= 0.931
         logging.info(f'SKY flux = {flux:.2f} +/- {dflux:.2f}.')
         self.skylevel = flux
         # Record this measurement.
