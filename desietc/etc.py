@@ -775,7 +775,7 @@ class ETCAlgorithm(object):
         logging.info(f'Guide frame processing took {elapsed:.2f}s for {nstar} stars in {ncamera} cameras.')
         return True
 
-    def process_sky_frame(self, data, timestamp):
+    def process_sky_frame(self, data, timestamp, temperature=None):
         """Process a SKY frame.
         """
         ncamera = 0
@@ -783,7 +783,7 @@ class ETCAlgorithm(object):
         fnum = self.num_sky_frames
         self.num_sky_frames += 1
         self.total_sky_count += 1
-        logging.info(f'Processing sky frame {fnum} [{self.total_sky_count}] for {self.exptag} at {timestamp}.')
+        logging.info(f'Processing sky frame {fnum} [{self.total_sky_count}] for {self.exptag} with T={temperature} at {timestamp}.')
         self.check_top_header(data['SKY']['header'], f'sky[{fnum}]')
         flux, ivar = 0, 0
         mjd_obs, exptime = [], []
@@ -802,7 +802,7 @@ class ETCAlgorithm(object):
             if np.all(raw_data == 0):
                 logging.warning(f'Ignoring {camera} all-zero image for frame {fnum}.')
                 continue
-            camera_flux, camera_dflux = self.SKY.setraw(raw_data, name=camera)
+            camera_flux, camera_dflux = self.SKY.setraw(raw_data, name=camera, Temperature=temperature)
             if camera_flux is None:
                 logging.warning(f'Failed to estimate {camera} skylevel for frame {fnum}.')
                 continue
