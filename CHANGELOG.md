@@ -8,6 +8,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.20] - 2025-03-21
+### Added
+ - Implemented fast centroid fit for SkyCam frames. See DESI-8945 and accompanying notebook for details.
+ - Read Coude room east wall temperature using get_telemetry() for SkyCam temperature corrections.
+### Changed
+ - Use fast centroid fits to process SkyCam frames in ETC.
+ - Rescale skylevel estimate by 0.931 when centroid fitting is used, to maintain mean efftime. This ratio
+ is derived from the historical average ratio of the new / old algorithms. See DESI-8945 for details.
+
 ## [0.1.19] - 2024-10-16
 ### Changed
 - Make default SkyCam processing identical to pre 0.1.18, i.e. refit by default and do not apply centroid fitting or temperature corrections. Centroid fitting is not ready to deploy yet since it runs too slowly. Temperature corrections will require new plumbing with ICS.

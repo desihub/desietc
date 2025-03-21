@@ -267,8 +267,15 @@ class OnlineETC():
                     # Process a sky frame if available.
                     sky_image = self.call_for_sky_image()
                     if sky_image:
+                        temperature = None
                         try:
-                            self.ETCalg.process_sky_frame(sky_image['image'], get_utcnow())
+                            telem = self.call_for_telemetry()
+                            if telem:
+                                temperature = telem.get('scr_e_wall_coude', None)
+                        except Exception as e:
+                            logging.error(f'call_for_telemetry failed: {e}')
+                        try:
+                            self.ETCalg.process_sky_frame(sky_image['image'], get_utcnow(), temperature)
                             have_new_telemetry = True
                         except Exception as e:
                             logging.error(f'process_sky_frame failed: {e}')

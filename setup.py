@@ -3,7 +3,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="desietc",
-    version="0.1.19",  # MAKE SURE THIS MATCHES desietc/_version.py! There are also ways to automate this.
+    version="0.1.20",  # MAKE SURE THIS MATCHES desietc/_version.py! There are also ways to automate this.
     description="Online exposure-time calculator for DESI",
     url="http://github.com/desihub/desietc",
     author="David Kirkby",
