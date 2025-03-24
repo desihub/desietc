@@ -833,6 +833,7 @@ class ETCAlgorithm(object):
         # Reweight if centroid fitting was used.
         # See DESI-8945 and the accompanying Jupyter notebook for details.
         if self.SKY.used_centroid_fit:
+            logging.info('Applied 0.931 rescale factor to SKY flux and dflux.')
             flux *= 0.931
             dflux *= 0.931
         logging.info(f'SKY flux = {flux:.2f} +/- {dflux:.2f}.')
