@@ -271,7 +271,8 @@ class OnlineETC():
                         try:
                             telem = self.call_for_telemetry()
                             if telem:
-                                temperature = telem.get('scr_e_wall_coude', None)
+                                temperature = telem.get('SCR_E_wall_coude', None)
+                                logging.info(f'SCR_E_wall_coude temperature = {temperature}')
                         except Exception as e:
                             logging.error(f'call_for_telemetry failed: {e}')
                         try:
