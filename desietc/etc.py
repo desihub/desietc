@@ -182,6 +182,7 @@ class ETCAlgorithm(object):
                 ('flux', np.float32, (self.nsky,)),   # sky flux meausured from a single SKYCAM.
                 ('dflux', np.float32, (self.nsky,)),  # sky flux uncertainty meausured from a single SKYCAM.
                 ('ndrop', np.int32, (self.nsky,)),    # number of fibers dropped from the camera flux estimate.
+                ('temp', np.float32),                  # temperature used for correction or -100 if not used.
             ])
         # Initialize exposure accumulator.
         self.accum = desietc.accum.Accumulator(
@@ -840,9 +841,10 @@ class ETCAlgorithm(object):
         self.skylevel = flux
         # Record this measurement.
         mjd_start, mjd_stop = self.get_mjd_range(mjd_obs, exptime, f'sky[{fnum}]')
+        save_temp = temperature if temperature is not None else -100
         self.sky_measurements.add(
             mjd_start, mjd_stop, flux, dflux,
-            aux_data=(each_flux, each_dflux, each_ndrop))
+            aux_data=(each_flux, each_dflux, each_ndrop, save_temp))
         # Update our accumulated background if the shutter is open.
         if self.accum.shutter_is_open:
             mjd_now = desietc.util.date_to_mjd(timestamp, utc_offset=0)
