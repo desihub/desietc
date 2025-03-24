@@ -12,6 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
  - Use correct capitalization of 'SCR_E_wall_coude' for telemetry query
  - Set refit=False for processing SkyCam frames
+## Added
+ - Save temperature used for sky-level correction to json
 
 ## [0.1.20] - 2025-03-21
 ### Added
