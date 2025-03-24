@@ -805,7 +805,7 @@ class ETCAlgorithm(object):
             camera_flux, camera_dflux = self.SKY.setraw(
                 raw_data, name=camera, Temperature=temperature,
                 # enable fast centroid fitting - see DESI-8945 for details
-                fit_centroids=True, fast_centroids=True)
+                fit_centroids=True, fast_centroids=True, refit=False)
             if camera_flux is None:
                 logging.warning(f'Failed to estimate {camera} skylevel for frame {fnum}.')
                 continue
