@@ -35,6 +35,10 @@ class ETCAlgorithm(object):
     SECS_PER_DAY = 86400
     BUFFER_NAME = 'ETC_{0}_buffer'
     FFRAC_NOM = dict(PSF=0.56198, ELG=0.41220, BGS=0.18985)
+    # Airmass exponent for the survey-speed airmass correction (aircorrect = X ** SPEED_AIRMASS_EXP).
+    # Historical code default = 1.75. The measured Run-1 exposure-time-vs-airmass law is ~X**1.32
+    # (DESI-doc-10175 / DAR_SPLIT_PLAN); kept at 1.75 pending Survey Ops confirmation before any change.
+    SPEED_AIRMASS_EXP = 1.75
 
     def __init__(self, sky_calib, gfa_calib, psf_pixels=25, guide_pixels=31, max_dither=7, num_dither=1200,
                  Ebv_coef=2.165, X_coef=0.114, ffrac_ref=0.56, nbad_threshold=100, nll_threshold=100,
@@ -444,7 +448,7 @@ class ETCAlgorithm(object):
             azimuth=hdr['MOUNTAZ'],
             airmass=np.float32(X),
             atm_extinction=np.float32(self.atm_extinction),
-            aircorrection=np.float32(X**1.75),
+            aircorrection=np.float32(X**self.SPEED_AIRMASS_EXP),
         ))
         self.total_gfa_count += 1
         # Collect results from any parallel processes.
@@ -765,7 +769,7 @@ class ETCAlgorithm(object):
             f'bright {(self.speed_bright or -1):.3f} ({(self.speed_bright_nts or -1):.3f}) ' +
             f'backup {(self.speed_backup or -1):.3f} ({(self.speed_backup_nts or -1):.3f}) ' +
             f'using sky {(skylevel_now or -1):.3f} ({(skylevel_nts or -1):.3f}) ' +
-            f'aircorrect X**1.75={aircorrect_now:.3f} ({aircorrect_nts:.3f})')
+            f'aircorrect X**{self.SPEED_AIRMASS_EXP}={aircorrect_now:.3f} ({aircorrect_nts:.3f})')
         # Save speeds to the JSON file.
         self.thru_measurements.set_last(
             speed_dark=(self.speed_dark or -1), speed_dark_nts=(self.speed_dark_nts or -1),
