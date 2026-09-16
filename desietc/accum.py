@@ -39,6 +39,10 @@ class Accumulator(object):
         self.bg_buffer = bg_buffer
         self.grid_resolution = grid_resolution
         self.min_exptime_secs = min_exptime_secs
+        # NTS config (overwritten by setup); defaults reproduce current behaviour (no speed cut).
+        self.pUniformity = 0.99
+        self.nts_program = 'DARK'
+        self.speed_floor = 0.0
         self.reset()
         # Initialize a per-exposure transcript of updates.
         self.max_transcript = max_transcript
@@ -61,6 +65,7 @@ class Accumulator(object):
         self.last_mjd = desietc.util.date_to_mjd(datetime.datetime.utcnow(), utc_offset=0)
         self.last_updated = desietc.util.mjd_to_date(self.last_mjd, utc_offset=0).isoformat()
         self.efftime = self.realtime = self.efftime_tot = self.realtime_tot = 0.
+        self.efftime_deflated = self.efftime_tot_deflated = self.proj_efftime_deflated = 0.
         self.signal = self.background = 0.
         self.remaining = self.next_split = self.proj_efftime = 0.
         self.nsplit_remaining = 1
@@ -69,13 +74,19 @@ class Accumulator(object):
         self.shutter_open = []
         self.shutter_close = []
         self.shutter_teff = []
+        self.shutter_teff_deflated = []
         self.shutter_treal = []
         self.splittable = False
         self.action = None
         self.mjd_grid = None
+        # DAR split / deflation inputs, refreshed per split/frame by etc.py; defaults = current behaviour.
+        self.dar_split_time = np.inf     # DAR-driven per-segment cap (min with cosmic cap -> no effect)
+        self.f2_p99 = 1.0                # binding-fiber deflation factor (1 = no deflation)
+        self.speed_now = None            # current survey speed for the floor check (None = no cut)
+        self.binding_petal = self.binding_device = None
 
     def setup(self, req_efftime, max_exposure_time, cosmics_split_time, maxsplit, warning_time,
-              rdnoise_1ks):
+              rdnoise_1ks, pUniformity=0.99, nts_program='DARK'):
         """Setup a new sequence of cosmic splits.
 
         Parameters
@@ -93,6 +104,11 @@ class Accumulator(object):
             Warn when a stop or split is expected within this interval in seconds.
         rdnoise_1ks : float
             Nominal read noise relative to 1000s of nominal sky background.
+        pUniformity : float
+            Completeness/uniformity percentile for the DAR binding fiber (default 0.99 = p99).
+            Stored for the DAR-deflation changes; not yet acted on (plumbing).
+        nts_program : string
+            NTS program (DARK, BRIGHT, BACKUP); selects the survey-speed floor below.
         """
         self.req_efftime = req_efftime
         self.max_exposure_time = max_exposure_time
@@ -100,6 +116,11 @@ class Accumulator(object):
         self.maxsplit = maxsplit
         self.warning_time = warning_time
         self.rdnoise_1ks = rdnoise_1ks
+        self.pUniformity = pUniformity
+        self.nts_program = nts_program
+        # Survey-speed floor (EFFTIME/EXPTIME) by program: dark 1/5, bright 1/12, BACKUP disabled.
+        # Stored for the speed-cut change; not yet acted on (plumbing only).
+        self.speed_floor = {'DARK': 1 / 5.0, 'BRIGHT': 1 / 12.0, 'BACKUP': 0.0}.get(nts_program, 1 / 5.0)
         self.MW_transp = 1.
         self.reset()
 
@@ -183,6 +204,7 @@ class Accumulator(object):
         # Record this shutter closing.
         self.shutter_close.append(mjd)
         self.shutter_teff.append(self.efftime)
+        self.shutter_teff_deflated.append(self.efftime_deflated)
         self.shutter_treal.append((mjd - self.shutter_open[-1]) * self.SECS_PER_DAY)
         self.nclose += 1
         self.shutter_is_open = False
@@ -253,6 +275,12 @@ class Accumulator(object):
             f' [+{prev_teff:.1f}s] using bg={self.background:.3f}, sig={self.signal:.3f}, thru={self.aux_mean["thru_psf"]:.3f}.')
         self.realtime_tot = self.realtime + prev_treal
         self.efftime_tot = self.efftime + prev_teff
+        # Deflated (binding-fiber) effective time for the pUniformity guarantee: the deflated counterpart of
+        # efftime_tot (= efftime + prev_teff). prev_teff_deflated sums the previous splits just like prev_teff,
+        # so earlier splits are retained; with f2_p99 = 1 this equals efftime_tot exactly.
+        prev_teff_deflated = np.sum(self.shutter_teff_deflated)
+        self.efftime_deflated = self.efftime * self.f2_p99
+        self.efftime_tot_deflated = self.efftime_deflated + prev_teff_deflated
         # Have we reached the cutoff time?
         if self.realtime >= self.max_remaining or len(self.mjd_grid[future]) == 0:
             # We have already reached the maximum allowed exposure time.
@@ -273,20 +301,25 @@ class Accumulator(object):
             # Calculate the corresponding accumulated effective exposure time in seconds.
             accum_treal = (self.mjd_grid - mjd_open) * self.SECS_PER_DAY
             accum_teff = self.get_efftime(accum_treal, accum_sig, accum_bg)
+            # Deflate the forecast by the binding-fiber acceptance so the stop/split timing targets the
+            # p99 fiber (the pUniformity guarantee). f2_p99 is a per-segment constant (midpoint placement
+            # for the estimated segment length, set by etc.py._refresh_dar), so holding it over the
+            # forecast is correct, not an approximation. f2_p99=1 -> unchanged behaviour.
+            accum_teff_deflated = accum_teff * self.f2_p99
             # When do we expect to close the shutter.
             self.action = None
-            if self.efftime + prev_teff >= self.req_efftime:
-                # We have already reached the target.
+            if self.efftime_deflated + prev_teff_deflated >= self.req_efftime:
+                # We have already reached the target for the binding fiber.
                 istop = inow
                 self.action = ('stop', 'reached req_efftime')
                 logging.info(f'Reached requested effective time of {self.req_efftime:.1f}s.')
-            elif accum_teff[-1] + prev_teff < self.req_efftime:
+            elif accum_teff_deflated[-1] + prev_teff_deflated < self.req_efftime:
                 # We will not reach the target before max_exposure_time.
                 istop = len(accum_teff) - 1
                 logging.info('Will probably not reach requested SNR before max exposure time.')
             else:
                 # We expect to reach the target before mjd_max but are not there yet.
-                istop = np.argmax(accum_teff + prev_teff >= self.req_efftime)
+                istop = np.argmax(accum_teff_deflated + prev_teff_deflated >= self.req_efftime)
             # Lookup our expected stop time and time remaining, assuming the shutter stays open.
             mjd_stop = self.mjd_grid[istop]
             # Enforce the minimum exposure time.
@@ -302,13 +335,17 @@ class Accumulator(object):
             self.remaining = (mjd_stop - mjd_now) * self.SECS_PER_DAY
             # Calculate the corresponding effective time, including any previous shutters.
             self.proj_efftime = accum_teff[istop] + prev_teff
+            self.proj_efftime_deflated = accum_teff_deflated[istop] + prev_teff_deflated
             treal_stop = (mjd_stop - mjd_open) * self.SECS_PER_DAY
             logging.info(f'Will stop in {self.remaining:.1f}s at teff={self.proj_efftime:.1f}s' +
                 f' (target={self.req_efftime:.1f}s), treal={treal_stop:.1f}s (max={self.max_remaining:.1f}s).')
             # Calculate how many cosmic splits are remaining if none exceeds the split maximum.
             # This value is frozen once we reach half of the max split time.
-            if self.realtime < self.cosmics_split_time:
-                self.nsplit_remaining = int(np.ceil((mjd_stop - mjd_open) * self.SECS_PER_DAY / self.cosmics_split_time))
+            # DAR-aware split cadence: cap the segment at min(cosmic cap, DAR cap). dar_split_time=inf
+            # (default) -> cosmic cap only, i.e. unchanged behaviour.
+            split_time = min(self.cosmics_split_time, self.dar_split_time)
+            if self.realtime < split_time:
+                self.nsplit_remaining = int(np.ceil((mjd_stop - mjd_open) * self.SECS_PER_DAY / split_time))
             # Calculate when the next split should be.
             mjd_split = mjd_open + (mjd_stop - mjd_open) / self.nsplit_remaining
             # Enforce the minimum exposure time.
@@ -316,13 +353,25 @@ class Accumulator(object):
                 logging.warning(f'Delaying split until min exptime of {self.min_exptime_secs}s.')
                 mjd_split = mjd_min_exptime
             self.next_split = (mjd_split - mjd_now) * self.SECS_PER_DAY
-            if self.next_split > self.cosmics_split_time:
-                logging.warning(f'Clipping next_split from {self.next_split:.1f}s to {self.cosmics_split_time:.1f}s')
-                self.next_split = self.cosmics_split_time
+            if self.next_split > split_time:
+                logging.warning(f'Clipping next_split from {self.next_split:.1f}s to {split_time:.1f}s')
+                self.next_split = split_time
             if self.action is None and self.nsplit_remaining > 1:
                 logging.info(f'Next split ({self.nopen} of {self.nclose+self.nsplit_remaining}) in {self.next_split:.1f}s.')
                 if self.splittable and self.next_split <= 0:
-                    self.action = ('split', 'cosmic split')
+                    cause = 'dar split' if self.dar_split_time < self.cosmics_split_time else 'cosmic split'
+                    self.action = ('split', cause)
+            # Survey-speed floor (Change 3): when the running speed is below the program floor, stop and
+            # hand the remainder back to the NTS instead of splitting/continuing. Fail-safe: acts only when
+            # a floor is set (>0; BACKUP has 0) and a speed has been provided, never before min exptime, and
+            # never overrides a target- or max-time stop.
+            if ((self.action is None or self.action[0] == 'split')
+                    and self.speed_floor > 0 and self.speed_now is not None
+                    and self.speed_now < self.speed_floor
+                    and self.realtime >= self.min_exptime_secs):
+                self.action = ('stop', 'below speed floor')
+                logging.info(f'Survey speed {self.speed_now:.3f} below floor {self.speed_floor:.3f}: '
+                             'stopping and rescheduling the remainder.')
             # Are we about to stop or split?
             if self.action is None:
                 if self.realtime + self.warning_time >= self.max_remaining:
