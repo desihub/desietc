@@ -275,7 +275,9 @@ class Accumulator(object):
             f' [+{prev_teff:.1f}s] using bg={self.background:.3f}, sig={self.signal:.3f}, thru={self.aux_mean["thru_psf"]:.3f}.')
         self.realtime_tot = self.realtime + prev_treal
         self.efftime_tot = self.efftime + prev_teff
-        # Deflated (binding-fiber) effective time for the pUniformity guarantee; f2_p99=1 -> == original.
+        # Deflated (binding-fiber) effective time for the pUniformity guarantee: the deflated counterpart of
+        # efftime_tot (= efftime + prev_teff). prev_teff_deflated sums the previous splits just like prev_teff,
+        # so earlier splits are retained; with f2_p99 = 1 this equals efftime_tot exactly.
         prev_teff_deflated = np.sum(self.shutter_teff_deflated)
         self.efftime_deflated = self.efftime * self.f2_p99
         self.efftime_tot_deflated = self.efftime_deflated + prev_teff_deflated
@@ -306,7 +308,7 @@ class Accumulator(object):
             accum_teff_deflated = accum_teff * self.f2_p99
             # When do we expect to close the shutter.
             self.action = None
-            if self.efftime_tot_deflated >= self.req_efftime:
+            if self.efftime_deflated + prev_teff_deflated >= self.req_efftime:
                 # We have already reached the target for the binding fiber.
                 istop = inow
                 self.action = ('stop', 'reached req_efftime')
