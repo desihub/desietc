@@ -491,6 +491,8 @@ class OnlineETC():
         etc_status['splittable'] = self.ETCalg.accum.splittable
         # DAR deflated (binding-fiber) effective time for the pUniformity guarantee, plus the binding
         # fiber location. With no DAR active these equal the originals / None (unchanged reporting).
+        # efftime_deflated mirrors efftime (this shutter); efftime_tot_deflated mirrors efftime_tot (all splits).
+        etc_status['efftime_deflated'] = np.float32(self.ETCalg.accum.efftime_deflated)
         etc_status['efftime_tot_deflated'] = np.float32(self.ETCalg.accum.efftime_tot_deflated)
         etc_status['proj_efftime_deflated'] = np.float32(self.ETCalg.accum.proj_efftime_deflated)
         etc_status['binding_petal'] = self.ETCalg.accum.binding_petal
