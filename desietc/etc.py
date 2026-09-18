@@ -1102,6 +1102,13 @@ class ETCAlgorithm(object):
             ETCREAL=np.float32(self.accum.realtime),
             ETCPREV=np.float32(np.sum(self.accum.shutter_teff[:-2])),
             ETCSPLIT=len(self.accum.shutter_teff),
+            # DAR: deflated (binding-fiber) effective time + binding-fiber location. Deflated equals the
+            # original when no DAR is active; petal/device are -1 (no binding fiber) rather than None,
+            # since FITS header keywords cannot hold None.
+            ETCTEFFD=np.float32(self.accum.efftime_deflated),
+            TOTTEFFD=np.float32(self.accum.efftime_tot_deflated),
+            BINDPLOC=self.accum.binding_petal if self.accum.binding_petal is not None else -1,
+            BINDDLOC=self.accum.binding_device if self.accum.binding_device is not None else -1,
             ETCPROF=self.exp_data['sbprof'],
             ETCTRANS=np.float32(self.accum.aux_mean['transp_obs']),
             ETCTHRUP=np.float32(self.accum.aux_mean['thru_psf'] / self.FFRAC_NOM['PSF']),
@@ -1192,6 +1199,7 @@ class ETCAlgorithm(object):
                     open=self.accum.shutter_open,
                     close=self.accum.shutter_close,
                     teff=np.float32(self.accum.shutter_teff),
+                    teff_deflated=np.float32(self.accum.shutter_teff_deflated),
                     treal=np.float32(self.accum.shutter_treal),
                 ),
                 thru=self.thru_measurements.save(mjd),
