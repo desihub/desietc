@@ -87,7 +87,7 @@ def plot_pixels(
         if name not in args:
             args[name] = default
     # Set the masked color in the specified colormap.
-    cmap = copy.copy(matplotlib.cm.get_cmap(args["cmap"]))
+    cmap = copy.copy(matplotlib.colormaps[args["cmap"]])
     cmap.set_bad(color=masked_color)
     args["cmap"] = cmap
     # Draw the image.
@@ -205,7 +205,7 @@ def save_acquisition_summary(
     )
     plt.subplots_adjust(left=0, right=1, bottom=0, top=1, wspace=0, hspace=0)
     # Prepare a colormap with our custom ivar=0 color.
-    cmap = copy.copy(matplotlib.cm.get_cmap(cmap))
+    cmap = copy.copy(matplotlib.colormaps[cmap])
     cmap.set_bad(color=masked_color)
     # Get the colormap scale to use for all images.
     model_sum = {name: psf_model[name].sum() for name in psf_model}

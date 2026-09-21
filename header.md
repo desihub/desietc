@@ -16,6 +16,10 @@ select ID,ETCTEFF,ETCREAL from exposure where id=90129
 - **ETCREAL** [float]: Real open-shutter time of this exposure, in seconds, based on timestamps provided by ICS. Should be close to EXPTIME but will not match exactly because precise shutter timing is not available to the ETC.
 - **ETCPREV** [float]: Cummulative effective time, in seconds, of any previous exposures of this tile in the current visit.
 - **ETCSPLIT** [int]: Split sequence number for this visit of the current tile, starting at 1.
+- **ETCTEFFD** [float]: Deflated effective time of this exposure, in seconds — the depth reached by the binding fiber (the fiber at the pUniformity percentile of the DAR drift distribution), i.e. ETCTEFF reduced by the binding fiber's DAR light loss. Equals ETCTEFF when no DAR correction is active.
+- **TOTTEFFD** [float]: Cummulative deflated effective time, in seconds, over all splits of this visit — the binding-fiber depth reached so far, and the quantity to sum across visits when deciding tile completion. Equals the cummulative original effective time when no DAR correction is active.
+- **BINDPLOC** [int]: PETAL_LOC (0-9) of the binding fiber for this exposure, or -1 when no DAR correction is active.
+- **BINDDLOC** [int]: DEVICE_LOC of the binding fiber for this exposure, or -1 when no DAR correction is active.
 - **ETCPROF** [string]: Source surface brightness profile used for the ETC effective time calculation. Must be one of "PSF", "ELG", "BGS".
 - **ETCTRANS** [float]: Average of observed TRANSP over the exposure. Normalized to 1 for nominal conditions. Note that this value is not corrected to zenith extinction.
 - **ETCTHRUP** [float]: Average of FFRAC*TRANSP over the exposure with FFRAC calculated for a PSF source profile. Normalized to 1 for nominal conditions.
