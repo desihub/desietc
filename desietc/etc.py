@@ -983,7 +983,7 @@ class ETCAlgorithm(object):
             req_efftime, max_exposure_time, cosmics_split_time, maxsplit, warning_time, rdnoise_1ks=0.40,
             pUniformity=pUniformity, nts_program=nts_program)
 
-    def _refresh_dar(self, max_shutter_time):
+    def _refresh_dar(self, timestamp, max_shutter_time):
         """Compute the DAR split cadence, deflation factor, and binding fiber for the upcoming segment
         and hand them to the accumulator.
 
@@ -1011,6 +1011,15 @@ class ETCAlgorithm(object):
             if ha_deg is None or dec is None or not seeing or seeing <= 0:
                 logging.info('DAR: pointing/seeing unavailable; using no-DAR (static) behaviour.')
                 return
+            # Advance HA from the (frozen) acquisition value to this segment's start. The acquisition
+            # image is taken once per tile, so exp_data['hour_angle'] does NOT update on cosmic/DAR
+            # splits; HA tracks LST and advances at the sidereal rate (15.041 deg/hr), so add the elapsed
+            # time since acquisition. This makes v_p99/tau*/f2/binding track the setting field on later
+            # segments instead of being frozen at the first segment's geometry.
+            acq_mjd = self.exp_data.get('acq_mjd')
+            if acq_mjd is not None:
+                mjd_now = desietc.util.date_to_mjd(timestamp, utc_offset=0)
+                ha_deg = ha_deg + (mjd_now - acq_mjd) * 24.0 * 15.041
             ha_h = ha_deg / 15.0
             v = desietc.darsplit.v_p99(ha_h, dec, p)
             # DAR-optimal split cadence tau* (UNCAPPED). The cosmic-ray cap is applied separately by the
@@ -1065,7 +1074,7 @@ class ETCAlgorithm(object):
         MW_transp = self.fassign_data.get('MW_transp', 1.)
         # Refresh the DAR split cadence / deflation / binding fiber for this segment (fail-safe to no-DAR)
         # before accumulation begins, since accum.open() runs an initial update() that consumes them.
-        self._refresh_dar(max_shutter_time)
+        self._refresh_dar(timestamp, max_shutter_time)
         # Start accumulating.
         if not self.accum.open(timestamp, splittable, max_shutter_time, MW_transp):
             return
