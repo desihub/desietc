@@ -913,7 +913,7 @@ class ETCAlgorithm(object):
 
     def start_exposure(self, timestamp, expid, req_efftime, sbprof, max_exposure_time, cosmics_split_time,
                        maxsplit, warning_time, pUniformity=0.99, nts_program='DARK',
-                       use_dynamic_positions=False):
+                       use_dynamic_positions=False, esttime=None):
         """Start a new exposure using parameters:
 
         Parameters
@@ -972,6 +972,7 @@ class ETCAlgorithm(object):
             warning_time=warning_time,
             pUniformity=pUniformity,
             nts_program=nts_program,
+            esttime=esttime,
         )
         logging.info(f'Start {self.night}/{self.exptag} at {timestamp} with req_efftime={req_efftime:.1f}s, sbprof={sbprof}, '
                      + f'max_exposure_time={max_exposure_time:.1f}s, cosmics_split_time={cosmics_split_time:.1f}s, '
@@ -1013,10 +1014,13 @@ class ETCAlgorithm(object):
             ha_h = ha_deg / 15.0
             v = desietc.darsplit.v_p99(ha_h, dec, p)
             dst = desietc.darsplit.dar_split_time(ha_h, dec, seeing, p)
-            # Estimated segment length for the midpoint placement: the planned cadence, bounded by the
-            # reserved shutter time and the cosmic cap. The excursion is symmetric about the midpoint.
+            # Estimated segment length for the midpoint placement: the NTS estimated exposure time
+            # (esttime -- the same value PlateMaker uses to place the fibers), bounded by the cosmic and
+            # DAR split caps. Fall back to the DAR cap if esttime wasn't supplied; never use
+            # max_shutter_time (MAXTIME), which is the generous ceiling, not the expected duration.
+            esttime = self.exp_data.get('esttime') or dst
             csplit = self.exp_data.get('cosmics_split_time') or dst
-            est_seg_len = min(max_shutter_time, csplit, dst)
+            est_seg_len = min(esttime, csplit, dst)
             f2 = desietc.darsplit.f2mean(v * est_seg_len / 2.0, seeing)
             _, petal, device = desietc.darsplit.binding_fiber(ha_h, dec, p)
             self.accum.dar_split_time = dst
@@ -1099,6 +1103,7 @@ class ETCAlgorithm(object):
         summary = dict(
             ETCVERS=self.git or 'unknown',
             ETCTEFF=np.float32(self.accum.efftime),
+            TOTTEFF=np.float32(self.accum.efftime_tot),
             ETCREAL=np.float32(self.accum.realtime),
             ETCPREV=np.float32(np.sum(self.accum.shutter_teff[:-2])),
             ETCSPLIT=len(self.accum.shutter_teff),

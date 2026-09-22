@@ -13,6 +13,7 @@ select ID,ETCTEFF,ETCREAL from exposure where id=90129
 
 - **ETCVERS** [str]: Version string identifying which git commit of the desietc package was used.
 - **ETCTEFF** [float]: Effective time of this exposure, in seconds, estimated by the ETC for the source profile specified in ETCPROF.
+- **TOTTEFF** [float]: Cummulative effective time, in seconds, over all splits of this visit (the running total; equals ETCTEFF on the first split). The undeflated counterpart of TOTTEFFD.
 - **ETCREAL** [float]: Real open-shutter time of this exposure, in seconds, based on timestamps provided by ICS. Should be close to EXPTIME but will not match exactly because precise shutter timing is not available to the ETC.
 - **ETCPREV** [float]: Cummulative effective time, in seconds, of any previous exposures of this tile in the current visit.
 - **ETCSPLIT** [int]: Split sequence number for this visit of the current tile, starting at 1.

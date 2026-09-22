@@ -121,6 +121,7 @@ class OnlineETC():
         self.pUniformity = 0.99
         self.nts_program = 'DARK'
         self.use_dynamic_positions = False
+        self.esttime = None
 
         # Initialize the ETC algorithm. This will spawn 6 parallel proccesses (one per GFA)
         # and allocated ~100Mb of shared memory. These resources will be cleared when
@@ -234,7 +235,7 @@ class OnlineETC():
                             self.img_start_time, self.expid, self.req_efftime, self.sbprof,
                             self.max_exposure_time, self.cosmics_split_time, self.maxsplit, self.warning_time,
                             pUniformity=self.pUniformity, nts_program=self.nts_program,
-                            use_dynamic_positions=self.use_dynamic_positions)
+                            use_dynamic_positions=self.use_dynamic_positions, esttime=self.esttime)
                         last_image_processing = True
                         # Set the path where the PNG generated after the acquisition analysis will be written.
                         self.ETCalg.set_image_path(self.call_for_exp_dir(self.expid))
@@ -559,7 +560,8 @@ class OnlineETC():
 
     def prepare_for_exposure(self, expid, req_efftime, sbprof, max_exposure_time,
                              cosmics_split_time, maxsplit, warning_time=60,
-                             pUniformity=0.99, nts_program='DARK', use_dynamic_positions=False):
+                             pUniformity=0.99, nts_program='DARK', use_dynamic_positions=False,
+                             esttime=None):
         """Record the observing parameters for the next exposure, usually from NTS.
 
         The ETC will not see these parameters until the next call to :meth:`start`.
@@ -607,6 +609,7 @@ class OnlineETC():
         self.pUniformity = pUniformity
         self.nts_program = nts_program
         self.use_dynamic_positions = use_dynamic_positions
+        self.esttime = esttime
 
         # Update our status.
         self.call_to_update_status()
