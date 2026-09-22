@@ -1013,21 +1013,31 @@ class ETCAlgorithm(object):
                 return
             ha_h = ha_deg / 15.0
             v = desietc.darsplit.v_p99(ha_h, dec, p)
-            dst = desietc.darsplit.dar_split_time(ha_h, dec, seeing, p)
+            # DAR-optimal split cadence tau* (UNCAPPED). The cosmic-ray cap is applied separately by the
+            # accumulator via cosmics_split_time, so do NOT impose darsplit's internal T_CAP here -- that
+            # undercuts the ICS cosmic cap and causes spurious 'dar split's near transit, where tau* is
+            # huge (~15000 s at airmass 1). Clamp a huge / negligible-drift tau* so accum's min() falls
+            # back to the cosmic cap.
+            try:
+                dst = desietc.darsplit.tau_star(ha_h, dec, seeing, p)
+            except ZeroDivisionError:
+                dst = 1e9
+            if not np.isfinite(dst) or dst > 1e9:
+                dst = 1e9
             # Estimated segment length for the midpoint placement: the NTS estimated exposure time
-            # (esttime -- the same value PlateMaker uses to place the fibers), bounded by the cosmic and
-            # DAR split caps. Fall back to the DAR cap if esttime wasn't supplied; never use
-            # max_shutter_time (MAXTIME), which is the generous ceiling, not the expected duration.
-            esttime = self.exp_data.get('esttime') or dst
-            csplit = self.exp_data.get('cosmics_split_time') or dst
-            est_seg_len = min(esttime, csplit, dst)
+            # (esttime -- the same value PlateMaker uses to place the fibers), bounded by the cosmic cap
+            # and tau*. Fall back to the cosmic cap then max_shutter_time if esttime wasn't supplied;
+            # never use tau* as the estimate (huge near transit).
+            seg_est = self.exp_data.get('esttime') or self.exp_data.get('cosmics_split_time') or max_shutter_time
+            csplit = self.exp_data.get('cosmics_split_time') or seg_est
+            est_seg_len = min(seg_est, csplit, dst)
             f2 = desietc.darsplit.f2mean(v * est_seg_len / 2.0, seeing)
             _, petal, device = desietc.darsplit.binding_fiber(ha_h, dec, p)
             self.accum.dar_split_time = dst
             self.accum.f2_p99 = f2
             self.accum.binding_petal, self.accum.binding_device = petal, device
             self._dar_vp99, self._dar_field_seeing = v, seeing
-            logging.info(f'DAR: v_p99={v:.4f} um/s, split_time={dst:.0f}s, f2_p99={f2:.3f} '
+            logging.info(f'DAR: v_p99={v:.4f} um/s, tau*={"inf" if dst >= 1e9 else f"{dst:.0f}s"}, f2_p99={f2:.3f} '
                          f'(seg~{est_seg_len:.0f}s), binding petal/device={petal}/{device} '
                          f'[HA={ha_h:.2f}h Dec={dec:.1f} seeing={seeing:.2f}"].')
         except Exception as e:
