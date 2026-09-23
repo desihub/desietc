@@ -117,6 +117,12 @@ class OnlineETC():
         self.call_when_about_to_stop = None
         self.call_when_about_to_split = None
 
+        # Per-exposure NTS parameters (set in prepare_for_exposure); defaults reproduce current behaviour.
+        self.pUniformity = 0.99
+        self.nts_program = 'DARK'
+        self.use_dynamic_positions = False
+        self.esttime = None
+
         # Initialize the ETC algorithm. This will spawn 6 parallel proccesses (one per GFA)
         # and allocated ~100Mb of shared memory. These resources will be cleared when
         gfa_calib = os.getenv('ETC_GFA_CALIB', None)
@@ -227,7 +233,9 @@ class OnlineETC():
                         # A new exposure is starting: pass through prepare_for_exposure args now.
                         self.ETCalg.start_exposure(
                             self.img_start_time, self.expid, self.req_efftime, self.sbprof,
-                            self.max_exposure_time, self.cosmics_split_time, self.maxsplit, self.warning_time)
+                            self.max_exposure_time, self.cosmics_split_time, self.maxsplit, self.warning_time,
+                            pUniformity=self.pUniformity, nts_program=self.nts_program,
+                            use_dynamic_positions=self.use_dynamic_positions, esttime=self.esttime)
                         last_image_processing = True
                         # Set the path where the PNG generated after the acquisition analysis will be written.
                         self.ETCalg.set_image_path(self.call_for_exp_dir(self.expid))
@@ -482,6 +490,16 @@ class OnlineETC():
         etc_status['proj_efftime'] = np.float32(self.ETCalg.accum.proj_efftime)
         etc_status['next_split'] = np.float32(self.ETCalg.accum.next_split)
         etc_status['splittable'] = self.ETCalg.accum.splittable
+        # DAR deflated (binding-fiber) effective time for the pUniformity guarantee, plus the binding
+        # fiber location. With no DAR active these equal the originals / None (unchanged reporting).
+        # efftime_deflated mirrors efftime (this shutter); efftime_tot_deflated mirrors efftime_tot (all splits).
+        etc_status['efftime_deflated'] = np.float32(self.ETCalg.accum.efftime_deflated)
+        etc_status['efftime_tot_deflated'] = np.float32(self.ETCalg.accum.efftime_tot_deflated)
+        etc_status['proj_efftime_deflated'] = np.float32(self.ETCalg.accum.proj_efftime_deflated)
+        etc_status['binding_petal'] = self.ETCalg.accum.binding_petal
+        etc_status['binding_device'] = self.ETCalg.accum.binding_device
+        # Split cause for etc_telemetry (DB column split_reason): 'dar'/'cosmics'/'' (no split).
+        etc_status['split_reason'] = self.ETCalg.accum.split_reason
 
         # Updated after each stop_etc.
         etc_status['rel_rotrate'] = None
@@ -543,7 +561,9 @@ class OnlineETC():
         return SUCCESS
 
     def prepare_for_exposure(self, expid, req_efftime, sbprof, max_exposure_time,
-                             cosmics_split_time, maxsplit, warning_time=60):
+                             cosmics_split_time, maxsplit, warning_time=60,
+                             pUniformity=0.99, nts_program='DARK', use_dynamic_positions=False,
+                             esttime=None):
         """Record the observing parameters for the next exposure, usually from NTS.
 
         The ETC will not see these parameters until the next call to :meth:`start`.
@@ -588,6 +608,10 @@ class OnlineETC():
         self.cosmics_split_time = cosmics_split_time
         self.maxsplit = maxsplit
         self.warning_time = warning_time
+        self.pUniformity = pUniformity
+        self.nts_program = nts_program
+        self.use_dynamic_positions = use_dynamic_positions
+        self.esttime = esttime
 
         # Update our status.
         self.call_to_update_status()

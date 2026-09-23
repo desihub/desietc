@@ -28,6 +28,7 @@ import desietc.gmm
 import desietc.accum
 import desietc.util
 import desietc.plot
+import desietc.darsplit
 
 
 class ETCAlgorithm(object):
@@ -35,6 +36,10 @@ class ETCAlgorithm(object):
     SECS_PER_DAY = 86400
     BUFFER_NAME = 'ETC_{0}_buffer'
     FFRAC_NOM = dict(PSF=0.56198, ELG=0.41220, BGS=0.18985)
+    # Airmass exponent for the survey-speed airmass correction (aircorrect = X ** SPEED_AIRMASS_EXP).
+    # Historical code default = 1.75. The measured Run-1 exposure-time-vs-airmass law is ~X**1.32
+    # (DESI-doc-10175 / DAR_SPLIT_PLAN); kept at 1.75 pending Survey Ops confirmation before any change.
+    SPEED_AIRMASS_EXP = 1.75
 
     def __init__(self, sky_calib, gfa_calib, psf_pixels=25, guide_pixels=31, max_dither=7, num_dither=1200,
                  Ebv_coef=2.165, X_coef=0.114, ffrac_ref=0.56, nbad_threshold=100, nll_threshold=100,
@@ -122,6 +127,12 @@ class ETCAlgorithm(object):
         self.BGmask = (desietc.util.make_template(guide_pixels, BGprofile, dx=0, dy=0, normalized=False) > 0.5)
         # Initialize analysis results.
         self.exp_data = {}
+        # Actual fiber-tip positions (x, y, petal_loc, device_loc) for the DAR calculation, set per
+        # exposure by the ICS wrapper when dynamic positions are requested; None -> static vendored layout.
+        self.dynamic_positions = None
+        # DAR drift geometry for the current segment (set per split by _refresh_dar); None -> no DAR.
+        self._dar_vp99 = None
+        self._dar_field_seeing = None
         self.num_guide_frames = 0
         self.num_sky_frames = 0
         self.acquisition_data = None
@@ -444,7 +455,7 @@ class ETCAlgorithm(object):
             azimuth=hdr['MOUNTAZ'],
             airmass=np.float32(X),
             atm_extinction=np.float32(self.atm_extinction),
-            aircorrection=np.float32(X**1.75),
+            aircorrection=np.float32(X**self.SPEED_AIRMASS_EXP),
         ))
         self.total_gfa_count += 1
         # Collect results from any parallel processes.
@@ -480,7 +491,7 @@ class ETCAlgorithm(object):
             # Precompute dithered renderings of the model for fast guide frame fits.
             self.dithered_model[camera] = self.GMMguide.dither(gmm_params, self.xdither, self.ydither)
         # Update the current FWHM, FFRAC values now.
-        self.seeing, ffrac_psf = 0., 0.
+        self.seeing, self.ffrac_psf = 0., 0.
         if np.any(np.isfinite(fwhm_vec)):
             self.seeing = np.nanmedian(fwhm_vec)
         if np.any(np.isfinite(ffrac_vec)):
@@ -765,7 +776,12 @@ class ETCAlgorithm(object):
             f'bright {(self.speed_bright or -1):.3f} ({(self.speed_bright_nts or -1):.3f}) ' +
             f'backup {(self.speed_backup or -1):.3f} ({(self.speed_backup_nts or -1):.3f}) ' +
             f'using sky {(skylevel_now or -1):.3f} ({(skylevel_nts or -1):.3f}) ' +
-            f'aircorrect X**1.75={aircorrect_now:.3f} ({aircorrect_nts:.3f})')
+            f'aircorrect X**{self.SPEED_AIRMASS_EXP}={aircorrect_now:.3f} ({aircorrect_nts:.3f})')
+        # Hand the program-appropriate 20-min survey speed to the accumulator for the speed-floor check.
+        # (No cut for BACKUP: accum's speed_floor is 0 there.)
+        self.accum.speed_now = {
+            'DARK': self.speed_dark_nts, 'BRIGHT': self.speed_bright_nts,
+            'BACKUP': self.speed_backup_nts}.get(self.exp_data.get('nts_program', 'DARK'), self.speed_dark_nts)
         # Save speeds to the JSON file.
         self.thru_measurements.set_last(
             speed_dark=(self.speed_dark or -1), speed_dark_nts=(self.speed_dark_nts or -1),
@@ -896,7 +912,8 @@ class ETCAlgorithm(object):
         return True
 
     def start_exposure(self, timestamp, expid, req_efftime, sbprof, max_exposure_time, cosmics_split_time,
-                       maxsplit, warning_time):
+                       maxsplit, warning_time, pUniformity=0.99, nts_program='DARK',
+                       use_dynamic_positions=False, esttime=None):
         """Start a new exposure using parameters:
 
         Parameters
@@ -919,6 +936,14 @@ class ETCAlgorithm(object):
             The maximum number of exposures reserved by ICS for this tile.
         warning_time : float
             Warn when a stop or split is expected within this interval in seconds.
+        pUniformity : float
+            Completeness/uniformity percentile for the DAR binding fiber (default 0.99 = p99).
+            Threaded to the accumulator; not yet acted on (plumbing).
+        nts_program : string
+            NTS program (DARK, BRIGHT, BACKUP); selects the survey-speed floor. Not yet acted on.
+        use_dynamic_positions : bool
+            If True and self.dynamic_positions has been set for this exposure, use the actual fiber
+            positions for the DAR calculation; otherwise fall back to the static vendored layout.
         """
         max_hours = 6
         if max_exposure_time <= 0 or max_exposure_time > max_hours * 3600:
@@ -927,6 +952,13 @@ class ETCAlgorithm(object):
         if sbprof not in ('PSF', 'ELG', 'BGS', 'FLT'):
             logging.error(f'Got invalid sbprof "{sbprof}" so defaulting to "ELG".')
             sbprof = 'ELG'
+        # Select the positioner layout for the DAR calculation: the actual fiber tips (set per exposure
+        # by the ICS wrapper) if requested and available, else the static vendored layout.
+        if use_dynamic_positions and self.dynamic_positions is not None:
+            desietc.darsplit.set_positions(*self.dynamic_positions)
+            logging.info('start_exposure: using dynamic positioner positions for DAR.')
+        else:
+            desietc.darsplit.reset_positions()
         self.exptag = str(expid).zfill(8)
         self.night = desietc.util.mjd_to_night(desietc.util.date_to_mjd(timestamp, utc_offset=0))
         self.exp_data = dict(
@@ -938,13 +970,95 @@ class ETCAlgorithm(object):
             cosmics_split_time=cosmics_split_time,
             maxsplit=maxsplit,
             warning_time=warning_time,
+            pUniformity=pUniformity,
+            nts_program=nts_program,
+            esttime=esttime,
         )
+        # Default to an empty fiberassign so open_shutter (MW_transp) and _refresh_dar (TILEDEC) are safe
+        # even when read_fiberassign never runs (e.g. an acquisition that bailed, or a no-fiberassign
+        # simulated exposure). read_fiberassign overwrites this when fiberassign is available.
+        self.fassign_data = {}
         logging.info(f'Start {self.night}/{self.exptag} at {timestamp} with req_efftime={req_efftime:.1f}s, sbprof={sbprof}, '
                      + f'max_exposure_time={max_exposure_time:.1f}s, cosmics_split_time={cosmics_split_time:.1f}s, '
-                     + f'maxsplit={maxsplit}, warning_time={warning_time:.1f}s.')
+                     + f'maxsplit={maxsplit}, warning_time={warning_time:.1f}s, '
+                     + f'pUniformity={pUniformity}, nts_program={nts_program}.')
         # Initialize accumulation for the upcoming sequence of cosmic splits.
         self.accum.setup(
-            req_efftime, max_exposure_time, cosmics_split_time, maxsplit, warning_time, rdnoise_1ks=0.40)
+            req_efftime, max_exposure_time, cosmics_split_time, maxsplit, warning_time, rdnoise_1ks=0.40,
+            pUniformity=pUniformity, nts_program=nts_program)
+
+    def _refresh_dar(self, timestamp, max_shutter_time):
+        """Compute the DAR split cadence, deflation factor, and binding fiber for the upcoming segment
+        and hand them to the accumulator.
+
+        Fail-safe: on BACKUP, or if the pointing/seeing are unavailable, or on any error, leave the
+        accumulator at its no-DAR defaults (no split cap, no deflation, no binding fiber) so behaviour
+        matches the current ETC.
+
+        Placement model (midpoint): PlateMaker positions the fibers for the MIDPOINT of the NTS-estimated
+        segment exposure time, so the binding fiber's peak DAR excursion is v_p99 * est_seg_len / 2 and its
+        time-averaged acceptance over the segment is a per-segment constant. The estimate ignores the DAR
+        drift and deflation, so it is approximate, but the residual is small.
+        """
+        # Fail-safe defaults (no DAR).
+        self.accum.dar_split_time = np.inf
+        self.accum.f2_p99 = 1.0
+        self.accum.binding_petal = self.accum.binding_device = None
+        self._dar_vp99 = self._dar_field_seeing = None
+        if self.exp_data.get('nts_program', 'DARK') == 'BACKUP':
+            return
+        try:
+            ha_deg = self.exp_data.get('hour_angle')
+            dec = self.fassign_data.get('TILEDEC')
+            seeing = self.seeing
+            p = self.exp_data.get('pUniformity', 0.99)
+            if ha_deg is None or dec is None or not seeing or seeing <= 0:
+                logging.info('DAR: pointing/seeing unavailable; using no-DAR (static) behaviour.')
+                return
+            # Advance HA from the (frozen) acquisition value to this segment's start. The acquisition
+            # image is taken once per tile, so exp_data['hour_angle'] does NOT update on cosmic/DAR
+            # splits; HA tracks LST and advances at the sidereal rate (15.041 deg/hr), so add the elapsed
+            # time since acquisition. This makes v_p99/tau*/f2/binding track the setting field on later
+            # segments instead of being frozen at the first segment's geometry.
+            acq_mjd = self.exp_data.get('acq_mjd')
+            if acq_mjd is not None:
+                mjd_now = desietc.util.date_to_mjd(timestamp, utc_offset=0)
+                ha_deg = ha_deg + (mjd_now - acq_mjd) * 24.0 * 15.041
+            ha_h = ha_deg / 15.0
+            v = desietc.darsplit.v_p99(ha_h, dec, p)
+            # DAR-optimal split cadence tau* (UNCAPPED). The cosmic-ray cap is applied separately by the
+            # accumulator via cosmics_split_time, so do NOT impose darsplit's internal T_CAP here -- that
+            # undercuts the ICS cosmic cap and causes spurious 'dar split's near transit, where tau* is
+            # huge (~15000 s at airmass 1). Clamp a huge / negligible-drift tau* so accum's min() falls
+            # back to the cosmic cap.
+            try:
+                dst = desietc.darsplit.tau_star(ha_h, dec, seeing, p)
+            except ZeroDivisionError:
+                dst = 1e9
+            if not np.isfinite(dst) or dst > 1e9:
+                dst = 1e9
+            # Estimated segment length for the midpoint placement: the NTS estimated exposure time
+            # (esttime -- the same value PlateMaker uses to place the fibers), bounded by the cosmic cap
+            # and tau*. Fall back to the cosmic cap then max_shutter_time if esttime wasn't supplied;
+            # never use tau* as the estimate (huge near transit).
+            seg_est = self.exp_data.get('esttime') or self.exp_data.get('cosmics_split_time') or max_shutter_time
+            csplit = self.exp_data.get('cosmics_split_time') or seg_est
+            est_seg_len = min(seg_est, csplit, dst)
+            f2 = desietc.darsplit.f2mean(v * est_seg_len / 2.0, seeing)
+            _, petal, device = desietc.darsplit.binding_fiber(ha_h, dec, p)
+            self.accum.dar_split_time = dst
+            self.accum.f2_p99 = f2
+            self.accum.binding_petal, self.accum.binding_device = petal, device
+            self._dar_vp99, self._dar_field_seeing = v, seeing
+            logging.info(f'DAR: v_p99={v:.4f} um/s, tau*={"inf" if dst >= 1e9 else f"{dst:.0f}s"}, f2_p99={f2:.3f} '
+                         f'(seg~{est_seg_len:.0f}s), binding petal/device={petal}/{device} '
+                         f'[HA={ha_h:.2f}h Dec={dec:.1f} seeing={seeing:.2f}"].')
+        except Exception as e:
+            logging.warning(f'DAR refresh failed ({e}); using no-DAR (static) behaviour.')
+            self.accum.dar_split_time = np.inf
+            self.accum.f2_p99 = 1.0
+            self.accum.binding_petal = self.accum.binding_device = None
+            self._dar_vp99 = self._dar_field_seeing = None
 
     def open_shutter(self, expid, timestamp, splittable, max_shutter_time):
         """Record the shutter opening.
@@ -962,6 +1076,9 @@ class ETCAlgorithm(object):
         """
         # Lookup the MW transparency to use, or default to 1.
         MW_transp = self.fassign_data.get('MW_transp', 1.)
+        # Refresh the DAR split cadence / deflation / binding fiber for this segment (fail-safe to no-DAR)
+        # before accumulation begins, since accum.open() runs an initial update() that consumes them.
+        self._refresh_dar(timestamp, max_shutter_time)
         # Start accumulating.
         if not self.accum.open(timestamp, splittable, max_shutter_time, MW_transp):
             return
@@ -983,6 +1100,12 @@ class ETCAlgorithm(object):
         # Use float32 values so they are rounded in the json output.
         self.exp_data['efftime'] = np.float32(self.accum.efftime)
         self.exp_data['realtime'] = np.float32(self.accum.realtime)
+        # Deflated (binding-fiber) effective time and the binding fiber location for the pUniformity
+        # guarantee. With no DAR active these are efftime and None (unchanged reporting).
+        self.exp_data['efftime_deflated'] = np.float32(self.accum.efftime_deflated)
+        self.exp_data['binding_petal'] = self.accum.binding_petal
+        self.exp_data['binding_device'] = self.accum.binding_device
+        self.exp_data['split_reason'] = self.accum.split_reason
         self.exp_data['signal'] = np.float32(self.accum.signal)
         self.exp_data['background'] = np.float32(self.accum.background)
         for aux_name in ('transp_obs', 'transp_zenith', 'ffrac_psf', 'ffrac_elg', 'ffrac_bgs', 'thru_psf'):
@@ -1004,9 +1127,19 @@ class ETCAlgorithm(object):
         summary = dict(
             ETCVERS=self.git or 'unknown',
             ETCTEFF=np.float32(self.accum.efftime),
+            TOTTEFF=np.float32(self.accum.efftime_tot),
             ETCREAL=np.float32(self.accum.realtime),
             ETCPREV=np.float32(np.sum(self.accum.shutter_teff[:-2])),
             ETCSPLIT=len(self.accum.shutter_teff),
+            # DAR: deflated (binding-fiber) effective time + binding-fiber location. Deflated equals the
+            # original when no DAR is active; petal/device are -1 (no binding fiber) rather than None,
+            # since FITS header keywords cannot hold None.
+            ETCTEFFD=np.float32(self.accum.efftime_deflated),
+            TOTTEFFD=np.float32(self.accum.efftime_tot_deflated),
+            BINDPLOC=self.accum.binding_petal if self.accum.binding_petal is not None else -1,
+            BINDDLOC=self.accum.binding_device if self.accum.binding_device is not None else -1,
+            # Split cause of this exposure: 'dar', 'cosmics', or '' if it did not end in an ETC split.
+            ETCSPLC=self.accum.split_reason,
             ETCPROF=self.exp_data['sbprof'],
             ETCTRANS=np.float32(self.accum.aux_mean['transp_obs']),
             ETCTHRUP=np.float32(self.accum.aux_mean['thru_psf'] / self.FFRAC_NOM['PSF']),
@@ -1026,6 +1159,10 @@ class ETCAlgorithm(object):
         """
         """
         logging.info(f'Stop {self.exptag} at {timestamp}')
+        # Dynamic positions are valid for a single exposure only: clear them so the next exposure must
+        # re-supply them (falls back to the static layout otherwise), and restore darsplit to static.
+        self.dynamic_positions = None
+        desietc.darsplit.reset_positions()
 
     def read_fiberassign(self, fname):
         """
@@ -1093,6 +1230,7 @@ class ETCAlgorithm(object):
                     open=self.accum.shutter_open,
                     close=self.accum.shutter_close,
                     teff=np.float32(self.accum.shutter_teff),
+                    teff_deflated=np.float32(self.accum.shutter_teff_deflated),
                     treal=np.float32(self.accum.shutter_treal),
                 ),
                 thru=self.thru_measurements.save(mjd),
