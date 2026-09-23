@@ -491,7 +491,7 @@ class ETCAlgorithm(object):
             # Precompute dithered renderings of the model for fast guide frame fits.
             self.dithered_model[camera] = self.GMMguide.dither(gmm_params, self.xdither, self.ydither)
         # Update the current FWHM, FFRAC values now.
-        self.seeing, ffrac_psf = 0., 0.
+        self.seeing, self.ffrac_psf = 0., 0.
         if np.any(np.isfinite(fwhm_vec)):
             self.seeing = np.nanmedian(fwhm_vec)
         if np.any(np.isfinite(ffrac_vec)):
