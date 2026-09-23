@@ -974,6 +974,10 @@ class ETCAlgorithm(object):
             nts_program=nts_program,
             esttime=esttime,
         )
+        # Default to an empty fiberassign so open_shutter (MW_transp) and _refresh_dar (TILEDEC) are safe
+        # even when read_fiberassign never runs (e.g. an acquisition that bailed, or a no-fiberassign
+        # simulated exposure). read_fiberassign overwrites this when fiberassign is available.
+        self.fassign_data = {}
         logging.info(f'Start {self.night}/{self.exptag} at {timestamp} with req_efftime={req_efftime:.1f}s, sbprof={sbprof}, '
                      + f'max_exposure_time={max_exposure_time:.1f}s, cosmics_split_time={cosmics_split_time:.1f}s, '
                      + f'maxsplit={maxsplit}, warning_time={warning_time:.1f}s, '
