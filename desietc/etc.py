@@ -1101,6 +1101,7 @@ class ETCAlgorithm(object):
         self.exp_data['efftime_deflated'] = np.float32(self.accum.efftime_deflated)
         self.exp_data['binding_petal'] = self.accum.binding_petal
         self.exp_data['binding_device'] = self.accum.binding_device
+        self.exp_data['split_reason'] = self.accum.split_reason
         self.exp_data['signal'] = np.float32(self.accum.signal)
         self.exp_data['background'] = np.float32(self.accum.background)
         for aux_name in ('transp_obs', 'transp_zenith', 'ffrac_psf', 'ffrac_elg', 'ffrac_bgs', 'thru_psf'):
@@ -1133,6 +1134,8 @@ class ETCAlgorithm(object):
             TOTTEFFD=np.float32(self.accum.efftime_tot_deflated),
             BINDPLOC=self.accum.binding_petal if self.accum.binding_petal is not None else -1,
             BINDDLOC=self.accum.binding_device if self.accum.binding_device is not None else -1,
+            # Split cause of this exposure: 'dar', 'cosmics', or '' if it did not end in an ETC split.
+            ETCSPLC=self.accum.split_reason,
             ETCPROF=self.exp_data['sbprof'],
             ETCTRANS=np.float32(self.accum.aux_mean['transp_obs']),
             ETCTHRUP=np.float32(self.accum.aux_mean['thru_psf'] / self.FFRAC_NOM['PSF']),

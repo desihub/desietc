@@ -84,6 +84,7 @@ class Accumulator(object):
         self.f2_p99 = 1.0                # binding-fiber deflation factor (1 = no deflation)
         self.speed_now = None            # current survey speed for the floor check (None = no cut)
         self.binding_petal = self.binding_device = None
+        self.split_reason = ''            # split cause for this segment: 'dar'/'cosmics'/'' (FITS ETCSPLC / DB split_reason)
 
     def setup(self, req_efftime, max_exposure_time, cosmics_split_time, maxsplit, warning_time,
               rdnoise_1ks, pUniformity=0.99, nts_program='DARK'):
@@ -151,6 +152,8 @@ class Accumulator(object):
             return False
         self.splittable = splittable
         self.max_shutter_time = max_shutter_time
+        # Fresh segment: clear the split cause; update() sets it if/when this segment ends in a split.
+        self.split_reason = ''
         self.MW_transp = MW_transp
         # Initialize a MJD grid to use for SNR calculations during this shutter.
         # Grid values are bin centers, with spacing fixed at grid_resolution.
@@ -382,6 +385,14 @@ class Accumulator(object):
                     self.action = ('warn-split', 'about to split')
         if self.action is not None:
             logging.info(f'Recommended action is {self.action}.')
+        # Record this segment's split cause (-> FITS ETCSPLC / DB split_reason / etc_telemetry): the reason
+        # THIS shutter closes if it closes on an ETC split, and '' otherwise. Derived from the final action
+        # each update so a stop (incl. the speed-floor override of a split) correctly clears a stale cause.
+        # Kept in its own attribute because save_exposure_summary reads it after accum.close() nulls action.
+        if self.action is not None and self.action[0] == 'split':
+            self.split_reason = 'dar' if self.dar_split_time < self.cosmics_split_time else 'cosmics'
+        elif self.action is not None and self.action[0] == 'stop':
+            self.split_reason = ''
         # Save this update to the transcript.
         if self.ntranscript == self.max_transcript:
             logging.warn(f'Accumulator transcript full with {self.ntranscript} entries.')

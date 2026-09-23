@@ -498,6 +498,8 @@ class OnlineETC():
         etc_status['proj_efftime_deflated'] = np.float32(self.ETCalg.accum.proj_efftime_deflated)
         etc_status['binding_petal'] = self.ETCalg.accum.binding_petal
         etc_status['binding_device'] = self.ETCalg.accum.binding_device
+        # Split cause for etc_telemetry (DB column split_reason): 'dar'/'cosmics'/'' (no split).
+        etc_status['split_reason'] = self.ETCalg.accum.split_reason
 
         # Updated after each stop_etc.
         etc_status['rel_rotrate'] = None
