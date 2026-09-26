@@ -1007,7 +1007,7 @@ class ETCAlgorithm(object):
         self.accum.f2_p99 = 1.0
         self.accum.binding_petal = self.accum.binding_device = None
         self._dar_vp99 = self._dar_field_seeing = None
-        if self.exp_data.get('nts_program', 'DARK') == 'BACKUP':
+        if desietc.util.base_program(self.exp_data.get('nts_program', 'DARK')) == 'BACKUP':
             return
         try:
             ha_deg = self.exp_data.get('hour_angle')
@@ -1131,6 +1131,10 @@ class ETCAlgorithm(object):
             ETCTEFF=np.float32(self.accum.efftime),
             TOTTEFF=np.float32(self.accum.efftime_tot),
             ETCREAL=np.float32(self.accum.realtime),
+            # Accumulation rate = t_eff/exptime for this shutter (non-deflated ETCACCR, deflated ETCACCRD).
+            # The ETC's realized banking rate; distinct from the survey speed (ETCSPEED). Guarded against /0.
+            ETCACCR=np.float32(self.accum.efftime / self.accum.realtime if self.accum.realtime > 0 else 0.0),
+            ETCACCRD=np.float32(self.accum.efftime_deflated / self.accum.realtime if self.accum.realtime > 0 else 0.0),
             ETCPREV=np.float32(np.sum(self.accum.shutter_teff[:-2])),
             ETCSPLIT=len(self.accum.shutter_teff),
             # DAR: deflated (binding-fiber) effective time + binding-fiber location. Deflated equals the
@@ -1142,6 +1146,12 @@ class ETCAlgorithm(object):
             BINDDLOC=self.accum.binding_device if self.accum.binding_device is not None else -1,
             # Split cause of this exposure: 'dar', 'cosmics', or '' if it did not end in an ETC split.
             ETCSPLC=self.accum.split_reason,
+            # Stop cause: 'EFF'/'MAXTIME'/'FLOOR', or '' if it did not end in an ETC stop. Plus the active
+            # program's survey speed (ETCSPEED = speed_now) and its floor (ETCSPDFL) -- together these make a
+            # FLOOR stop self-documenting (ETCSPEED < ETCSPDFL). ETCSPEED = -1 if no speed was available.
+            ETCSTOP=self.accum.etcstop_reason,
+            ETCSPEED=np.float32(self.accum.speed_now if self.accum.speed_now is not None else -1),
+            ETCSPDFL=np.float32(self.accum.speed_floor),
             ETCPROF=self.exp_data['sbprof'],
             ETCTRANS=np.float32(self.accum.aux_mean['transp_obs']),
             ETCTHRUP=np.float32(self.accum.aux_mean['thru_psf'] / self.FFRAC_NOM['PSF']),

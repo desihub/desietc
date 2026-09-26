@@ -85,6 +85,7 @@ class Accumulator(object):
         self.speed_now = None            # current survey speed for the floor check (None = no cut)
         self.binding_petal = self.binding_device = None
         self.split_reason = ''            # split cause for this segment: 'dar'/'cosmics'/'' (FITS ETCSPLC / DB split_reason)
+        self.etcstop_reason = ''          # stop cause for this segment: 'EFF'/'MAXTIME'/'FLOOR'/'' (FITS ETCSTOP / DB etcstop_reason)
 
     def setup(self, req_efftime, max_exposure_time, cosmics_split_time, maxsplit, warning_time,
               rdnoise_1ks, pUniformity=0.99, nts_program='DARK'):
@@ -289,7 +290,7 @@ class Accumulator(object):
         # Have we reached the cutoff time?
         if self.realtime >= self.max_remaining or len(self.mjd_grid[future]) == 0:
             # We have already reached the maximum allowed exposure time.
-            self.action = ('stop', 'reached max_exposure_time')
+            self.action = ('stop', 'MAXTIME')
             logging.info(f'Reached max remaining time of {self.max_remaining:.1f}s.')
             self.proj_efftime = self.efftime + prev_teff
             self.remaining = 0.
@@ -316,7 +317,7 @@ class Accumulator(object):
             if self.efftime_deflated + prev_teff_deflated >= self.req_efftime:
                 # We have already reached the target for the binding fiber.
                 istop = inow
-                self.action = ('stop', 'reached req_efftime')
+                self.action = ('stop', 'EFF')
                 logging.info(f'Reached requested effective time of {self.req_efftime:.1f}s.')
             elif accum_teff_deflated[-1] + prev_teff_deflated < self.req_efftime:
                 # We will not reach the target before max_exposure_time.
@@ -374,7 +375,7 @@ class Accumulator(object):
                     and self.speed_floor > 0 and self.speed_now is not None
                     and self.speed_now < self.speed_floor
                     and self.realtime >= self.min_exptime_secs):
-                self.action = ('stop', 'below speed floor')
+                self.action = ('stop', 'FLOOR')
                 logging.info(f'Survey speed {self.speed_now:.3f} below floor {self.speed_floor:.3f}: '
                              'stopping and rescheduling the remainder.')
             # Are we about to stop or split?
@@ -387,14 +388,18 @@ class Accumulator(object):
                     self.action = ('warn-split', 'about to split')
         if self.action is not None:
             logging.info(f'Recommended action is {self.action}.')
-        # Record this segment's split cause (-> FITS ETCSPLC / DB split_reason / etc_telemetry): the reason
-        # THIS shutter closes if it closes on an ETC split, and '' otherwise. Derived from the final action
-        # each update so a stop (incl. the speed-floor override of a split) correctly clears a stale cause.
-        # Kept in its own attribute because save_exposure_summary reads it after accum.close() nulls action.
+        # Record this segment's split/stop cause (-> FITS ETCSPLC/ETCSTOP, DB split_reason/etcstop_reason,
+        # etc_telemetry): why THIS shutter closes. split_reason is 'dar'/'cosmics' on a split (else ''),
+        # etcstop_reason is 'EFF'/'MAXTIME'/'FLOOR' on a stop (else ''); the two are mutually exclusive.
+        # Derived from the final action each update so a stop (incl. the speed-floor override of a split)
+        # correctly clears a stale split cause. Kept in their own attributes because save_exposure_summary
+        # reads them after accum.close() nulls action.
         if self.action is not None and self.action[0] == 'split':
             self.split_reason = 'dar' if self.dar_split_time < self.cosmics_split_time else 'cosmics'
+            self.etcstop_reason = ''
         elif self.action is not None and self.action[0] == 'stop':
             self.split_reason = ''
+            self.etcstop_reason = self.action[1]   # 'EFF' / 'MAXTIME' / 'FLOOR'
         # Save this update to the transcript.
         if self.ntranscript == self.max_transcript:
             logging.warn(f'Accumulator transcript full with {self.ntranscript} entries.')

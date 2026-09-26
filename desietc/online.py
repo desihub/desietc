@@ -478,12 +478,22 @@ class OnlineETC():
         etc_status['speed_dark_nts'] = np.float32(self.ETCalg.speed_dark_nts)
         etc_status['speed_bright_nts'] = np.float32(self.ETCalg.speed_bright_nts)
         etc_status['speed_backup_nts'] = np.float32(self.ETCalg.speed_backup_nts)
+        # Active-program 20-min survey speed compared against the floor, and the floor itself (speed-floor
+        # check). speed_now is None until a speed is available; a FLOOR stop has speed_now < speed_floor.
+        etc_status['speed_now'] = (np.float32(self.ETCalg.accum.speed_now)
+                                   if self.ETCalg.accum.speed_now is not None else None)
+        etc_status['speed_floor'] = np.float32(self.ETCalg.accum.speed_floor)
 
         # ETC effective exposure time tracking.
         etc_status['last_updated'] = self.ETCalg.accum.last_updated
         etc_status['last_mjd'] = self.ETCalg.accum.last_mjd
         etc_status['efftime'] = np.float32(self.ETCalg.accum.efftime)
         etc_status['realtime'] = np.float32(self.ETCalg.accum.realtime)
+        # Accumulation rate = t_eff/exptime (the realized banking rate; distinct from survey speed above).
+        _rt = self.ETCalg.accum.realtime
+        etc_status['accum_rate'] = np.float32(self.ETCalg.accum.efftime / _rt) if _rt > 0 else np.float32(0)
+        etc_status['accum_rate_deflated'] = (np.float32(self.ETCalg.accum.efftime_deflated / _rt)
+                                             if _rt > 0 else np.float32(0))
         etc_status['efftime_tot'] = np.float32(self.ETCalg.accum.efftime_tot)
         etc_status['realtime_tot'] = np.float32(self.ETCalg.accum.realtime_tot)
         etc_status['remaining'] = np.float32(self.ETCalg.accum.remaining)
@@ -500,6 +510,8 @@ class OnlineETC():
         etc_status['binding_device'] = self.ETCalg.accum.binding_device
         # Split cause for etc_telemetry (DB column split_reason): 'dar'/'cosmics'/'' (no split).
         etc_status['split_reason'] = self.ETCalg.accum.split_reason
+        # Stop cause for etc_telemetry (DB column etcstop_reason): 'EFF'/'MAXTIME'/'FLOOR'/'' (no ETC stop).
+        etc_status['etcstop_reason'] = self.ETCalg.accum.etcstop_reason
 
         # Updated after each stop_etc.
         etc_status['rel_rotrate'] = None
