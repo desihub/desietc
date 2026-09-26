@@ -119,9 +119,11 @@ class Accumulator(object):
         self.rdnoise_1ks = rdnoise_1ks
         self.pUniformity = pUniformity
         self.nts_program = nts_program
-        # Survey-speed floor (EFFTIME/EXPTIME) by program: dark 1/5, bright 1/12, BACKUP disabled.
-        # Stored for the speed-cut change; not yet acted on (plumbing only).
-        self.speed_floor = {'DARK': 1 / 5.0, 'BRIGHT': 1 / 12.0, 'BACKUP': 0.0}.get(nts_program, 1 / 5.0)
+        # Survey-speed floor by program: dark 1/5, bright 1/12, BACKUP disabled. The floor is on the
+        # SURVEY SPEED (not EFFTIME/EXPTIME). Normalize the program (DARK*/BRIGHT*/BACKUP* variants,
+        # e.g. BRIGHT1B) to its base so later passes get the correct floor; unknown -> DARK (strictest).
+        self.speed_floor = {'DARK': 1 / 5.0, 'BRIGHT': 1 / 12.0, 'BACKUP': 0.0}[
+            desietc.util.base_program(nts_program)]
         self.MW_transp = 1.
         self.reset()
 

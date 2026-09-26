@@ -778,10 +778,12 @@ class ETCAlgorithm(object):
             f'using sky {(skylevel_now or -1):.3f} ({(skylevel_nts or -1):.3f}) ' +
             f'aircorrect X**{self.SPEED_AIRMASS_EXP}={aircorrect_now:.3f} ({aircorrect_nts:.3f})')
         # Hand the program-appropriate 20-min survey speed to the accumulator for the speed-floor check.
-        # (No cut for BACKUP: accum's speed_floor is 0 there.)
+        # (No cut for BACKUP: accum's speed_floor is 0 there.) Normalize the program name so DARK*/
+        # BRIGHT* variants (e.g. BRIGHT1B) select the matching speed rather than defaulting to dark.
         self.accum.speed_now = {
             'DARK': self.speed_dark_nts, 'BRIGHT': self.speed_bright_nts,
-            'BACKUP': self.speed_backup_nts}.get(self.exp_data.get('nts_program', 'DARK'), self.speed_dark_nts)
+            'BACKUP': self.speed_backup_nts}[
+            desietc.util.base_program(self.exp_data.get('nts_program', 'DARK'))]
         # Save speeds to the JSON file.
         self.thru_measurements.set_last(
             speed_dark=(self.speed_dark or -1), speed_dark_nts=(self.speed_dark_nts or -1),
