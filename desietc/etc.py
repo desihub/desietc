@@ -443,6 +443,11 @@ class ETCAlgorithm(object):
                     self.GFAs[camera], self.GMMpsf, self.psf_inset, self.measure)
             ncamera += 1
         # Calculate the atmospheric extintion factor to use.
+        # NOTE: airmass is derived from the acq-header MOUNTEL (the pointing), NOT from MJD-OBS.
+        # This is what lets the ICS record-and-replay sim work: the served acq header carries the
+        # recorded (injected) MOUNTEL while MJD-OBS is left at wall-clock time (the ETC accumulates
+        # on the real-time guide frames). If this is ever changed to recompute airmass from
+        # MJD-OBS + RA/Dec, the replayed airmass will be wrong (frozen pointing at current LST).
         X = desietc.util.cos_zenith_to_airmass(np.sin(np.deg2rad(hdr['MOUNTEL'])))
         self.atm_extinction = 10 ** (-self.X_coef * (X - 1) / 2.5)
         logging.info(f'Using atmospheric extinction {self.atm_extinction:.4f} at X={X:.3f}.')
