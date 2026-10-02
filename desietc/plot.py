@@ -87,7 +87,7 @@ def plot_pixels(
         if name not in args:
             args[name] = default
     # Set the masked color in the specified colormap.
-    cmap = copy.copy(matplotlib.cm.get_cmap(args["cmap"]))
+    cmap = copy.copy(matplotlib.colormaps[args["cmap"]])
     cmap.set_bad(color=masked_color)
     args["cmap"] = cmap
     # Draw the image.
@@ -205,7 +205,7 @@ def save_acquisition_summary(
     )
     plt.subplots_adjust(left=0, right=1, bottom=0, top=1, wspace=0, hspace=0)
     # Prepare a colormap with our custom ivar=0 color.
-    cmap = copy.copy(matplotlib.cm.get_cmap(cmap))
+    cmap = copy.copy(matplotlib.colormaps[cmap])
     cmap.set_bad(color=masked_color)
     # Get the colormap scale to use for all images.
     model_sum = {name: psf_model[name].sum() for name in psf_model}
@@ -475,8 +475,8 @@ def plotSkyCentroidFit(data, name, SKY, plot_fine=True, slow=True, save=None):
     plt.xlim(dx[0] - xpad, dx[-1] + xpad)
     plt.ylim(dy[0] - ypad, dy[-1] + ypad)
     plt.plot(SKY.fit_dx, SKY.fit_dy, "rx", ms=10)
-    plt.xlabel("Centroid $\Delta x$ [pixels]")
-    plt.ylabel("Centroid $\Delta y$ [pixels]")
+    plt.xlabel(r"Centroid $\Delta x$ [pixels]")
+    plt.ylabel(r"Centroid $\Delta y$ [pixels]")
     plt.text(0.02, 0.02, name, transform=plt.gca().transAxes, fontsize=16)
 
     if slow:

@@ -19,6 +19,23 @@ import scipy.linalg
 import scipy.signal
 
 
+def base_program(nts_program):
+    """Map a full NTS program name to its base survey program for speed / speed-floor lookups.
+
+    The NTS uses variant names such as DARK1B / BRIGHT1B for later passes; these must select the
+    same survey-speed and floor as DARK / BRIGHT. Accept any DARK* -> DARK and any BRIGHT* -> BRIGHT
+    (and BACKUP* -> BACKUP); anything unrecognized falls back to DARK (the strictest floor).
+    """
+    p = str(nts_program or 'DARK').upper()
+    if p.startswith('DARK'):
+        return 'DARK'
+    if p.startswith('BRIGHT'):
+        return 'BRIGHT'
+    if p.startswith('BACKUP'):
+        return 'BACKUP'
+    return 'DARK'
+
+
 def fit_spots(data, ivar, profile, area=1):
     """Fit images of a spot to estimate the spot flux and background level.
 

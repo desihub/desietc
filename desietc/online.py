@@ -117,6 +117,12 @@ class OnlineETC():
         self.call_when_about_to_stop = None
         self.call_when_about_to_split = None
 
+        # Per-exposure NTS parameters (set in prepare_for_exposure); defaults reproduce current behaviour.
+        self.pUniformity = 0.99
+        self.nts_program = 'DARK'
+        self.use_dynamic_positions = False
+        self.esttime = None
+
         # Initialize the ETC algorithm. This will spawn 6 parallel proccesses (one per GFA)
         # and allocated ~100Mb of shared memory. These resources will be cleared when
         gfa_calib = os.getenv('ETC_GFA_CALIB', None)
@@ -227,7 +233,9 @@ class OnlineETC():
                         # A new exposure is starting: pass through prepare_for_exposure args now.
                         self.ETCalg.start_exposure(
                             self.img_start_time, self.expid, self.req_efftime, self.sbprof,
-                            self.max_exposure_time, self.cosmics_split_time, self.maxsplit, self.warning_time)
+                            self.max_exposure_time, self.cosmics_split_time, self.maxsplit, self.warning_time,
+                            pUniformity=self.pUniformity, nts_program=self.nts_program,
+                            use_dynamic_positions=self.use_dynamic_positions, esttime=self.esttime)
                         last_image_processing = True
                         # Set the path where the PNG generated after the acquisition analysis will be written.
                         self.ETCalg.set_image_path(self.call_for_exp_dir(self.expid))
@@ -470,18 +478,40 @@ class OnlineETC():
         etc_status['speed_dark_nts'] = np.float32(self.ETCalg.speed_dark_nts)
         etc_status['speed_bright_nts'] = np.float32(self.ETCalg.speed_bright_nts)
         etc_status['speed_backup_nts'] = np.float32(self.ETCalg.speed_backup_nts)
+        # Active-program 20-min survey speed compared against the floor, and the floor itself (speed-floor
+        # check). speed_now is None until a speed is available; a FLOOR stop has speed_now < speed_floor.
+        etc_status['speed_now'] = (np.float32(self.ETCalg.accum.speed_now)
+                                   if self.ETCalg.accum.speed_now is not None else None)
+        etc_status['speed_floor'] = np.float32(self.ETCalg.accum.speed_floor)
 
         # ETC effective exposure time tracking.
         etc_status['last_updated'] = self.ETCalg.accum.last_updated
         etc_status['last_mjd'] = self.ETCalg.accum.last_mjd
         etc_status['efftime'] = np.float32(self.ETCalg.accum.efftime)
         etc_status['realtime'] = np.float32(self.ETCalg.accum.realtime)
+        # Accumulation rate = t_eff/exptime (the realized banking rate; distinct from survey speed above).
+        _rt = self.ETCalg.accum.realtime
+        etc_status['accum_rate'] = np.float32(self.ETCalg.accum.efftime / _rt) if _rt > 0 else np.float32(0)
+        etc_status['accum_rate_deflated'] = (np.float32(self.ETCalg.accum.efftime_deflated / _rt)
+                                             if _rt > 0 else np.float32(0))
         etc_status['efftime_tot'] = np.float32(self.ETCalg.accum.efftime_tot)
         etc_status['realtime_tot'] = np.float32(self.ETCalg.accum.realtime_tot)
         etc_status['remaining'] = np.float32(self.ETCalg.accum.remaining)
         etc_status['proj_efftime'] = np.float32(self.ETCalg.accum.proj_efftime)
         etc_status['next_split'] = np.float32(self.ETCalg.accum.next_split)
         etc_status['splittable'] = self.ETCalg.accum.splittable
+        # DAR deflated (binding-fiber) effective time for the pUniformity guarantee, plus the binding
+        # fiber location. With no DAR active these equal the originals / None (unchanged reporting).
+        # efftime_deflated mirrors efftime (this shutter); efftime_tot_deflated mirrors efftime_tot (all splits).
+        etc_status['efftime_deflated'] = np.float32(self.ETCalg.accum.efftime_deflated)
+        etc_status['efftime_tot_deflated'] = np.float32(self.ETCalg.accum.efftime_tot_deflated)
+        etc_status['proj_efftime_deflated'] = np.float32(self.ETCalg.accum.proj_efftime_deflated)
+        etc_status['binding_petal'] = self.ETCalg.accum.binding_petal
+        etc_status['binding_device'] = self.ETCalg.accum.binding_device
+        # Split cause for etc_telemetry (DB column split_reason): 'dar'/'cosmics'/'' (no split).
+        etc_status['split_reason'] = self.ETCalg.accum.split_reason
+        # Stop cause for etc_telemetry (DB column etcstop_reason): 'EFF'/'MAXTIME'/'FLOOR'/'' (no ETC stop).
+        etc_status['etcstop_reason'] = self.ETCalg.accum.etcstop_reason
 
         # Updated after each stop_etc.
         etc_status['rel_rotrate'] = None
@@ -543,7 +573,9 @@ class OnlineETC():
         return SUCCESS
 
     def prepare_for_exposure(self, expid, req_efftime, sbprof, max_exposure_time,
-                             cosmics_split_time, maxsplit, warning_time=60):
+                             cosmics_split_time, maxsplit, warning_time=60,
+                             pUniformity=0.99, nts_program='DARK', use_dynamic_positions=False,
+                             esttime=None):
         """Record the observing parameters for the next exposure, usually from NTS.
 
         The ETC will not see these parameters until the next call to :meth:`start`.
@@ -588,6 +620,10 @@ class OnlineETC():
         self.cosmics_split_time = cosmics_split_time
         self.maxsplit = maxsplit
         self.warning_time = warning_time
+        self.pUniformity = pUniformity
+        self.nts_program = nts_program
+        self.use_dynamic_positions = use_dynamic_positions
+        self.esttime = esttime
 
         # Update our status.
         self.call_to_update_status()
