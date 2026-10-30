@@ -120,6 +120,7 @@ class OnlineETC():
         # Per-exposure NTS parameters (set in prepare_for_exposure); defaults reproduce current behaviour.
         self.pUniformity = 0.99
         self.nts_program = 'DARK'
+        self.conditions = 'ANY'
         self.use_dynamic_positions = False
         self.esttime = None
 
@@ -235,6 +236,7 @@ class OnlineETC():
                             self.img_start_time, self.expid, self.req_efftime, self.sbprof,
                             self.max_exposure_time, self.cosmics_split_time, self.maxsplit, self.warning_time,
                             pUniformity=self.pUniformity, nts_program=self.nts_program,
+                            conditions=self.conditions,
                             use_dynamic_positions=self.use_dynamic_positions, esttime=self.esttime)
                         last_image_processing = True
                         # Set the path where the PNG generated after the acquisition analysis will be written.
@@ -574,8 +576,8 @@ class OnlineETC():
 
     def prepare_for_exposure(self, expid, req_efftime, sbprof, max_exposure_time,
                              cosmics_split_time, maxsplit, warning_time=60,
-                             pUniformity=0.99, nts_program='DARK', use_dynamic_positions=False,
-                             esttime=None):
+                             pUniformity=0.99, nts_program='DARK', conditions='ANY',
+                             use_dynamic_positions=False, esttime=None):
         """Record the observing parameters for the next exposure, usually from NTS.
 
         The ETC will not see these parameters until the next call to :meth:`start`.
@@ -598,6 +600,10 @@ class OnlineETC():
             The maximum number of exposures reserved by ICS for this tile.
         warning_time : float
             Warn when a stop or split is expected within this interval in seconds.
+        conditions : string
+            Required observing conditions: DARK, BRIGHT or ANY (default). Selects the
+            survey-speed floor (DARK 1/5, BRIGHT 1/12, ANY none). This is the only thing
+            it is used for; it is not the NTS program.
 
         Returns
         -------
@@ -622,6 +628,7 @@ class OnlineETC():
         self.warning_time = warning_time
         self.pUniformity = pUniformity
         self.nts_program = nts_program
+        self.conditions = conditions
         self.use_dynamic_positions = use_dynamic_positions
         self.esttime = esttime
 

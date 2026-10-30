@@ -782,13 +782,16 @@ class ETCAlgorithm(object):
             f'backup {(self.speed_backup or -1):.3f} ({(self.speed_backup_nts or -1):.3f}) ' +
             f'using sky {(skylevel_now or -1):.3f} ({(skylevel_nts or -1):.3f}) ' +
             f'aircorrect X**{self.SPEED_AIRMASS_EXP}={aircorrect_now:.3f} ({aircorrect_nts:.3f})')
-        # Hand the program-appropriate 20-min survey speed to the accumulator for the speed-floor check.
-        # (No cut for BACKUP: accum's speed_floor is 0 there.) Normalize the program name so DARK*/
-        # BRIGHT* variants (e.g. BRIGHT1B) select the matching speed rather than defaulting to dark.
+        # Hand the conditions-appropriate 20-min survey speed to the accumulator for the speed-floor
+        # check. Selected by the requested observing CONDITIONS (DARK/BRIGHT/ANY), not by the NTS
+        # program. The floor itself is gated separately on accum.speed_floor > 0, so ANY (= no floor)
+        # can still report a speed: we use the BACKUP (PSF) speed there, which is what BACKUP
+        # exposures have always reported. NOTE: ETCSPEED is therefore NOT comparable across different
+        # CONDITNS values (ELG vs BGS vs PSF profile) -- group by CONDITNS or ETCSPDFL before trending.
         self.accum.speed_now = {
             'DARK': self.speed_dark_nts, 'BRIGHT': self.speed_bright_nts,
-            'BACKUP': self.speed_backup_nts}[
-            desietc.util.base_program(self.exp_data.get('nts_program', 'DARK'))]
+            'ANY': self.speed_backup_nts}.get(
+            self.exp_data.get('conditions', 'ANY'), self.speed_backup_nts)
         # Save speeds to the JSON file.
         self.thru_measurements.set_last(
             speed_dark=(self.speed_dark or -1), speed_dark_nts=(self.speed_dark_nts or -1),
@@ -920,7 +923,7 @@ class ETCAlgorithm(object):
 
     def start_exposure(self, timestamp, expid, req_efftime, sbprof, max_exposure_time, cosmics_split_time,
                        maxsplit, warning_time, pUniformity=0.99, nts_program='DARK',
-                       use_dynamic_positions=False, esttime=None):
+                       conditions='ANY', use_dynamic_positions=False, esttime=None):
         """Start a new exposure using parameters:
 
         Parameters
@@ -947,7 +950,12 @@ class ETCAlgorithm(object):
             Completeness/uniformity percentile for the DAR binding fiber (default 0.99 = p99).
             Threaded to the accumulator; not yet acted on (plumbing).
         nts_program : string
-            NTS program (DARK, BRIGHT, BACKUP); selects the survey-speed floor. Not yet acted on.
+            NTS program (DARK, BRIGHT, BACKUP). Used for the BACKUP fail-safe in _refresh_dar and
+            recorded for reference; it does NOT select the survey-speed floor (see conditions).
+        conditions : string
+            Required observing conditions: DARK, BRIGHT or ANY (default). The only selector for the
+            survey-speed floor (DARK 1/5, BRIGHT 1/12, ANY none) and for which survey speed is
+            compared against it. Anything unrecognized falls back to ANY (no floor).
         use_dynamic_positions : bool
             If True and self.dynamic_positions has been set for this exposure, use the actual fiber
             positions for the DAR calculation; otherwise fall back to the static vendored layout.
@@ -959,6 +967,16 @@ class ETCAlgorithm(object):
         if sbprof not in ('PSF', 'ELG', 'BGS', 'FLT'):
             logging.error(f'Got invalid sbprof "{sbprof}" so defaulting to "ELG".')
             sbprof = 'ELG'
+        # Normalize the requested observing conditions. Deliberately NOT routed through
+        # base_program(), whose unrecognized-name fallback is DARK (the strictest floor): here an
+        # unrecognized value must fail OPEN to ANY, since the floor's action is to hand the
+        # remainder back to the NTS and that is only meaningful for NTS-scheduled DARK/BRIGHT tiles.
+        conditions_in = conditions
+        conditions = str(conditions or 'ANY').upper()
+        if conditions not in ('DARK', 'BRIGHT', 'ANY'):
+            logging.warning(f'Got invalid conditions {conditions_in!r} so defaulting to "ANY" '
+                            '(no survey-speed floor).')
+            conditions = 'ANY'
         # Select the positioner layout for the DAR calculation: the actual fiber tips (set per exposure
         # by the ICS wrapper) if requested and available, else the static vendored layout.
         if use_dynamic_positions and self.dynamic_positions is not None:
@@ -979,6 +997,7 @@ class ETCAlgorithm(object):
             warning_time=warning_time,
             pUniformity=pUniformity,
             nts_program=nts_program,
+            conditions=conditions,
             esttime=esttime,
         )
         # Default to an empty fiberassign so open_shutter (MW_transp) and _refresh_dar (TILEDEC) are safe
@@ -988,11 +1007,12 @@ class ETCAlgorithm(object):
         logging.info(f'Start {self.night}/{self.exptag} at {timestamp} with req_efftime={req_efftime:.1f}s, sbprof={sbprof}, '
                      + f'max_exposure_time={max_exposure_time:.1f}s, cosmics_split_time={cosmics_split_time:.1f}s, '
                      + f'maxsplit={maxsplit}, warning_time={warning_time:.1f}s, '
-                     + f'pUniformity={pUniformity}, nts_program={nts_program}.')
+                     + f'pUniformity={pUniformity}, nts_program={nts_program}, '
+                     + f'conditions={conditions}.')
         # Initialize accumulation for the upcoming sequence of cosmic splits.
         self.accum.setup(
             req_efftime, max_exposure_time, cosmics_split_time, maxsplit, warning_time, rdnoise_1ks=0.40,
-            pUniformity=pUniformity, nts_program=nts_program)
+            pUniformity=pUniformity, nts_program=nts_program, conditions=conditions)
 
     def _refresh_dar(self, timestamp, max_shutter_time):
         """Compute the DAR split cadence, deflation factor, and binding fiber for the upcoming segment
@@ -1152,8 +1172,11 @@ class ETCAlgorithm(object):
             # Split cause of this exposure: 'dar', 'cosmics', or '' if it did not end in an ETC split.
             ETCSPLC=self.accum.split_reason,
             # Stop cause: 'EFF'/'MAXTIME'/'FLOOR', or '' if it did not end in an ETC stop. Plus the active
-            # program's survey speed (ETCSPEED = speed_now) and its floor (ETCSPDFL) -- together these make a
-            # FLOOR stop self-documenting (ETCSPEED < ETCSPDFL). ETCSPEED = -1 if no speed was available.
+            # conditions-appropriate survey speed (ETCSPEED = speed_now) and its floor (ETCSPDFL) --
+            # together these make a FLOOR stop self-documenting (ETCSPEED < ETCSPDFL). ETCSPEED = -1 if
+            # no speed was available. ETCSPDFL also identifies the resolved CONDITIONS uniquely:
+            # 0.200 = DARK, 0.083 = BRIGHT, 0 = ANY (no floor). ETCSPEED is the ELG / BGS / PSF speed
+            # respectively, so it is NOT comparable across exposures with different conditions.
             ETCSTOP=self.accum.etcstop_reason,
             ETCSPEED=np.float32(self.accum.speed_now if self.accum.speed_now is not None else -1),
             ETCSPDFL=np.float32(self.accum.speed_floor),

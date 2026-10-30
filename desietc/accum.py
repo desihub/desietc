@@ -42,6 +42,7 @@ class Accumulator(object):
         # NTS config (overwritten by setup); defaults reproduce current behaviour (no speed cut).
         self.pUniformity = 0.99
         self.nts_program = 'DARK'
+        self.conditions = 'ANY'
         self.speed_floor = 0.0
         self.reset()
         # Initialize a per-exposure transcript of updates.
@@ -88,7 +89,7 @@ class Accumulator(object):
         self.etcstop_reason = ''          # stop cause for this segment: 'EFF'/'MAXTIME'/'FLOOR'/'' (FITS ETCSTOP / DB etcstop_reason)
 
     def setup(self, req_efftime, max_exposure_time, cosmics_split_time, maxsplit, warning_time,
-              rdnoise_1ks, pUniformity=0.99, nts_program='DARK'):
+              rdnoise_1ks, pUniformity=0.99, nts_program='DARK', conditions='ANY'):
         """Setup a new sequence of cosmic splits.
 
         Parameters
@@ -110,7 +111,11 @@ class Accumulator(object):
             Completeness/uniformity percentile for the DAR binding fiber (default 0.99 = p99).
             Stored for the DAR-deflation changes; not yet acted on (plumbing).
         nts_program : string
-            NTS program (DARK, BRIGHT, BACKUP); selects the survey-speed floor below.
+            NTS program (DARK, BRIGHT, BACKUP). Recorded for reference; it does NOT select the
+            survey-speed floor (see conditions).
+        conditions : string
+            Required observing conditions: DARK, BRIGHT or ANY (default); selects the survey-speed
+            floor below. Anything unrecognized gives no floor.
         """
         self.req_efftime = req_efftime
         self.max_exposure_time = max_exposure_time
@@ -120,11 +125,15 @@ class Accumulator(object):
         self.rdnoise_1ks = rdnoise_1ks
         self.pUniformity = pUniformity
         self.nts_program = nts_program
-        # Survey-speed floor by program: dark 1/5, bright 1/12, BACKUP disabled. The floor is on the
-        # SURVEY SPEED (not EFFTIME/EXPTIME). Normalize the program (DARK*/BRIGHT*/BACKUP* variants,
-        # e.g. BRIGHT1B) to its base so later passes get the correct floor; unknown -> DARK (strictest).
-        self.speed_floor = {'DARK': 1 / 5.0, 'BRIGHT': 1 / 12.0, 'BACKUP': 0.0}[
-            desietc.util.base_program(nts_program)]
+        self.conditions = conditions
+        # Survey-speed floor by requested observing CONDITIONS: DARK 1/5, BRIGHT 1/12, ANY none.
+        # The floor is on the SURVEY SPEED (not EFFTIME/EXPTIME). Selected by conditions, NOT by the
+        # NTS program name: a program string can be anything (e.g. a tertiary program), and matching
+        # on it defaulted such exposures to the strictest floor. Unknown -> no floor (fail open),
+        # because a FLOOR stop hands the remainder back to the NTS, which can only reschedule its
+        # own DARK/BRIGHT tiles.
+        self.speed_floor = {'DARK': 1 / 5.0, 'BRIGHT': 1 / 12.0, 'ANY': 0.0}.get(
+            str(conditions or 'ANY').upper(), 0.0)
         self.MW_transp = 1.
         self.reset()
 
