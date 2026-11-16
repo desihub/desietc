@@ -29,6 +29,7 @@ import desietc.accum
 import desietc.util
 import desietc.plot
 import desietc.darsplit
+import desietc.pointlimit
 
 
 class ETCAlgorithm(object):
@@ -199,6 +200,11 @@ class ETCAlgorithm(object):
         self.accum = desietc.accum.Accumulator(
             sig_buffer=self.thru_measurements, bg_buffer=self.sky_measurements,
             grid_resolution=grid_resolution, min_exptime_secs=min_exptime_secs)
+        # Pointing-limit check at each split (lower dome shutter + observer NFS constraints), fed by
+        # set_pointing_telemetry() with the latest ETCApp telemetry.
+        self.pointing_telemetry = None
+        self.pointing_telemetry_mjd = None
+        self.accum.limit_check = self._limit_check
         # Initialize the SKY camera processor.
         self.SKY = desietc.sky.SkyCamera(calib_name=sky_calib)
         # Prepare for parallel processing if necessary.
@@ -1086,6 +1092,51 @@ class ETCAlgorithm(object):
             self.accum.f2_p99 = 1.0
             self.accum.binding_petal = self.accum.binding_device = None
             self._dar_vp99 = self._dar_field_seeing = None
+
+    def set_pointing_telemetry(self, telem, timestamp):
+        """Save the pointing-limit inputs from the latest ETCApp telemetry dictionary.
+
+        Uses 'shutter_lower' (dome SV) and 'elrange'/'azrange' (OCS_NFSCONSTRAINTS SV), which ETCApp
+        merges into the top level of the dictionary and defaults when missing.
+        """
+        if not isinstance(telem, dict):
+            return
+        self.pointing_telemetry = {key: telem.get(key) for key in ('shutter_lower', 'elrange', 'azrange')}
+        self.pointing_telemetry_mjd = desietc.util.date_to_mjd(timestamp, utc_offset=0)
+
+    def _limit_check(self, mjd_now, seg_secs):
+        """Check whether a segment of seg_secs starting at mjd_now stays inside the pointing limits.
+
+        Called by the accumulator when it is about to split. Returns (ok, reason). Defaults follow
+        ETCApp: shutter 'open' (lowered) and full el/az ranges when a value is missing. If the pointing
+        is unknown, or on any error, returns ok=True so behaviour matches the current ETC.
+        """
+        try:
+            ha_deg = self.exp_data.get('hour_angle')
+            acq_mjd = self.exp_data.get('acq_mjd')
+            dec = self.fassign_data.get('TILEDEC')
+            if ha_deg is None or acq_mjd is None or dec is None:
+                logging.warning('LIMIT: pointing unavailable; skipping the pointing-limit check.')
+                return True, 'pointing unavailable'
+            telem = self.pointing_telemetry or {}
+            if self.pointing_telemetry is None:
+                logging.warning('LIMIT: no telemetry received yet; assuming shutter lowered and no constraints.')
+                age = None
+            else:
+                age = (mjd_now - self.pointing_telemetry_mjd) * self.accum.SECS_PER_DAY
+            shutter_lower = telem.get('shutter_lower') or 'open'
+            # Advance HA from the acquisition to now, as in _refresh_dar.
+            ha_now = ha_deg + (mjd_now - acq_mjd) * 24.0 * 15.041
+            ok, why = desietc.pointlimit.check_segment(
+                ha_now, dec, seg_secs, shutter_lower, telem.get('elrange'), telem.get('azrange'))
+            logging.info(f'LIMIT: next segment {seg_secs:.0f}s at HA={ha_now:.2f} Dec={dec:.1f}: {why} '
+                         f'[shutter_lower={shutter_lower!r} elrange={telem.get("elrange")} '
+                         f'azrange={telem.get("azrange")} telemetry age='
+                         f'{"n/a" if age is None else f"{age:.0f}s"}].')
+            return ok, why
+        except Exception as e:
+            logging.warning(f'LIMIT check failed ({e}); not stopping.')
+            return True, 'check failed'
 
     def open_shutter(self, expid, timestamp, splittable, max_shutter_time):
         """Record the shutter opening.

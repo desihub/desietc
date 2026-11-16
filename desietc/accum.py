@@ -39,6 +39,9 @@ class Accumulator(object):
         self.bg_buffer = bg_buffer
         self.grid_resolution = grid_resolution
         self.min_exptime_secs = min_exptime_secs
+        # Pointing-limit check, set by etc.py: limit_check(mjd_now, seg_secs) -> (ok, reason).
+        # None = no check (unchanged behaviour). Not cleared by reset().
+        self.limit_check = None
         # NTS config (overwritten by setup); defaults reproduce current behaviour (no speed cut).
         self.pUniformity = 0.99
         self.nts_program = 'DARK'
@@ -86,7 +89,7 @@ class Accumulator(object):
         self.speed_now = None            # current survey speed for the floor check (None = no cut)
         self.binding_petal = self.binding_device = None
         self.split_reason = ''            # split cause for this segment: 'dar'/'cosmics'/'' (FITS ETCSPLC / DB split_reason)
-        self.etcstop_reason = ''          # stop cause for this segment: 'EFF'/'MAXTIME'/'FLOOR'/'' (FITS ETCSTOP / DB etcstop_reason)
+        self.etcstop_reason = ''          # stop cause for this segment: 'EFF'/'MAXTIME'/'FLOOR'/'LIMIT'/'' (FITS ETCSTOP / DB etcstop_reason)
 
     def setup(self, req_efftime, max_exposure_time, cosmics_split_time, maxsplit, warning_time,
               rdnoise_1ks, pUniformity=0.99, nts_program='DARK', conditions='ANY'):
@@ -376,6 +379,22 @@ class Accumulator(object):
                 if self.splittable and self.next_split <= 0:
                     cause = 'dar split' if self.dar_split_time < self.cosmics_split_time else 'cosmic split'
                     self.action = ('split', cause)
+            # Pointing limits (lower dome shutter + observer NFS el/az constraints, at the field edge): a
+            # split commits the telescope to another segment on the same, still-setting field, so check the
+            # next segment before committing and stop instead of splitting if it would cross a limit. The
+            # segment is never shortened to fit. Next segment = min(split cap, projected remaining), so a
+            # tile close to req_efftime is not stopped for a hypothetical full-length segment.
+            if self.action is not None and self.action[0] == 'split' and self.limit_check is not None:
+                next_seg = min(split_time, max(self.remaining, 0.))
+                try:
+                    ok, why = self.limit_check(mjd_now, next_seg)
+                except Exception as e:
+                    logging.warning(f'Pointing-limit check failed ({e}); splitting as planned.')
+                    ok, why = True, 'check failed'
+                if not ok:
+                    self.action = ('stop', 'LIMIT')
+                    logging.info(f'Next segment of {next_seg:.0f}s would violate a pointing limit ({why}): '
+                                 'stopping instead of splitting.')
             # Survey-speed floor (Change 3): when the running speed is below the program floor, stop and
             # hand the remainder back to the NTS instead of splitting/continuing. Fail-safe: acts only when
             # a floor is set (>0; BACKUP has 0) and a speed has been provided, never before min exptime, and
@@ -399,7 +418,7 @@ class Accumulator(object):
             logging.info(f'Recommended action is {self.action}.')
         # Record this segment's split/stop cause (-> FITS ETCSPLC/ETCSTOP, DB split_reason/etcstop_reason,
         # etc_telemetry): why THIS shutter closes. split_reason is 'dar'/'cosmics' on a split (else ''),
-        # etcstop_reason is 'EFF'/'MAXTIME'/'FLOOR' on a stop (else ''); the two are mutually exclusive.
+        # etcstop_reason is 'EFF'/'MAXTIME'/'FLOOR'/'LIMIT' on a stop (else ''); the two are mutually exclusive.
         # Derived from the final action each update so a stop (incl. the speed-floor override of a split)
         # correctly clears a stale split cause. Kept in their own attributes because save_exposure_summary
         # reads them after accum.close() nulls action.
@@ -408,7 +427,7 @@ class Accumulator(object):
             self.etcstop_reason = ''
         elif self.action is not None and self.action[0] == 'stop':
             self.split_reason = ''
-            self.etcstop_reason = self.action[1]   # 'EFF' / 'MAXTIME' / 'FLOOR'
+            self.etcstop_reason = self.action[1]   # 'EFF' / 'MAXTIME' / 'FLOOR' / 'LIMIT'
         # Save this update to the transcript.
         if self.ntranscript == self.max_transcript:
             logging.warn(f'Accumulator transcript full with {self.ntranscript} entries.')

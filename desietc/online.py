@@ -283,6 +283,8 @@ class OnlineETC():
                             if telem:
                                 temperature = telem.get('SCR_E_wall_coude', None)
                                 logging.info(f'SCR_E_wall_coude temperature = {temperature}')
+                                # Lower dome shutter + NFS constraints for the split-time pointing-limit check.
+                                self.ETCalg.set_pointing_telemetry(telem, get_utcnow())
                         except Exception as e:
                             logging.error(f'call_for_telemetry failed: {e}')
                         try:
