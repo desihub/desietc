@@ -201,9 +201,11 @@ class ETCAlgorithm(object):
             sig_buffer=self.thru_measurements, bg_buffer=self.sky_measurements,
             grid_resolution=grid_resolution, min_exptime_secs=min_exptime_secs)
         # Pointing-limit check at each split (lower dome shutter + observer NFS constraints), fed by
-        # set_pointing_telemetry() with the latest ETCApp telemetry.
+        # set_pointing_telemetry() with the latest ETCApp telemetry. If telemetry_refresh is set (a
+        # callable returning the ETCApp telemetry dict), the check fetches fresh values at split time.
         self.pointing_telemetry = None
         self.pointing_telemetry_mjd = None
+        self.telemetry_refresh = None
         self.accum.limit_check = self._limit_check
         # Initialize the SKY camera processor.
         self.SKY = desietc.sky.SkyCamera(calib_name=sky_calib)
@@ -1101,8 +1103,11 @@ class ETCAlgorithm(object):
         """
         if not isinstance(telem, dict):
             return
+        self._store_pointing_telemetry(telem, desietc.util.date_to_mjd(timestamp, utc_offset=0))
+
+    def _store_pointing_telemetry(self, telem, mjd):
         self.pointing_telemetry = {key: telem.get(key) for key in ('shutter_lower', 'elrange', 'azrange')}
-        self.pointing_telemetry_mjd = desietc.util.date_to_mjd(timestamp, utc_offset=0)
+        self.pointing_telemetry_mjd = mjd
 
     def _limit_check(self, mjd_now, seg_secs):
         """Check whether a segment of seg_secs starting at mjd_now stays inside the pointing limits.
@@ -1118,6 +1123,15 @@ class ETCAlgorithm(object):
             if ha_deg is None or acq_mjd is None or dec is None:
                 logging.warning('LIMIT: pointing unavailable; skipping the pointing-limit check.')
                 return True, 'pointing unavailable'
+            # Fetch fresh telemetry: the cached values are only updated on sky frames, so a split
+            # early in an exposure would otherwise use the previous exposure's shutter/constraints.
+            if self.telemetry_refresh is not None:
+                try:
+                    fresh = self.telemetry_refresh()
+                    if isinstance(fresh, dict):
+                        self._store_pointing_telemetry(fresh, mjd_now)
+                except Exception as e:
+                    logging.warning(f'LIMIT: telemetry refresh failed ({e}); using the last saved values.')
             telem = self.pointing_telemetry or {}
             if self.pointing_telemetry is None:
                 logging.warning('LIMIT: no telemetry received yet; assuming shutter lowered and no constraints.')

@@ -132,6 +132,9 @@ class OnlineETC():
             raise RuntimeError('ETC_GFA_CALIB and ETC_SKY_CALIB must be set.')
         self.ETCalg = desietc.etc.ETCAlgorithm(
             sky_calib=sky_calib, gfa_calib=gfa_calib, min_exptime_secs=min_exptime_secs, parallel=True)
+        # Fresh lower-shutter/NFS-constraint telemetry for the split-time pointing-limit check.
+        # call_for_telemetry is attached by ETCApp after construction, so look it up at call time.
+        self.ETCalg.telemetry_refresh = lambda: getattr(self, 'call_for_telemetry')()
 
         # Initialize status variables
         self.expid = None
@@ -633,6 +636,14 @@ class OnlineETC():
         self.conditions = conditions
         self.use_dynamic_positions = use_dynamic_positions
         self.esttime = esttime
+
+        # Refresh the pointing-limit telemetry so this tile never starts with the previous one's.
+        try:
+            telem = self.call_for_telemetry()
+            if telem:
+                self.ETCalg.set_pointing_telemetry(telem, get_utcnow())
+        except Exception as e:
+            logging.warning(f'prepare_for_exposure: telemetry refresh failed ({e}).')
 
         # Update our status.
         self.call_to_update_status()
