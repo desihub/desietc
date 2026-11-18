@@ -39,7 +39,7 @@ DESI_FIELD_RADIUS_DEG = 1.6
 # to the field edge: the 8.5 deg already includes the field.
 SHUTTER_CENTER_EL = 28.5
 
-# Always-on floor on the field centre (airmass 3).
+# Always-on floor on the field center (airmass 3).
 EL_LIMIT_HARD = math.degrees(math.asin(1.0 / 3.0))   # 19.47 deg
 
 DEFAULT_MARGIN_DEG = 0.5
@@ -69,7 +69,7 @@ def _in_block(az_deg, lo_deg, hi_deg, pad_deg=0.0):
 
 
 def az_half_width(el_deg, field_radius_deg=DESI_FIELD_RADIUS_DEG):
-    """Azimuth half-width (deg) of a circular field of the given radius centred at el_deg."""
+    """Azimuth half-width (deg) of a circular field of the given radius centered at el_deg."""
     c = math.cos(math.radians(el_deg))
     s = math.sin(math.radians(field_radius_deg))
     if c <= s:
@@ -129,7 +129,7 @@ def check_segment(ha_deg, dec_deg, seg_secs, shutter_lower, elrange=None, azrang
 
     worst_el, worst_ha = min((elevation(h, dec_deg, lat_deg), h) for h in (ha0, ha1))
     if worst_el < el_min:
-        return False, (f'{el_reason}: centre el {worst_el:.2f} < {el_min:.2f} deg '
+        return False, (f'{el_reason}: center el {worst_el:.2f} < {el_min:.2f} deg '
                        f'at HA {worst_ha:.2f} deg')
 
     if az_blocks:

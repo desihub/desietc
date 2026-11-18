@@ -173,6 +173,7 @@ class Accumulator(object):
         # planned split time when the check failed and a LIMIT stop has been announced.
         self.limit_warn_checked = False
         self.limit_stop_mjd = None
+        self.limit_reason = ''   # why the next segment fails the pointing limits (for the observer alarm)
         self.MW_transp = MW_transp
         # Initialize a MJD grid to use for SNR calculations during this shutter.
         # Grid values are bin centers, with spacing fixed at grid_resolution.
@@ -406,6 +407,7 @@ class Accumulator(object):
                     logging.warning(f'Pointing-limit check failed ({e}); splitting as planned.')
                     ok, why = True, 'check failed'
                 if not ok:
+                    self.limit_reason = why
                     self.action = ('stop', 'LIMIT')
                     logging.info(f'Next segment of {next_seg:.0f}s would violate a pointing limit ({why}): '
                                  'stopping instead of splitting.')
@@ -436,10 +438,11 @@ class Accumulator(object):
                         ok, why = True, 'check failed'
                     if not ok:
                         self.limit_stop_mjd = mjd_split
+                        self.limit_reason = why
                         logging.info(f'Next segment of {next_seg:.0f}s would violate a pointing limit ({why}): '
                                      f'announcing a stop in {self.next_split:.0f}s instead of a split.')
                 if self.limit_stop_mjd is not None:
-                    self.action = ('warn-stop', 'about to reach a pointing limit')
+                    self.action = ('warn-stop', f'about to reach a pointing limit ({self.limit_reason})')
                 elif self.realtime + self.warning_time >= self.max_remaining:
                     self.action = ('warn-stop', 'about to reach max_exposure_time')
                 elif self.remaining <= self.warning_time:
