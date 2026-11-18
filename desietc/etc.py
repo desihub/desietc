@@ -1109,10 +1109,12 @@ class ETCAlgorithm(object):
         self.pointing_telemetry = {key: telem.get(key) for key in ('shutter_lower', 'elrange', 'azrange')}
         self.pointing_telemetry_mjd = mjd
 
-    def _limit_check(self, mjd_now, seg_secs):
-        """Check whether a segment of seg_secs starting at mjd_now stays inside the pointing limits.
+    def _limit_check(self, mjd_now, seg_secs, mjd_start=None):
+        """Check whether a segment of seg_secs starting at mjd_start (default mjd_now) stays inside
+        the pointing limits.
 
-        Called by the accumulator when it is about to split. Returns (ok, reason). Defaults follow
+        Called by the accumulator at the split warning (with mjd_start = the planned split time) and
+        when it is about to split. Returns (ok, reason). Defaults follow
         ETCApp: shutter 'open' (lowered) and full el/az ranges when a value is missing. If the pointing
         is unknown, or on any error, returns ok=True so behaviour matches the current ETC.
         """
@@ -1139,11 +1141,15 @@ class ETCAlgorithm(object):
             else:
                 age = (mjd_now - self.pointing_telemetry_mjd) * self.accum.SECS_PER_DAY
             shutter_lower = telem.get('shutter_lower') or 'open'
-            # Advance HA from the acquisition to now, as in _refresh_dar.
-            ha_now = ha_deg + (mjd_now - acq_mjd) * 24.0 * 15.041
+            # Advance HA from the acquisition to the segment start, as in _refresh_dar.
+            if mjd_start is None:
+                mjd_start = mjd_now
+            ha_now = ha_deg + (mjd_start - acq_mjd) * 24.0 * 15.041
             ok, why = desietc.pointlimit.check_segment(
                 ha_now, dec, seg_secs, shutter_lower, telem.get('elrange'), telem.get('azrange'))
-            logging.info(f'LIMIT: next segment {seg_secs:.0f}s at HA={ha_now:.2f} Dec={dec:.1f}: {why} '
+            start = (mjd_start - mjd_now) * self.accum.SECS_PER_DAY
+            logging.info(f'LIMIT: next segment {seg_secs:.0f}s starting in {start:.0f}s at HA={ha_now:.2f} '
+                         f'Dec={dec:.1f}: {why} '
                          f'[shutter_lower={shutter_lower!r} elrange={telem.get("elrange")} '
                          f'azrange={telem.get("azrange")} telemetry age='
                          f'{"n/a" if age is None else f"{age:.0f}s"}].')

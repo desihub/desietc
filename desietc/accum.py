@@ -39,7 +39,7 @@ class Accumulator(object):
         self.bg_buffer = bg_buffer
         self.grid_resolution = grid_resolution
         self.min_exptime_secs = min_exptime_secs
-        # Pointing-limit check, set by etc.py: limit_check(mjd_now, seg_secs) -> (ok, reason).
+        # Pointing-limit check, set by etc.py: limit_check(mjd_now, seg_secs, mjd_start=None) -> (ok, reason).
         # None = no check (unchanged behaviour). Not cleared by reset().
         self.limit_check = None
         # NTS config (overwritten by setup); defaults reproduce current behaviour (no speed cut).
@@ -169,6 +169,10 @@ class Accumulator(object):
         self.max_shutter_time = max_shutter_time
         # Fresh segment: clear the split cause; update() sets it if/when this segment ends in a split.
         self.split_reason = ''
+        # Pointing-limit check at the split warning: done once per segment; limit_stop_mjd is the
+        # planned split time when the check failed and a LIMIT stop has been announced.
+        self.limit_warn_checked = False
+        self.limit_stop_mjd = None
         self.MW_transp = MW_transp
         # Initialize a MJD grid to use for SNR calculations during this shutter.
         # Grid values are bin centers, with spacing fixed at grid_resolution.
@@ -384,7 +388,17 @@ class Accumulator(object):
             # next segment before committing and stop instead of splitting if it would cross a limit. The
             # segment is never shortened to fit. Next segment = min(split cap, projected remaining), so a
             # tile close to req_efftime is not stopped for a hypothetical full-length segment.
-            if self.action is not None and self.action[0] == 'split' and self.limit_check is not None:
+            # A LIMIT stop announced at the split warning (about_to_stop has been sent, so the OCS has
+            # ended the visit and will not accept a split) is executed at the planned split time, or
+            # earlier if a split comes first, without re-checking.
+            if self.limit_stop_mjd is not None and (
+                    (self.action is not None and self.action[0] == 'split') or
+                    (self.action is None and mjd_now >= self.limit_stop_mjd)):
+                self.action = ('stop', 'LIMIT')
+                logging.info('Stopping at the planned split for the pointing limit announced at the split warning.')
+            # Backstop for a split that was not announced as a stop (no warning sent, or the shutter or
+            # constraints changed after the warning): check again at the split itself.
+            elif self.action is not None and self.action[0] == 'split' and self.limit_check is not None:
                 next_seg = min(split_time, max(self.remaining, 0.))
                 try:
                     ok, why = self.limit_check(mjd_now, next_seg)
@@ -408,7 +422,25 @@ class Accumulator(object):
                              'stopping and rescheduling the remainder.')
             # Are we about to stop or split?
             if self.action is None:
-                if self.realtime + self.warning_time >= self.max_remaining:
+                if (self.next_split <= self.warning_time and self.splittable and self.nsplit_remaining > 1
+                        and not self.limit_warn_checked and self.limit_check is not None):
+                    # Check the segment the split would start, once, at the split warning, so a stop can be
+                    # announced (about_to_stop) instead of a split, which lets the OCS prepare the next tile.
+                    self.limit_warn_checked = True
+                    mjd_split = mjd_now + self.next_split / self.SECS_PER_DAY
+                    next_seg = min(split_time, max(self.remaining - self.next_split, 0.))
+                    try:
+                        ok, why = self.limit_check(mjd_now, next_seg, mjd_start=mjd_split)
+                    except Exception as e:
+                        logging.warning(f'Pointing-limit check failed ({e}); warning of a split as planned.')
+                        ok, why = True, 'check failed'
+                    if not ok:
+                        self.limit_stop_mjd = mjd_split
+                        logging.info(f'Next segment of {next_seg:.0f}s would violate a pointing limit ({why}): '
+                                     f'announcing a stop in {self.next_split:.0f}s instead of a split.')
+                if self.limit_stop_mjd is not None:
+                    self.action = ('warn-stop', 'about to reach a pointing limit')
+                elif self.realtime + self.warning_time >= self.max_remaining:
                     self.action = ('warn-stop', 'about to reach max_exposure_time')
                 elif self.remaining <= self.warning_time:
                     self.action = ('warn-stop', 'about to reach req_efftime')
